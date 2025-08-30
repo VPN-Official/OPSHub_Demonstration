@@ -1,0 +1,158 @@
+[
+  {
+    "model": "aiops.businessservice",
+    "pk": 1,
+    "fields": {
+      "name": "Meta East Coast DCN",
+      "criticality": "high",
+      "revenue_impact_per_hour": "2500000.00",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.asset",
+    "pk": 1,
+    "fields": {
+      "name": "HVAC System A1",
+      "asset_type": "Cooling",
+      "status": "active",
+      "criticality": "high",
+      "purchase_cost": "500000.00",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.assetcompliancecertificate",
+    "pk": 1,
+    "fields": {
+      "asset": 1,
+      "certificate_type": "ASHRAE 90.1",
+      "expiry_date": "2025-12-31",
+      "status": "valid",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.externaluser",
+    "pk": 1,
+    "fields": {
+      "display_name": "Alice Johnson",
+      "role": "DCN Ops Engineer",
+      "skills": ["HVAC", "Chillers", "BMS"],
+      "certifications": ["ASHRAE Certified"],
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.team",
+    "pk": 1,
+    "fields": {
+      "name": "Cooling Ops Team",
+      "workload_summary": {"open_incidents": 3, "active_changes": 1},
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.teammembership",
+    "pk": 1,
+    "fields": {
+      "team": 1,
+      "user": 1,
+      "role": "Engineer",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.customer",
+    "pk": 1,
+    "fields": {
+      "name": "Meta DCN Division",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.contract",
+    "pk": 1,
+    "fields": {
+      "customer": 1,
+      "title": "Meta DCN Support SLA",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-12-31",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.slatarget",
+    "pk": 1,
+    "fields": {
+      "contract": 1,
+      "work_type": "incident",
+      "response_minutes": 15,
+      "resolution_minutes": 60,
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.penaltyclause",
+    "pk": 1,
+    "fields": {
+      "contract": 1,
+      "condition": "P1 SLA breach",
+      "penalty_amount": "10000.00",
+      "penalty_type": "credit",
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.vendor",
+    "pk": 1,
+    "fields": {
+      "name": "Johnson Controls",
+      "certifications": ["ISO27001", "SOC2"],
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.workitem",
+    "pk": 1,
+    "fields": {
+      "title": "Cooling Failure in East DCN",
+      "description": "HVAC System A1 stopped, raising temp in racks",
+      "work_type": "incident",
+      "status": "new",
+      "priority": "priority_1",
+      "sla_target_minutes": 60,
+      "business_service": 1,
+      "asset": 1,
+      "vendor": 1,
+      "created_at": "2025-01-01T10:00:00Z",
+      "modified_at": "2025-01-01T10:00:00Z"
+    }
+  },
+  {
+    "model": "aiops.knowledgebasearticle",
+    "pk": 1,
+    "fields": {
+      "title": "Troubleshooting HVAC Failures",
+      "knowledge_type": "troubleshooting",
+      "difficulty_level": "medium",
+      "content": "Check power supply, air filters, BMS alerts before vendor escalation.",
+      "applicable_work_types": ["incident"],
+      "tags": ["HVAC", "cooling", "BMS"],
+      "view_count": 0,
+      "created_at": "2025-01-01T00:00:00Z",
+      "modified_at": "2025-01-01T00:00:00Z"
+    }
+  }
+]
