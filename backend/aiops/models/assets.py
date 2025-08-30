@@ -7,6 +7,8 @@ class Asset(TimeStampedModel, TenantScopedModel):
     status = models.CharField(max_length=50)
     criticality = models.CharField(max_length=50)
     purchase_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    location = models.ForeignKey("Location", null=True, blank=True, on_delete=models.SET_NULL, related_name="assets")
+    service_components = models.ManyToManyField("ServiceComponent", blank=True, related_name="assets")
 
 class AssetConfigurationItem(TimeStampedModel, TenantScopedModel):
     asset = models.ForeignKey(Asset, related_name="configuration_items", on_delete=models.CASCADE)

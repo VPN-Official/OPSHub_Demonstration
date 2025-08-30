@@ -21,3 +21,4 @@ class RiskRegister(TimeStampedModel, TenantScopedModel):
     impact = models.CharField(max_length=20)       # low, medium, high
     status = models.CharField(max_length=20, default="open")
     mitigation_plan = models.TextField(blank=True)
+    owner = models.ForeignKey("ExternalUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_risks")
