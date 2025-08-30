@@ -53,10 +53,10 @@ ASGI_APPLICATION = "aiops_platform.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "ops_hub"),
-        "USER": os.getenv("DB_USER", "postgres"),
-        "PASSWORD": os.getenv("DB_PASS", "newuser123#"),
-        "HOST": os.getenv("DB_HOST", "localhost"),
+        "NAME": os.getenv("DB_NAME", "opshub_db"),
+        "USER": os.getenv("DB_USER", "vpn"),
+        "PASSWORD": os.getenv("DB_PASS", "0wzpFhRLp2mxRX0RHHKpUe2viqx59iHn"),
+        "HOST": os.getenv("DB_HOST", "dpg-d2pdmqt6ubrc73c81ieg-a.oregon-postgres.render.com"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }

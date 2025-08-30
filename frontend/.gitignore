@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+*.pyc
+__pycache__/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.sqlite3
+*.dbß

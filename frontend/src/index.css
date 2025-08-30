@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Theme customization */
+@theme {
+  /* Custom colors */
+  --color-primary: #FF6600;
+  --color-ai-purple: #6C63FF;
+  --color-success: #2ECC71;
+  --color-error: #E74C3C;
+  --color-warning: #F1C40F;
+}
+
+/* Dark mode support */
+@variant dark (&:where(.dark, .dark *));
+
+/* Global styles */
 body {
   @apply bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100;
   font-family: system-ui, sans-serif;

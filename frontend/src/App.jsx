@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
@@ -8,12 +8,17 @@ import SmartQueue from "./pages/SmartQueue";
 import { NotificationsProvider } from "./context/NotificationsContext";
 
 export default function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <NotificationsProvider>
       <div className="flex h-screen">
-        <Sidebar />
+        {/* Sidebar (hidden on mobile unless open) */}
+        <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+
+        {/* Main content */}
         <div className="flex-1 flex flex-col">
-          <Topbar />
+          <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
           <OfflineBanner />
           <main className="flex-1 p-6 overflow-y-auto">
             <Routes>
