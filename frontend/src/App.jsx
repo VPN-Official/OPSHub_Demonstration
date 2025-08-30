@@ -5,6 +5,9 @@ import Topbar from "./components/Topbar";
 import OfflineBanner from "./components/OfflineBanner";
 import Dashboard from "./pages/Dashboard";
 import SmartQueue from "./pages/SmartQueue";
+import WorkItemDetail from "./pages/WorkItemDetail";
+import ScheduleView from "./pages/ScheduleView";
+import NotificationsCenter from "./pages/NotificationsCenter";
 import { NotificationsProvider } from "./context/NotificationsContext";
 
 export default function App() {
@@ -24,6 +27,12 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/smart-queue" element={<SmartQueue />} />
+              {/* WorkItem detail drilldown */}
+              <Route path="/workitem/:id" element={<WorkItemDetail />} />
+              {/* Schedule view */}
+              <Route path="/schedule" element={<ScheduleView />} />
+              {/* Notifications center */}
+              <Route path="/notifications" element={<NotificationsCenter />} />
             </Routes>
           </main>
         </div>

@@ -1,8 +1,14 @@
 from django.db import models
 from .mixins import TimeStampedModel, TenantScopedModel
 
+import uuid
+class UUIDModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-class ComplianceRecord(TimeStampedModel, TenantScopedModel):
+    class Meta:
+        abstract = True
+
+class ComplianceRecord(UUIDModel, TimeStampedModel, TenantScopedModel):
     regulation = models.CharField(max_length=255)
     status = models.CharField(max_length=50, default="compliant")
     findings = models.JSONField(default=list, blank=True)

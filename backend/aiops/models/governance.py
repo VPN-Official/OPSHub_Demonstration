@@ -2,20 +2,27 @@ from django.db import models
 from .mixins import TimeStampedModel, TenantScopedModel
 from .services import BusinessService
 
-class OperationalCategory(TimeStampedModel, TenantScopedModel):
+import uuid
+class UUIDModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    class Meta:
+        abstract = True
+
+class OperationalCategory(UUIDModel, TimeStampedModel, TenantScopedModel):
     name = models.CharField(max_length=255)
     sla_override = models.JSONField(default=dict, blank=True)
     notification_teams = models.JSONField(default=list, blank=True)
 
-class ChangeRequest(TimeStampedModel, TenantScopedModel):
+class ChangeRequest(UUIDModel, TimeStampedModel, TenantScopedModel):
     title = models.CharField(max_length=255)
     description = models.TextField()
     scheduled_start = models.DateTimeField()
     scheduled_end = models.DateTimeField()
     related_services = models.ManyToManyField(BusinessService, blank=True)
 
-class RiskRegister(TimeStampedModel, TenantScopedModel):
-    service = models.ForeignKey(BusinessService, related_name="risks", on_delete=models.CASCADE)
+class RiskRegister(UUIDModel, TimeStampedModel, TenantScopedModel):
+    business_service = models.ForeignKey(BusinessService, related_name="risks", on_delete=models.CASCADE)
     description = models.TextField()
     probability = models.CharField(max_length=20)  # low, medium, high
     impact = models.CharField(max_length=20)       # low, medium, high

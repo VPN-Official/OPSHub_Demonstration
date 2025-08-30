@@ -1,11 +1,13 @@
 import React from "react";
-import { LayoutDashboard, Zap, Users, X } from "lucide-react";
+import { LayoutDashboard, Zap, Users, X, Calendar, Bell } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { path: "/smart-queue", label: "Smart Queue", icon: <Zap size={18} /> },
+  { path: "/schedule", label: "Smart Queue", icon: <Calendar size={18} /> },
   { path: "/teams", label: "Teams", icon: <Users size={18} /> },
+  { path: "/notifications", label: "Notifications", icon: <Bell size={18} /> },
 ];
 
 export default function Sidebar({ isOpen, setIsOpen }) {

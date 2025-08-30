@@ -1,54 +1,82 @@
 import React, { useState } from "react";
-import { Settings } from "lucide-react";
 import { explainSmartScore } from "../utils/scoring";
 
-export default function SmartQueueCard({ workitem }) {
+export default function SmartQueueCard({ workitem, onClick }) {
   const [showWhy, setShowWhy] = useState(false);
-  const reasons = explainSmartScore(workitem, "u1");
+
+  const handleAssign = () => {
+    console.log(`Assign/unassign ${workitem.title}`);
+  };
+
+  const handleAutomation = () => {
+    console.log(`Run automation for ${workitem.title}`);
+  };
+
+  const handleChat = () => {
+    console.log(`Open chat for ${workitem.title}`);
+  };
 
   return (
-    <div className="bg-white dark:bg-gray-900 shadow rounded p-4 mb-4">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-bold">{workitem.title}</h3>
-        <span
-          className={`px-2 py-1 text-xs rounded text-white ${
-            workitem.priority === "priority_1" ? "bg-red-600" : "bg-orange-500"
-          }`}
-        >
-          {workitem.priority === "priority_1" ? "P1" : "P2"}
-        </span>
+    <div
+      className="p-4 bg-white dark:bg-gray-900 rounded shadow hover:shadow-md cursor-pointer"
+      onClick={onClick}
+    >
+      <div className="flex justify-between items-center">
+        <h2 className="font-semibold">{workitem.title}</h2>
+        <span className="text-xs text-gray-500">#{workitem.id}</span>
+      </div>
+      <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+        <p>Priority: {workitem.priority}</p>
+        <p>
+          SLA:{" "}
+          {workitem.sla_remaining < 0 ? (
+            <span className="text-red-600">Breached</span>
+          ) : (
+            `${workitem.sla_remaining} min`
+          )}
+        </p>
+        <p>Impact: ${workitem.impact.toLocaleString()}</p>
+        <p>Owner: {workitem.owner || "Unassigned"}</p>
+        <p>Automation: {workitem.automationEligible ? "Yes" : "No"}</p>
+        <p>Smart Score: {workitem.smartscore}</p>
       </div>
 
-      <p
-        className={`text-sm font-medium ${
-          workitem.sla_remaining < 0
-            ? "text-red-600"
-            : workitem.sla_remaining < 15
-            ? "text-yellow-600"
-            : "text-gray-700 dark:text-gray-300"
-        }`}
-      >
-        SLA:{" "}
-        {workitem.sla_remaining < 0
-          ? "Breached"
-          : `${workitem.sla_remaining}m left`}
-      </p>
-
-      <p className="text-sm text-gray-700 dark:text-gray-300">
-        Impact: ${workitem.impact.toLocaleString()}/hr
-      </p>
-      <p className="text-sm text-gray-500">Owner: {workitem.owner}</p>
-
-      <div className="flex justify-between items-center mt-2">
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAssign();
+          }}
+          className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
+        >
+          {workitem.owner ? "Unassign" : "Assign to Me"}
+        </button>
         {workitem.automationEligible && (
-          <span className="text-xs flex items-center space-x-1 text-gray-600 dark:text-gray-400">
-            <Settings className="w-4 h-4" />
-            <span>Automation</span>
-          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAutomation();
+            }}
+            className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700"
+          >
+            Run Automation
+          </button>
         )}
         <button
-          onClick={() => setShowWhy(!showWhy)}
-          className="text-ai-purple text-xs hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleChat();
+          }}
+          className="px-2 py-1 text-xs rounded bg-purple-600 text-white hover:bg-purple-700"
+        >
+          Chat
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowWhy(!showWhy);
+          }}
+          className="px-2 py-1 text-xs underline text-gray-600 dark:text-gray-300"
         >
           {showWhy ? "Hide Why" : "Why?"}
         </button>
@@ -56,7 +84,7 @@ export default function SmartQueueCard({ workitem }) {
 
       {showWhy && (
         <ul className="mt-2 text-xs list-disc pl-4 text-gray-600 dark:text-gray-300">
-          {reasons.map((r, i) => (
+          {workitem.reasons?.map((r, i) => (
             <li key={i}>{r}</li>
           ))}
         </ul>

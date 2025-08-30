@@ -2,13 +2,20 @@ from django.db import models
 from .mixins import TimeStampedModel, TenantScopedModel
 from .workitems import WorkItem
 
-class AnalyticsMetric(TimeStampedModel, TenantScopedModel):
+import uuid
+class UUIDModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    class Meta:
+        abstract = True
+
+class AnalyticsMetric(UUIDModel, TimeStampedModel, TenantScopedModel):
     name = models.CharField(max_length=100)
     metric_type = models.CharField(max_length=50)
     value = models.FloatField()
     recorded_at = models.DateTimeField()
 
-class FinancialImpact(TimeStampedModel, TenantScopedModel):
+class FinancialImpact(UUIDModel, TimeStampedModel, TenantScopedModel):
     work_item = models.OneToOneField(WorkItem, related_name="financial_impact", on_delete=models.CASCADE)
     estimated_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     actual_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
