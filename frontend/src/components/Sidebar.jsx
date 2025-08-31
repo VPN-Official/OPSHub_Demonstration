@@ -1,69 +1,70 @@
 import React from "react";
-import { LayoutDashboard, Zap, Users, X, Calendar, Bell } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { LayoutDashboard, ListCheck, Calendar, Activity } from "lucide-react";
 
-const navItems = [
-  { path: "/", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
-  { path: "/smart-queue", label: "Smart Queue", icon: <Zap size={18} /> },
-  { path: "/schedule", label: "Smart Queue", icon: <Calendar size={18} /> },
-  { path: "/teams", label: "Teams", icon: <Users size={18} /> },
-  { path: "/notifications", label: "Notifications", icon: <Bell size={18} /> },
-];
+export default function Sidebar({ isOpen, onClose }) {
+  const baseClasses =
+    "flex items-center gap-2 px-3 py-2 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-800";
+  const activeClasses =
+    "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600";
 
-export default function Sidebar({ isOpen, setIsOpen }) {
   return (
     <>
-      {/* Desktop sidebar (always visible) */}
-      <aside className="hidden sm:flex w-64 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 flex-col p-4">
-        <h2 className="text-primary font-bold text-lg mb-6">AIOps Platform</h2>
-        <nav className="space-y-2">
-          {navItems.map((item, i) => (
-            <NavLink
-              key={i}
-              to={item.path}
-              className={({ isActive }) =>
-                `flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-800 ${isActive ? "bg-primary text-white" : ""
-                }`
-              }
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      {/* Mobile drawer */}
+      {/* Backdrop (mobile only) */}
       {isOpen && (
-        <div className="sm:hidden fixed inset-0 z-40 flex">
-          {/* Overlay */}
-          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setIsOpen(false)}></div>
-
-          {/* Drawer */}
-          <aside className="relative w-64 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 flex flex-col p-4 z-50">
-            <button onClick={() => setIsOpen(false)} className="self-end mb-4">
-              <X size={22} />
-            </button>
-            <h2 className="text-primary font-bold text-lg mb-6">AIOps Platform</h2>
-            <nav className="space-y-2">
-              {navItems.map((item, i) => (
-                <NavLink
-                  key={i}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-800 ${isActive ? "bg-primary text-white" : ""
-                    }`
-                  }
-                  onClick={() => setIsOpen(false)}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </nav>
-          </aside>
-        </div>
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={onClose}
+        />
       )}
+
+      {/* Sidebar */}
+      <nav
+        className={`fixed md:static top-0 left-0 h-full w-56 bg-white dark:bg-gray-900 p-4 space-y-2 transform transition-transform duration-200 z-50
+          ${isOpen ? "translate-x-0" : "-translate-x-full"} 
+          md:translate-x-0`}
+      >
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
+          }
+          onClick={onClose}
+        >
+          <LayoutDashboard size={18} /> <span>Dashboard</span>
+        </NavLink>
+
+        <NavLink
+          to="/smartqueue"
+          className={({ isActive }) =>
+            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
+          }
+          onClick={onClose}
+        >
+          <ListCheck size={18} /> <span>Smart Queue</span>
+        </NavLink>
+
+        <NavLink
+          to="/schedule"
+          className={({ isActive }) =>
+            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
+          }
+          onClick={onClose}
+        >
+          <Calendar size={18} /> <span>Schedule</span>
+        </NavLink>
+
+        <NavLink
+          to="/eventfeed"
+          className={({ isActive }) =>
+            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
+          }
+          onClick={onClose}
+        >
+          <Activity size={18} /> <span>Event Feed</span>
+        </NavLink>
+      </nav>
     </>
   );
 }

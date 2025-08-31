@@ -8,7 +8,10 @@ export default function Topbar({ onMenuClick }) {
   return (
     <header className="flex items-center justify-between p-4 border-b bg-white dark:bg-gray-900 dark:border-gray-700">
       {/* Hamburger (mobile only) */}
-      <button className="sm:hidden p-2" onClick={onMenuClick}>
+      <button
+        className="sm:hidden p-2"
+        onClick={onMenuClick}
+        aria-label="Toggle sidebar menu">
         <Menu size={22} />
       </button>
 
