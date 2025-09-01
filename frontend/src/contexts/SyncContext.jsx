@@ -1,164 +1,332 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { getAll, setItem, delItem, clearStore, seedAll } from "../utils/db.js";
-import { useToast, TOAST_TYPES } from "./ToastContext.jsx";
+import { getAll, setItem, clearStore, isSeeded } from "../utils/db.js";
+import { useAuth } from "./AuthContext.jsx";
 
 const SyncContext = createContext();
 
+// Sync operation types
+export const SYNC_OPERATIONS = {
+  CREATE: "create",
+  UPDATE: "update", 
+  DELETE: "delete",
+  BULK_UPDATE: "bulk_update",
+  TRIGGER_AUTOMATION: "trigger_automation",
+  REASSIGN: "reassign",
+  STATUS_UPDATE: "status_update",
+  IMPLEMENT_NUDGE: "implement_nudge"
+};
+
+// Sync statuses
+export const SYNC_STATUS = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  RETRYING: "retrying"
+};
+
 export function SyncProvider({ children }) {
+  const [online, setOnline] = useState(navigator.onLine);
   const [syncQueue, setSyncQueue] = useState([]);
   const [failedOperations, setFailedOperations] = useState([]);
-  const [online, setOnline] = useState(navigator.onLine);
-  const [syncStatus, setSyncStatus] = useState("idle"); // idle, syncing, failed, success
-  const [lastSyncAttempt, setLastSyncAttempt] = useState(null);
-  const [syncStats, setSyncStats] = useState({
-    totalAttempts: 0,
-    successCount: 0,
-    failureCount: 0,
-    lastSuccessful: null
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [syncInProgress, setSyncInProgress] = useState(false);
+  const { user } = useAuth();
 
-  const { addToast } = useToast();
-
-  // Load queue and failed operations from IndexedDB
+  // Load sync queue and failed operations
   async function load() {
     try {
-      const queueItems = await getAll("syncQueue");
-      const failedItems = await getAll("failedSync");
+      setIsLoading(true);
+      
+      const [queueItems, failedItems] = await Promise.all([
+        getAll("syncQueue"),
+        getAll("failedSync")
+      ]);
       
       if (!queueItems.length && !failedItems.length) {
-        await seedAll({ syncQueue: [], failedSync: [] });
+        const alreadySeeded = await isSeeded();
+        if (!alreadySeeded) {
+          console.log("🔍 Sync stores empty, but global seeding will handle this");
+        }
       }
       
-      setSyncQueue(queueItems);
-      setFailedOperations(failedItems);
+      setSyncQueue(queueItems || []);
+      setFailedOperations(failedItems || []);
       
-      // Load sync stats from localStorage
-      const savedStats = localStorage.getItem("syncStats");
-      if (savedStats) {
-        setSyncStats(JSON.parse(savedStats));
-      }
     } catch (error) {
       console.error("Failed to load sync data:", error);
+      setSyncQueue([]);
+      setFailedOperations([]);
+    } finally {
+      setIsLoading(false);
     }
   }
 
-  // Add item to sync queue
-  async function enqueue(item) {
-    const queueItem = {
-      id: Date.now(),
-      ...item,
-      timestamp: Date.now(),
-      attempts: 0,
-      status: "pending"
-    };
-    
+  // Queue a change for synchronization
+  async function queueChange(operation, data, options = {}) {
     try {
-      await setItem("syncQueue", queueItem);
-      setSyncQueue(prev => [...prev, queueItem]);
-      
-      addToast({ 
-        message: `${item.action || "Action"} queued for sync`, 
-        type: TOAST_TYPES.INFO 
+      const changeRecord = {
+        id: `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        operation,
+        data,
+        timestamp: Date.now(),
+        user_id: user?.id || "system",
+        status: SYNC_STATUS.PENDING,
+        attempts: 0,
+        max_attempts: options.maxAttempts || 3,
+        priority: options.priority || "normal", // low, normal, high, critical
+        created_at: Date.now(),
+        metadata: {
+          user_agent: navigator.userAgent,
+          connection_type: navigator.connection?.effectiveType || "unknown",
+          ...options.metadata
+        }
+      };
+
+      await setItem("syncQueue", changeRecord);
+      setSyncQueue(prev => [...prev, changeRecord]);
+
+      // If online, attempt immediate sync
+      if (online && !syncInProgress) {
+        processQueue();
+      }
+
+      return changeRecord.id;
+    } catch (error) {
+      console.error("Failed to queue change:", error);
+      throw error;
+    }
+  }
+
+  // Process the sync queue
+  async function processQueue() {
+    if (syncInProgress || !online) return;
+
+    try {
+      setSyncInProgress(true);
+      const pendingItems = syncQueue.filter(item => 
+        item.status === SYNC_STATUS.PENDING || 
+        item.status === SYNC_STATUS.FAILED
+      );
+
+      if (pendingItems.length === 0) {
+        setLastSyncTime(Date.now());
+        return;
+      }
+
+      console.log(`🔄 Processing ${pendingItems.length} sync operations`);
+
+      // Sort by priority and timestamp
+      const sortedItems = pendingItems.sort((a, b) => {
+        const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
+        const priorityDiff = (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+        if (priorityDiff !== 0) return priorityDiff;
+        return a.timestamp - b.timestamp;
       });
-      
-      // Try immediate sync if online
-      if (online) {
-        attemptSync();
+
+      const results = {
+        completed: 0,
+        failed: 0,
+        errors: []
+      };
+
+      for (const item of sortedItems) {
+        try {
+          await updateSyncItem(item.id, { 
+            status: SYNC_STATUS.IN_PROGRESS,
+            started_at: Date.now()
+          });
+
+          // Simulate API call (in real implementation, this would be actual API calls)
+          const success = await simulateApiCall(item);
+          
+          if (success) {
+            await completeSyncItem(item.id);
+            results.completed++;
+          } else {
+            await failSyncItem(item.id, "API call failed");
+            results.failed++;
+          }
+          
+        } catch (error) {
+          console.error(`Sync operation ${item.id} failed:`, error);
+          await failSyncItem(item.id, error.message);
+          results.failed++;
+          results.errors.push({ id: item.id, error: error.message });
+        }
+      }
+
+      console.log(`✅ Sync completed: ${results.completed} success, ${results.failed} failed`);
+      setLastSyncTime(Date.now());
+
+      // Schedule retry for failed items
+      if (results.failed > 0) {
+        scheduleRetry();
+      }
+
+    } catch (error) {
+      console.error("Queue processing failed:", error);
+    } finally {
+      setSyncInProgress(false);
+    }
+  }
+
+  // Simulate API call (replace with real API implementation)
+  async function simulateApiCall(item) {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+    
+    // Simulate success rate (95% success)
+    const success = Math.random() > 0.05;
+    
+    // Log the operation for debugging
+    console.log(`🔄 Sync ${item.operation}:`, {
+      id: item.id,
+      operation: item.operation,
+      success,
+      data: item.data
+    });
+    
+    return success;
+  }
+
+  // Update sync item status
+  async function updateSyncItem(id, updates) {
+    try {
+      const existing = syncQueue.find(item => item.id === id);
+      if (existing) {
+        const updated = {
+          ...existing,
+          ...updates,
+          last_modified: Date.now()
+        };
+        
+        await setItem("syncQueue", updated);
+        setSyncQueue(prev => prev.map(item => 
+          item.id === id ? updated : item
+        ));
       }
     } catch (error) {
-      console.error("Failed to enqueue item:", error);
-      addToast({ 
-        message: "Failed to queue action - please try again", 
-        type: TOAST_TYPES.ERROR 
-      });
+      console.error("Failed to update sync item:", error);
     }
   }
 
-  // Add work item change to queue (preserves existing API)
-  async function queueChange(action, workItem) {
-    await enqueue({
-      type: "workitem_change",
-      action,
-      workItem,
-      description: `${action} on ${workItem?.title || workItem?.id}`
-    });
+  // Mark sync item as completed
+  async function completeSyncItem(id) {
+    try {
+      await updateSyncItem(id, {
+        status: SYNC_STATUS.COMPLETED,
+        completed_at: Date.now()
+      });
+    } catch (error) {
+      console.error("Failed to complete sync item:", error);
+    }
   }
 
-  // Remove item from sync queue
-  async function dequeue(id) {
+  // Mark sync item as failed
+  async function failSyncItem(id, error) {
     try {
-      await delItem("syncQueue", id);
+      const existing = syncQueue.find(item => item.id === id);
+      if (existing) {
+        const attempts = (existing.attempts || 0) + 1;
+        const maxAttempts = existing.max_attempts || 3;
+        
+        if (attempts >= maxAttempts) {
+          // Move to failed operations
+          const failedItem = {
+            ...existing,
+            status: SYNC_STATUS.FAILED,
+            attempts,
+            failed_at: Date.now(),
+            error_message: error,
+            final_failure: true
+          };
+          
+          await setItem("failedSync", failedItem);
+          setFailedOperations(prev => [...prev, failedItem]);
+          
+          // Remove from sync queue
+          await clearSyncItem(id);
+        } else {
+          // Update with retry status
+          await updateSyncItem(id, {
+            status: SYNC_STATUS.FAILED,
+            attempts,
+            error_message: error,
+            failed_at: Date.now(),
+            next_retry: Date.now() + (Math.pow(2, attempts) * 60000) // Exponential backoff
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to handle sync failure:", error);
+    }
+  }
+
+  // Remove sync item from queue
+  async function clearSyncItem(id) {
+    try {
+      const db = (await import("../utils/db.js")).db;
+      await db.syncQueue.delete(id);
       setSyncQueue(prev => prev.filter(item => item.id !== id));
     } catch (error) {
-      console.error("Failed to dequeue item:", error);
+      console.error("Failed to clear sync item:", error);
     }
   }
 
-  // Move item to failed operations
-  async function markAsFailed(queueItem, error) {
-    const failedItem = {
-      ...queueItem,
-      id: `failed-${queueItem.id}`,
-      originalId: queueItem.id,
-      failedAt: Date.now(),
-      error: error.message || "Unknown error",
-      status: "failed"
-    };
+  // Schedule retry for failed items
+  function scheduleRetry() {
+    setTimeout(() => {
+      if (online) {
+        const now = Date.now();
+        const retryableItems = syncQueue.filter(item => 
+          item.status === SYNC_STATUS.FAILED && 
+          item.next_retry && 
+          now >= item.next_retry
+        );
 
-    try {
-      // Add to failed operations store
-      await setItem("failedSync", failedItem);
-      setFailedOperations(prev => [...prev, failedItem]);
-      
-      // Remove from sync queue
-      await dequeue(queueItem.id);
-      
-      // Show toast notification for sync failure instead of adding to notifications
-      addToast({
-        message: `Sync failed: ${queueItem.description || queueItem.action}. Check sync status for retry options.`,
-        type: TOAST_TYPES.ERROR
-      });
-
-      // Update stats
-      updateSyncStats(false);
-      
-    } catch (err) {
-      console.error("Failed to mark item as failed:", err);
-    }
+        if (retryableItems.length > 0) {
+          console.log(`🔄 Retrying ${retryableItems.length} failed operations`);
+          processQueue();
+        }
+      }
+    }, 60000); // Check every minute
   }
 
   // Retry failed operation
-  async function retryFailedOperation(failedId) {
-    const failedItem = failedOperations.find(item => item.id === failedId);
-    if (!failedItem) return;
-
+  async function retryFailedOperation(id) {
     try {
-      // Move back to sync queue
-      const retryItem = {
-        ...failedItem,
-        id: Date.now(), // New ID for queue
-        timestamp: Date.now(),
-        attempts: (failedItem.attempts || 0) + 1,
-        status: "pending"
-      };
+      const failedItem = failedOperations.find(item => item.id === id);
+      if (failedItem) {
+        // Reset and move back to sync queue
+        const retryItem = {
+          ...failedItem,
+          status: SYNC_STATUS.PENDING,
+          attempts: 0,
+          error_message: null,
+          failed_at: null,
+          final_failure: false,
+          retry_requested_at: Date.now(),
+          retry_requested_by: user?.id || "system"
+        };
 
-      await enqueue(retryItem);
-      
-      // Remove from failed operations
-      await delItem("failedSync", failedId);
-      setFailedOperations(prev => prev.filter(item => item.id !== failedId));
-      
-      addToast({ 
-        message: "Operation queued for retry", 
-        type: TOAST_TYPES.INFO 
-      });
+        await setItem("syncQueue", retryItem);
+        setSyncQueue(prev => [...prev, retryItem]);
 
+        // Remove from failed operations
+        const db = (await import("../utils/db.js")).db;
+        await db.failedSync.delete(id);
+        setFailedOperations(prev => prev.filter(item => item.id !== id));
+
+        // Process immediately if online
+        if (online) {
+          processQueue();
+        }
+      }
     } catch (error) {
       console.error("Failed to retry operation:", error);
-      addToast({ 
-        message: "Failed to retry operation", 
-        type: TOAST_TYPES.ERROR 
-      });
+      throw error;
     }
   }
 
@@ -167,204 +335,112 @@ export function SyncProvider({ children }) {
     try {
       await clearStore("failedSync");
       setFailedOperations([]);
-      addToast({ 
-        message: "Failed operations cleared", 
-        type: TOAST_TYPES.SUCCESS 
-      });
     } catch (error) {
       console.error("Failed to clear failed operations:", error);
+      throw error;
     }
   }
 
-  // Update sync statistics
-  function updateSyncStats(success) {
-    setSyncStats(prev => {
-      const newStats = {
-        totalAttempts: prev.totalAttempts + 1,
-        successCount: success ? prev.successCount + 1 : prev.successCount,
-        failureCount: success ? prev.failureCount : prev.failureCount + 1,
-        lastSuccessful: success ? Date.now() : prev.lastSuccessful
-      };
-      
-      // Persist to localStorage
-      localStorage.setItem("syncStats", JSON.stringify(newStats));
-      return newStats;
-    });
-  }
-
-  // Main sync attempt function
-  async function attemptSync() {
-    if (syncQueue.length === 0 || syncStatus === "syncing") return;
-
-    setSyncStatus("syncing");
-    setLastSyncAttempt(Date.now());
-    
-    const MAX_RETRY_ATTEMPTS = 3;
-    let successCount = 0;
-    let failureCount = 0;
-
-    addToast({ 
-      message: `Syncing ${syncQueue.length} operations...`, 
-      type: TOAST_TYPES.INFO 
-    });
-
-    // Process each item in the queue
-    for (const item of syncQueue) {
-      try {
-        // Simulate sync operation (replace with actual API calls)
-        await simulateSync(item);
-        
-        // Success - remove from queue
-        await dequeue(item.id);
-        successCount++;
-        
-      } catch (error) {
-        console.error(`Sync failed for item ${item.id}:`, error);
-        
-        // Check if we should retry or mark as failed
-        const attempts = (item.attempts || 0) + 1;
-        if (attempts >= MAX_RETRY_ATTEMPTS) {
-          await markAsFailed(item, error);
-          failureCount++;
-        } else {
-          // Update attempt count and retry later
-          const updatedItem = { ...item, attempts };
-          await setItem("syncQueue", updatedItem);
-          setSyncQueue(prev => 
-            prev.map(qi => qi.id === item.id ? updatedItem : qi)
-          );
-        }
-      }
-    }
-
-    // Update status and show results
-    if (failureCount === 0 && successCount > 0) {
-      setSyncStatus("success");
-      updateSyncStats(true);
-      addToast({ 
-        message: `Successfully synced ${successCount} operations`, 
-        type: TOAST_TYPES.SUCCESS 
-      });
-    } else if (failureCount > 0) {
-      setSyncStatus("failed");
-      updateSyncStats(false);
-      addToast({ 
-        message: `Sync completed: ${successCount} success, ${failureCount} failed`, 
-        type: TOAST_TYPES.WARNING 
-      });
-    } else {
-      setSyncStatus("idle");
-    }
-
-    // Reset status after delay
-    setTimeout(() => setSyncStatus("idle"), 3000);
-  }
-
-  // Simulate sync operation (replace with actual API calls)
-  async function simulateSync(item) {
-    // Simulate network request
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-    
-    // Simulate occasional failures for demonstration
-    if (Math.random() < 0.1) { // 10% failure rate
-      throw new Error(`Network error: ${item.type} sync failed`);
-    }
-    
-    console.log("Synced item:", item);
-  }
-
-  // Clear all queues
-  async function clearAll() {
-    try {
-      await clearStore("syncQueue");
-      await clearStore("failedSync");
-      setSyncQueue([]);
-      setFailedOperations([]);
-    } catch (error) {
-      console.error("Failed to clear sync data:", error);
+  // Force sync all pending operations
+  async function forceSyncAll() {
+    if (online) {
+      await processQueue();
     }
   }
+
+  // Get sync statistics
+  const syncStats = {
+    pending: syncQueue.filter(item => item.status === SYNC_STATUS.PENDING).length,
+    inProgress: syncQueue.filter(item => item.status === SYNC_STATUS.IN_PROGRESS).length,
+    completed: syncQueue.filter(item => item.status === SYNC_STATUS.COMPLETED).length,
+    failed: syncQueue.filter(item => item.status === SYNC_STATUS.FAILED).length,
+    totalPending: syncQueue.filter(item => 
+      item.status === SYNC_STATUS.PENDING || 
+      item.status === SYNC_STATUS.FAILED
+    ).length,
+    permanentlyFailed: failedOperations.length
+  };
 
   // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => {
       setOnline(true);
-      addToast({ 
-        message: "Connection restored - syncing pending operations", 
-        type: TOAST_TYPES.SUCCESS 
-      });
+      console.log("🌐 Connection restored");
+      // Process queue when coming back online
+      setTimeout(() => processQueue(), 1000);
     };
-    
+
     const handleOffline = () => {
       setOnline(false);
-      addToast({ 
-        message: "Connection lost - operations will be queued", 
-        type: TOAST_TYPES.WARNING 
-      });
+      console.log("📱 Connection lost - operations will be queued");
     };
 
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
-  }, [addToast]);
-
-  // Load data on mount
-  useEffect(() => {
-    load();
   }, []);
 
-  // Auto-sync when online
+  // Load initial data
   useEffect(() => {
-    if (online && syncQueue.length > 0 && syncStatus === "idle") {
-      // Delay sync to avoid rapid retries
-      const timer = setTimeout(attemptSync, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [online, syncQueue.length, syncStatus]);
-
-  // Periodic sync attempt every 5 minutes if online
-  useEffect(() => {
-    if (!online) return;
-
-    const interval = setInterval(() => {
-      if (syncQueue.length > 0 && syncStatus === "idle") {
-        attemptSync();
+    let isMounted = true;
+    
+    const loadWithRetry = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          if (isMounted) {
+            await load();
+            break;
+          }
+        } catch (error) {
+          console.error(`Sync load attempt ${i + 1} failed:`, error);
+          if (i === retries - 1) {
+            console.error("All sync load attempts failed");
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    };
+
+    loadWithRetry();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Auto-process queue periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (online && !syncInProgress && syncStats.totalPending > 0) {
+        processQueue();
+      }
+    }, 30000); // Every 30 seconds
 
     return () => clearInterval(interval);
-  }, [online, syncStatus]);
+  }, [online, syncInProgress, syncStats.totalPending]);
 
   const contextValue = {
-    // Queue operations
+    online,
     syncQueue,
-    enqueue,
-    dequeue,
-    queueChange, // Preserves existing API
-    clearAll,
-    
-    // Failed operations management
     failedOperations,
+    isLoading,
+    lastSyncTime,
+    syncInProgress,
+    syncStats,
+    totalPendingCount: syncStats.totalPending,
+    SYNC_OPERATIONS,
+    SYNC_STATUS,
+    queueChange,
+    processQueue,
     retryFailedOperation,
     clearFailedOperations,
-    
-    // Status and statistics
-    online,
-    syncStatus,
-    lastSyncAttempt,
-    syncStats,
-    
-    // Manual sync control
-    attemptSync,
-    
-    // Computed values
-    hasPendingOperations: syncQueue.length > 0,
-    hasFailedOperations: failedOperations.length > 0,
-    totalPendingCount: syncQueue.length + failedOperations.length
+    forceSyncAll,
+    reload: load
   };
 
   return (
@@ -375,5 +451,9 @@ export function SyncProvider({ children }) {
 }
 
 export function useSync() {
-  return useContext(SyncContext);
+  const context = useContext(SyncContext);
+  if (!context) {
+    throw new Error('useSync must be used within a SyncProvider');
+  }
+  return context;
 }
