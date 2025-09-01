@@ -1,20 +1,60 @@
 @import "tailwindcss";
 
-/* Theme customization */
+/* Tailwind 4.0 Theme Configuration */
 @theme {
-  /* Custom colors */
-  --color-primary: #FF6600;
-  --color-ai-purple: #6C63FF;
-  --color-success: #2ECC71;
-  --color-error: #E74C3C;
-  --color-warning: #F1C40F;
+  --color-primary: #2563eb;
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
 }
 
-/* Dark mode support */
-@variant dark (&:where(.dark, .dark *));
+/* Custom CSS Variables for App Theming */
+:root {
+  --bg: #ffffff;
+  --fg: #111827;
+  --card: #f9fafb;
+  --primary: #2563eb;
+  --muted: #6b7280;
+  --sidebar-bg: #f8fafc;
+  --topbar-bg: #ffffff;
+  --hover-bg: #f1f5f9;
+  --border: #e2e8f0;
+}
 
-/* Global styles */
+[data-theme="dark"] {
+  --bg: #111827;
+  --fg: #f9fafb;
+  --card: #1f2937;
+  --primary: #3b82f6;
+  --muted: #9ca3af;
+  --sidebar-bg: #1f2937;
+  --topbar-bg: #111827;
+  --hover-bg: #374151;
+  --border: #374151;
+}
+
 body {
-  @apply bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100;
+  background-color: var(--bg);
+  color: var(--fg);
   font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure root element takes full height */
+#root {
+  min-height: 100vh;
+}
+
+/* Reusable card style */
+.card {
+  background: var(--card);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border: 1px solid var(--border);
 }

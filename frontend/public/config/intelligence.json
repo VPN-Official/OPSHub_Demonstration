@@ -1,0 +1,18 @@
+{
+  "automations": [
+    { "id": "auto1", "title": "Restart Service X", "desc": "Quick restart script", "link": "/automation/auto1" },
+    { "id": "auto2", "title": "Clear Temp Files", "desc": "Disk cleanup", "link": "/automation/auto2" }
+  ],
+  "knowledge": [
+    { "id": "kb1023", "title": "Service Restart Guide", "desc": "Step-by-step", "link": "/knowledge/kb1023" },
+    { "id": "kb1050", "title": "DB Recovery SOP", "desc": "Database recovery", "link": "/knowledge/kb1050" }
+  ],
+  "agents": [
+    { "id": "agent1", "title": "Incident Triage Agent", "desc": "Suggests incident routing", "link": "/agent/agent1" },
+    { "id": "agent2", "title": "KB Search Copilot", "desc": "Fetches relevant KBs", "link": "/agent/agent2" }
+  ],
+  "nudges": [
+    { "id": "nudge1", "title": "Too many alerts", "desc": "Reduce noise by tuning thresholds", "link": "/nudge/nudge1" },
+    { "id": "nudge2", "title": "Repeat manual task", "desc": "Consider automating log cleanup", "link": "/nudge/nudge2" }
+  ]
+}

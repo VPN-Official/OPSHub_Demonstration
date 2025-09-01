@@ -1,70 +1,53 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, ListCheck, Calendar, Activity } from "lucide-react";
+import {
+  Activity,
+  ListChecks,
+  Bell,
+  Calendar,
+  Zap,
+} from "lucide-react";
 
 export default function Sidebar({ isOpen, onClose }) {
-  const baseClasses =
-    "flex items-center gap-2 px-3 py-2 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-800";
-  const activeClasses =
-    "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600";
+  const menuItems = [
+    { to: "/pulse", label: "Pulse", icon: Activity },
+    { to: "/smartqueue", label: "Smart Queue", icon: ListChecks },
+    { to: "/notifications", label: "Notifications", icon: Bell },
+    { to: "/schedule", label: "Schedule", icon: Calendar },
+    { to: "/intelligence", label: "Intelligence Center", icon: Zap },
+  ];
 
   return (
-    <>
-      {/* Backdrop (mobile only) */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={onClose}
-        />
-      )}
+    <div
+      className={`fixed inset-y-0 left-0 z-30 w-64 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg transform transition-transform duration-200 ease-in-out border-r border-gray-200 dark:border-gray-700
+        ${isOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+    >
+      <div className="flex flex-col h-full">
+        {/* Logo / App Name */}
+        <div className="p-4 font-bold text-lg border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          OPSHub
+        </div>
 
-      {/* Sidebar */}
-      <nav
-        className={`fixed md:static top-0 left-0 h-full w-56 bg-white dark:bg-gray-900 p-4 space-y-2 transform transition-transform duration-200 z-50
-          ${isOpen ? "translate-x-0" : "-translate-x-full"} 
-          md:translate-x-0`}
-      >
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
-          }
-          onClick={onClose}
-        >
-          <LayoutDashboard size={18} /> <span>Dashboard</span>
-        </NavLink>
-
-        <NavLink
-          to="/smartqueue"
-          className={({ isActive }) =>
-            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
-          }
-          onClick={onClose}
-        >
-          <ListCheck size={18} /> <span>Smart Queue</span>
-        </NavLink>
-
-        <NavLink
-          to="/schedule"
-          className={({ isActive }) =>
-            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
-          }
-          onClick={onClose}
-        >
-          <Calendar size={18} /> <span>Schedule</span>
-        </NavLink>
-
-        <NavLink
-          to="/eventfeed"
-          className={({ isActive }) =>
-            isActive ? `${baseClasses} ${activeClasses}` : baseClasses
-          }
-          onClick={onClose}
-        >
-          <Activity size={18} /> <span>Event Feed</span>
-        </NavLink>
-      </nav>
-    </>
+        {/* Navigation */}
+        <nav className="flex-1 p-2 space-y-1 bg-gray-50 dark:bg-gray-800">
+          {menuItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition ${
+                  isActive
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-gray-700 dark:text-gray-200"
+                }`
+              }
+              onClick={onClose}
+            >
+              <Icon size={18} /> {label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    </div>
   );
 }

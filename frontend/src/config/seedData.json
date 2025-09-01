@@ -1,0 +1,241 @@
+{
+  "workItems": [
+    {
+      "id": "WI-001",
+      "title": "Login service down",
+      "status": "open",
+      "priority": "P1",
+      "type": "incident",
+      "slaBreached": true,
+      "createdAt": 1693545600000,
+      "closedAt": null,
+      "assignedTo": "user-1",
+      "teamId": "team-1",
+      "smartScore": 95,
+      "activityLog": [
+        "Created by monitoring system",
+        "Assigned to user-1",
+        "SLA breach detected"
+      ],
+      "relatedAutomation": "AUTO-001",
+      "relatedKnowledge": "KB-001"
+    },
+    {
+      "id": "WI-002",
+      "title": "Database backup request",
+      "status": "in-progress",
+      "priority": "P2",
+      "type": "request",
+      "slaBreached": false,
+      "createdAt": 1693542000000,
+      "closedAt": null,
+      "assignedTo": "user-2",
+      "teamId": "team-1",
+      "smartScore": 65,
+      "activityLog": [
+        "Created by user request",
+        "Assigned to user-2",
+        "Work started"
+      ]
+    },
+    {
+      "id": "WI-003",
+      "title": "SSL certificate renewal",
+      "status": "open",
+      "priority": "P0",
+      "type": "incident",
+      "slaBreached": true,
+      "createdAt": 1693540000000,
+      "closedAt": null,
+      "assignedTo": "user-1",
+      "teamId": "team-1",
+      "smartScore": 100,
+      "activityLog": [
+        "Created by security scan",
+        "Escalated to P0 - production impact"
+      ]
+    }
+  ],
+  "automations": [
+    {
+      "id": "AUTO-001",
+      "name": "Restart Service",
+      "description": "Restarts backend microservice on failure",
+      "runs": 10,
+      "lastRun": 1693547400000,
+      "status": "active",
+      "script": "#!/bin/bash\nsudo systemctl restart login-service\necho 'Service restarted'",
+      "relatedWorkItemId": "WI-001"
+    },
+    {
+      "id": "AUTO-002",
+      "name": "Clear Temp Files",
+      "description": "Cleanup temporary files when disk usage high",
+      "runs": 25,
+      "lastRun": 1693546000000,
+      "status": "active",
+      "script": "#!/bin/bash\nfind /tmp -type f -atime +7 -delete"
+    }
+  ],
+  "knowledge": [
+    {
+      "id": "KB-001",
+      "title": "Restarting login service",
+      "content": "Steps to restart login microservice safely:\n1. Check service dependencies\n2. Drain connections\n3. Restart service\n4. Verify health checks\n5. Monitor for 5 minutes",
+      "relatedService": "Login Service",
+      "relatedWorkItemId": "WI-001",
+      "gap": false
+    },
+    {
+      "id": "KB-002",
+      "title": "SSL Certificate Management",
+      "content": "Process for SSL certificate renewal:\n1. Generate new certificate\n2. Update load balancers\n3. Test all endpoints\n4. Update monitoring",
+      "relatedService": "Security",
+      "gap": false
+    }
+  ],
+  "agents": [
+    {
+      "id": "AG-001",
+      "name": "Incident Triage Bot",
+      "trainingData": {
+        "incidents_processed": 1500,
+        "accuracy": 0.85,
+        "last_training": "2025-08-15"
+      },
+      "version": "v1.2",
+      "linkedAutomationId": "AUTO-001",
+      "trainingNeeded": false
+    },
+    {
+      "id": "AG-002", 
+      "name": "Knowledge Assistant",
+      "trainingData": {
+        "queries_processed": 850,
+        "accuracy": 0.92,
+        "last_training": "2025-08-20"
+      },
+      "version": "v2.1",
+      "trainingNeeded": true
+    }
+  ],
+  "nudges": [
+    {
+      "id": "NU-001",
+      "title": "Review P1 incidents",
+      "message": "There are unresolved P1 incidents requiring attention",
+      "acknowledged": false,
+      "relatedEntityId": "WI-001"
+    },
+    {
+      "id": "NU-002",
+      "title": "Automate log cleanup",
+      "message": "Log cleanup task performed 15+ times manually this week - consider automation",
+      "acknowledged": false,
+      "relatedEntityId": "AUTO-002"
+    }
+  ],
+  "businessServices": [
+    {
+      "id": "BS-001",
+      "name": "Payments API",
+      "owner": "SRE Team",
+      "status": "healthy"
+    },
+    {
+      "id": "BS-002",
+      "name": "Login Service",
+      "owner": "Platform Team", 
+      "status": "degraded"
+    },
+    {
+      "id": "BS-003",
+      "name": "User Management",
+      "owner": "Identity Team",
+      "status": "healthy"
+    }
+  ],
+  "costs": [
+    {
+      "id": "COST-001",
+      "serviceId": "BS-001",
+      "amount": 1200,
+      "period": "2025-08"
+    },
+    {
+      "id": "COST-002",
+      "serviceId": "BS-002", 
+      "amount": 800,
+      "period": "2025-08"
+    }
+  ],
+  "roster": [
+    {
+      "id": "ROSTER-001",
+      "person": "Alice",
+      "team": "SRE",
+      "start": "2025-09-02T09:00:00Z",
+      "end": "2025-09-02T17:00:00Z",
+      "shift": "Day",
+      "teamId": "team-1"
+    },
+    {
+      "id": "ROSTER-002",
+      "person": "Bob",
+      "team": "Platform", 
+      "start": "2025-09-02T17:00:00Z",
+      "end": "2025-09-03T01:00:00Z",
+      "shift": "Evening",
+      "teamId": "team-1"
+    }
+  ],
+  "schedule": [
+    {
+      "id": "SCH-001",
+      "type": "maintenance",
+      "title": "DB Upgrade",
+      "start": "2025-09-10T09:00:00Z",
+      "end": "2025-09-10T11:00:00Z",
+      "date": "2025-09-10T09:00:00.000Z",
+      "teamId": "team-1",
+      "relatedWorkItemId": "WI-002"
+    },
+    {
+      "id": "SCH-002",
+      "type": "shift",
+      "title": "Alice Morning Shift",
+      "start": "2025-09-02T09:00:00Z", 
+      "end": "2025-09-02T17:00:00Z",
+      "user": "alice"
+    }
+  ],
+  "auth": [
+    {
+      "id": "currentUser",
+      "username": "alice",
+      "role": "Manager",
+      "teamId": "team-1",
+      "token": "demo-token-123"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "NOTIF-001",
+      "message": "SLA breached on WI-001",
+      "type": "alert",
+      "acknowledged": false,
+      "dismissed": false,
+      "timestamp": 1693545600000,
+      "ttl": 172800000
+    },
+    {
+      "id": "NOTIF-002",
+      "message": "Automation AUTO-001 completed successfully", 
+      "type": "success",
+      "acknowledged": false,
+      "dismissed": false,
+      "timestamp": 1693547400000,
+      "ttl": 172800000
+    }
+  ]
+}

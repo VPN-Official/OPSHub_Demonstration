@@ -1,0 +1,22 @@
+{
+  "insights": [
+    {
+      "id": "similar_incident",
+      "message": "Similar incident detected last week.",
+      "type": "nudge",
+      "link": "/nudge/kb_gap"
+    },
+    {
+      "id": "automation_rec",
+      "message": "Automation recommended: Restart Service X.",
+      "type": "automation",
+      "link": "/automation/auto1"
+    },
+    {
+      "id": "kb_article",
+      "message": "Related knowledge article available.",
+      "type": "knowledge",
+      "link": "/knowledge/kb1023"
+    }
+  ]
+}

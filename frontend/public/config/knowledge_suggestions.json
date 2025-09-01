@@ -1,0 +1,16 @@
+{
+  "suggestions": [
+    {
+      "id": "outdated",
+      "message": "This article may be outdated — last updated 12 months ago."
+    },
+    {
+      "id": "low_usage",
+      "message": "Low usage detected — consider archiving or merging."
+    },
+    {
+      "id": "linked_automation",
+      "message": "Automation 'Restart Service X' often follows this article — link them?"
+    }
+  ]
+}

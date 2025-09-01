@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    {
+      "id": "retry_policy",
+      "message": "Consider adding retry policy for failed runs."
+    },
+    {
+      "id": "schedule_tuning",
+      "message": "Review schedule — automation ran outside normal hours."
+    },
+    {
+      "id": "dependency_check",
+      "message": "Add pre-check for dependent services."
+    }
+  ]
+}

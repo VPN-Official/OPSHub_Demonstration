@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "id": "high_incident_volume",
+      "condition": { "metric": "openIncidents", "operator": ">", "value": 10 },
+      "message": "High incident volume detected today."
+    },
+    {
+      "id": "low_automation",
+      "condition": { "metric": "automationCount", "operator": "<", "value": 3 },
+      "message": "Automation coverage is low — consider building more."
+    },
+    {
+      "id": "limited_kb",
+      "condition": { "metric": "kbCount", "operator": "between", "min": 1, "max": 5 },
+      "message": "Knowledge base has limited coverage."
+    },
+    {
+      "id": "agent_underperforming",
+      "condition": { "metric": "agentAccuracy", "operator": "<", "value": 0.7 },
+      "message": "Some agents are underperforming."
+    }
+  ]
+}

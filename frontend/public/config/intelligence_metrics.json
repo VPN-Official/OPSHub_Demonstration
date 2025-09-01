@@ -1,0 +1,20 @@
+{
+  "automationAdoption": {
+    "labels": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "values": [3, 6, 4, 8, 7]
+  },
+  "knowledgeUsage": {
+    "labels": ["KB1023", "KB1050", "KB1100"],
+    "values": [12, 5, 8]
+  },
+  "agentActivity": [
+    { "value": 45, "name": "Triage" },
+    { "value": 30, "name": "KB Search" },
+    { "value": 25, "name": "Remediation" }
+  ],
+  "nudgeCategories": [
+    { "value": 10, "name": "Alert noise" },
+    { "value": 6, "name": "Automation gaps" },
+    { "value": 4, "name": "KB gaps" }
+  ]
+}

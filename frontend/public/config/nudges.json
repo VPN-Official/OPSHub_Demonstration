@@ -1,0 +1,16 @@
+{
+  "nudges": [
+    {
+      "id": "kb_gap",
+      "message": "Users repeatedly searched for 'Service Restart Guide' — consider adding a KB article."
+    },
+    {
+      "id": "automation_candidate",
+      "message": "Task 'Log cleanup' performed 50+ times manually this week — strong automation candidate."
+    },
+    {
+      "id": "alert_noise",
+      "message": "High volume of non-actionable alerts detected — tune monitoring thresholds."
+    }
+  ]
+}

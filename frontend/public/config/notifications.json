@@ -1,0 +1,25 @@
+{
+  "notifications": [
+    {
+      "id": "n1",
+      "type": "incident",
+      "message": "P1 Incident opened on Payments Service",
+      "timestamp": "2025-09-01T09:30:00Z",
+      "acked": false
+    },
+    {
+      "id": "n2",
+      "type": "automation",
+      "message": "Automation 'Restart Service X' executed successfully",
+      "timestamp": "2025-09-01T08:15:00Z",
+      "acked": true
+    },
+    {
+      "id": "n3",
+      "type": "system",
+      "message": "System Alert: High CPU usage detected in Cluster A",
+      "timestamp": "2025-09-01T07:50:00Z",
+      "acked": false
+    }
+  ]
+}

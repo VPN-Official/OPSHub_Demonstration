@@ -1,0 +1,12 @@
+{
+  "filters": ["all", "me", "team", "group"],
+  "sorting": [
+    { "field": "priority", "direction": "desc" },
+    { "field": "slaMinutes", "direction": "asc" }
+  ],
+  "whyRules": [
+    { "condition": "priority === 'P1'", "message": "Critical business impact" },
+    { "condition": "slaMinutes < 30", "message": "SLA breach imminent" },
+    { "condition": "assignedTo === 'me'", "message": "Assigned directly to you" }
+  ]
+}
