@@ -6,11 +6,11 @@ const NotificationsContext = createContext();
 export function NotificationsProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
 
-  // 🔄 Load from IndexedDB
+  // ðŸ”„ Load from IndexedDB
   async function load() {
     const items = await getAll("notifications");
     if (!items.length) {
-      await seedAll({ notifications: [] }); // ✅ centralized seeding
+      await seedAll({ notifications: [] }); // âœ… centralized seeding
     }
 
     // TTL filter (default: 48h)
@@ -19,7 +19,7 @@ export function NotificationsProvider({ children }) {
     setNotifications(validItems);
   }
 
-  // ➕ Add notification
+  // âž• Add notification
   async function addNotification(message, type = "info", ttl = 1000 * 60 * 60 * 48) {
     const notification = {
       id: Date.now(),
@@ -34,7 +34,7 @@ export function NotificationsProvider({ children }) {
     load();
   }
 
-  // ✅ Acknowledge notification
+  // âœ… Acknowledge notification
   async function acknowledge(id) {
     const updated = notifications.map((n) =>
       n.id === id ? { ...n, acknowledged: true } : n
@@ -43,7 +43,7 @@ export function NotificationsProvider({ children }) {
     load();
   }
 
-  // ❌ Dismiss notification (mark as dismissed, not delete)
+  // âŒ Dismiss notification (mark as dismissed, not delete)
   async function dismiss(id) {
     const updated = notifications.map((n) =>
       n.id === id ? { ...n, dismissed: true } : n
@@ -52,21 +52,21 @@ export function NotificationsProvider({ children }) {
     load();
   }
 
-  // ❌ Clear all notifications
+  // âŒ Clear all notifications
   async function clearAll() {
     await clearStore("notifications");
     load();
   }
 
   // -----------------------------
-  // 🔹 Derived State
+  // ðŸ”¹ Derived State
   // -----------------------------
   const activeFeed = notifications.filter((n) => !n.dismissed);
   const dismissedFeed = notifications.filter((n) => n.dismissed);
   const badgeCount = activeFeed.filter((n) => !n.acknowledged).length;
 
   // -----------------------------
-  // 🔹 Aliases for UI
+  // ðŸ”¹ Aliases for UI
   // -----------------------------
   const acknowledgeNotification = (id) => acknowledge(id);
   const dismissNotification = (id) => dismiss(id);
@@ -103,4 +103,3 @@ export function NotificationsProvider({ children }) {
 export function useNotifications() {
   return useContext(NotificationsContext);
 }
-

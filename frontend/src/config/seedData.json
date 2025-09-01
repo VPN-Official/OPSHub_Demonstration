@@ -2,240 +2,792 @@
   "workItems": [
     {
       "id": "WI-001",
-      "title": "Login service down",
-      "status": "open",
-      "priority": "P1",
+      "title": "Critical Payment Gateway Timeout",
+      "status": "open", 
+      "priority": "P0",
       "type": "incident",
       "slaBreached": true,
       "createdAt": 1693545600000,
       "closedAt": null,
       "assignedTo": "user-1",
       "teamId": "team-1",
-      "smartScore": 95,
+      "smartScore": 98,
+      "customer_id": "cust-enterprise-001",
+      "customer_name": "GlobalCommerce Inc",
+      "customer_tier": "platinum",
+      "contract_id": "contract-ent-001",
+      "contract_name": "Enterprise SLA - 99.99% Uptime",
+      "primary_asset_id": "asset-payment-gateway-01",
+      "asset_criticality": "critical",
+      "location": "Primary Data Center",
+      "location_id": "dc-primary-001",
+      "cost_center_id": "cc-platform-ops",
+      "estimated_cost": 25000,
+      "actual_cost": null,
+      "billable_hours": 8,
+      "parts_cost": 0,
+      "labor_cost": 2240,
+      "required_skills": [
+        {"skill": "payment_systems", "proficiency": "expert", "required": true},
+        {"skill": "kubernetes", "proficiency": "advanced", "required": true},
+        {"skill": "incident_management", "proficiency": "intermediate", "required": false}
+      ],
+      "required_certifications": ["AWS_Solutions_Architect", "PCI_DSS"],
+      "compliance_status": "compliant",
+      "business_impact": "critical",
+      "customer_impact": "revenue_affecting",
+      "automation_available": true,
+      "available_skilled_techs": 2,
+      "revenue_impact_per_hour": 50000,
+      "downtime_hours": 0.5,
+      "sla_penalty_rate": 5.0,
+      "max_monthly_penalty": 100000,
+      "description": "Payment gateway experiencing 30-second timeouts causing transaction failures. Customer reports 15% transaction failure rate. Immediate escalation required due to revenue impact.",
+      "activity_timeline": [
+        {
+          "id": "activity-001",
+          "timestamp": 1693545600000,
+          "user_id": "system",
+          "user_name": "Monitoring System",
+          "action": "Incident Created",
+          "description": "High error rate detected on payment gateway",
+          "type": "system"
+        },
+        {
+          "id": "activity-002", 
+          "timestamp": 1693545900000,
+          "user_id": "user-1",
+          "user_name": "Sarah Chen",
+          "action": "Incident Acknowledged",
+          "description": "Escalated to P0 due to customer impact",
+          "type": "user"
+        }
+      ],
       "activityLog": [
-        "Created by monitoring system",
-        "Assigned to user-1",
-        "SLA breach detected"
+        "Created by monitoring system - payment timeout alerts",
+        "Auto-escalated to P0 - revenue impact detected", 
+        "Assigned to Sarah Chen - payment systems expert",
+        "SLA breach detected - 15min response window exceeded"
       ],
       "relatedAutomation": "AUTO-001",
       "relatedKnowledge": "KB-001"
     },
     {
       "id": "WI-002",
-      "title": "Database backup request",
+      "title": "Database Performance Degradation",
       "status": "in-progress",
-      "priority": "P2",
-      "type": "request",
+      "priority": "P1", 
+      "type": "incident",
       "slaBreached": false,
       "createdAt": 1693542000000,
       "closedAt": null,
       "assignedTo": "user-2",
       "teamId": "team-1",
-      "smartScore": 65,
+      "smartScore": 85,
+      "customer_id": "cust-mid-market-002",
+      "customer_name": "TechFlow Solutions",
+      "customer_tier": "gold",
+      "contract_id": "contract-gold-002",
+      "contract_name": "Gold Support - 4hr Response",
+      "primary_asset_id": "asset-db-cluster-02",
+      "asset_criticality": "high",
+      "location": "Secondary Data Center",
+      "location_id": "dc-secondary-001", 
+      "cost_center_id": "cc-database-ops",
+      "estimated_cost": 8500,
+      "actual_cost": 7200,
+      "billable_hours": 12,
+      "parts_cost": 2500,
+      "labor_cost": 5700,
+      "required_skills": [
+        {"skill": "postgresql", "proficiency": "expert", "required": true},
+        {"skill": "performance_tuning", "proficiency": "advanced", "required": true},
+        {"skill": "linux_admin", "proficiency": "intermediate", "required": false}
+      ],
+      "required_certifications": ["PostgreSQL_Certified", "Linux_Professional"],
+      "compliance_status": "compliant",
+      "business_impact": "medium",
+      "customer_impact": "performance_degraded",
+      "automation_available": true,
+      "available_skilled_techs": 4,
+      "revenue_impact_per_hour": 8000,
+      "downtime_hours": 0,
+      "sla_penalty_rate": 2.0,
+      "max_monthly_penalty": 25000,
+      "description": "Customer reporting slow query response times (5-8 seconds) during peak hours. Database cluster showing high CPU utilization and memory pressure. Performance optimization required.",
+      "activity_timeline": [
+        {
+          "id": "activity-003",
+          "timestamp": 1693542000000,
+          "user_id": "cust-mid-market-002",
+          "user_name": "Customer Portal",
+          "action": "Ticket Created",
+          "description": "Customer reported slow application performance",
+          "type": "customer"
+        },
+        {
+          "id": "activity-004",
+          "timestamp": 1693542300000,
+          "user_id": "user-2",
+          "user_name": "Mike Rodriguez",
+          "action": "Investigation Started",
+          "description": "Analyzing database performance metrics",
+          "type": "user"
+        }
+      ],
       "activityLog": [
-        "Created by user request",
-        "Assigned to user-2",
-        "Work started"
-      ]
+        "Created by customer support ticket",
+        "Assigned to Mike Rodriguez - database specialist",
+        "Performance analysis in progress",
+        "Index optimization recommended"
+      ],
+      "relatedAutomation": "AUTO-002",
+      "relatedKnowledge": "KB-002"
     },
     {
-      "id": "WI-003",
-      "title": "SSL certificate renewal",
-      "status": "open",
-      "priority": "P0",
-      "type": "incident",
-      "slaBreached": true,
+      "id": "WI-003", 
+      "title": "SSL Certificate Renewal - Production",
+      "status": "scheduled",
+      "priority": "P2",
+      "type": "change",
+      "slaBreached": false,
       "createdAt": 1693540000000,
       "closedAt": null,
-      "assignedTo": "user-1",
-      "teamId": "team-1",
-      "smartScore": 100,
+      "assignedTo": "user-3",
+      "teamId": "team-2",
+      "smartScore": 65,
+      "customer_id": "internal-001",
+      "customer_name": "Internal Operations",
+      "customer_tier": "internal",
+      "contract_id": "internal-sla-001",
+      "contract_name": "Internal Service Agreement",
+      "primary_asset_id": "asset-loadbalancer-01",
+      "asset_criticality": "high",
+      "location": "Primary Data Center",
+      "location_id": "dc-primary-001",
+      "cost_center_id": "cc-security-ops",
+      "estimated_cost": 1200,
+      "actual_cost": null,
+      "billable_hours": 4,
+      "parts_cost": 800,
+      "labor_cost": 400,
+      "required_skills": [
+        {"skill": "ssl_certificates", "proficiency": "advanced", "required": true},
+        {"skill": "load_balancers", "proficiency": "intermediate", "required": true},
+        {"skill": "dns_management", "proficiency": "basic", "required": false}
+      ],
+      "required_certifications": ["Security_Plus", "Network_Plus"],
+      "compliance_status": "pending_renewal",
+      "business_impact": "low",
+      "customer_impact": "none",
+      "automation_available": false,
+      "available_skilled_techs": 3,
+      "revenue_impact_per_hour": 0,
+      "downtime_hours": 0,
+      "sla_penalty_rate": 0,
+      "max_monthly_penalty": 0,
+      "description": "Scheduled SSL certificate renewal for production load balancers. Certificate expires in 14 days. Maintenance window scheduled for Sunday 2AM-4AM.",
+      "activity_timeline": [
+        {
+          "id": "activity-005",
+          "timestamp": 1693540000000,
+          "user_id": "system",
+          "user_name": "Certificate Monitor",
+          "action": "Renewal Alert",
+          "description": "Certificate expiring in 14 days",
+          "type": "system"
+        }
+      ],
       "activityLog": [
-        "Created by security scan",
-        "Escalated to P0 - production impact"
-      ]
+        "Created by certificate monitoring system",
+        "Assigned to Lisa Wang - security specialist",
+        "Maintenance window scheduled",
+        "Change approval pending"
+      ],
+      "relatedAutomation": null,
+      "relatedKnowledge": "KB-003"
+    },
+    {
+      "id": "WI-004",
+      "title": "New Employee Laptop Setup",
+      "status": "open",
+      "priority": "P3",
+      "type": "service_request",
+      "slaBreached": false,
+      "createdAt": 1693538400000,
+      "closedAt": null,
+      "assignedTo": "user-4",
+      "teamId": "team-3",
+      "smartScore": 45,
+      "customer_id": "internal-hr-001",
+      "customer_name": "Human Resources",
+      "customer_tier": "internal",
+      "contract_id": "internal-sla-001", 
+      "contract_name": "Internal Service Agreement",
+      "primary_asset_id": "asset-laptop-batch-04",
+      "asset_criticality": "low",
+      "location": "Corporate Office",
+      "location_id": "office-hq-001",
+      "cost_center_id": "cc-it-services",
+      "estimated_cost": 2500,
+      "actual_cost": null,
+      "billable_hours": 3,
+      "parts_cost": 2200,
+      "labor_cost": 300,
+      "required_skills": [
+        {"skill": "windows_deployment", "proficiency": "intermediate", "required": true},
+        {"skill": "active_directory", "proficiency": "basic", "required": true},
+        {"skill": "hardware_setup", "proficiency": "basic", "required": false}
+      ],
+      "required_certifications": ["CompTIA_A_Plus"],
+      "compliance_status": "compliant",
+      "business_impact": "low",
+      "customer_impact": "internal",
+      "automation_available": true,
+      "available_skilled_techs": 8,
+      "revenue_impact_per_hour": 0,
+      "downtime_hours": 0,
+      "sla_penalty_rate": 0,
+      "max_monthly_penalty": 0,
+      "description": "New employee starting Monday needs laptop configured with standard software suite, VPN access, and security compliance setup. Standard 3-day fulfillment SLA.",
+      "activity_timeline": [
+        {
+          "id": "activity-006",
+          "timestamp": 1693538400000,
+          "user_id": "hr-manager-001",
+          "user_name": "Jennifer Kim",
+          "action": "Request Submitted",
+          "description": "New hire laptop setup requested",
+          "type": "user"
+        }
+      ],
+      "activityLog": [
+        "Created by HR manager - new hire request",
+        "Assigned to David Park - IT support specialist",
+        "Standard configuration selected",
+        "Awaiting hardware allocation"
+      ],
+      "relatedAutomation": "AUTO-003",
+      "relatedKnowledge": "KB-004"
+    },
+    {
+      "id": "WI-005",
+      "title": "API Rate Limiting Implementation",
+      "status": "in-progress",
+      "priority": "P2",
+      "type": "enhancement",
+      "slaBreached": false,
+      "createdAt": 1693536800000,
+      "closedAt": null,
+      "assignedTo": "user-5",
+      "teamId": "team-1",
+      "smartScore": 72,
+      "customer_id": "cust-enterprise-001",
+      "customer_name": "GlobalCommerce Inc",
+      "customer_tier": "platinum",
+      "contract_id": "contract-ent-001",
+      "contract_name": "Enterprise SLA - 99.99% Uptime",
+      "primary_asset_id": "asset-api-gateway-01",
+      "asset_criticality": "high",
+      "location": "Primary Data Center",
+      "location_id": "dc-primary-001",
+      "cost_center_id": "cc-platform-ops",
+      "estimated_cost": 15000,
+      "actual_cost": null,
+      "billable_hours": 24,
+      "parts_cost": 0,
+      "labor_cost": 15000,
+      "required_skills": [
+        {"skill": "api_design", "proficiency": "expert", "required": true},
+        {"skill": "redis", "proficiency": "advanced", "required": true},
+        {"skill": "microservices", "proficiency": "advanced", "required": true}
+      ],
+      "required_certifications": ["AWS_Developer", "API_Security"],
+      "compliance_status": "compliant",
+      "business_impact": "medium",
+      "customer_impact": "enhancement",
+      "automation_available": false,
+      "available_skilled_techs": 3,
+      "revenue_impact_per_hour": 0,
+      "downtime_hours": 0,
+      "sla_penalty_rate": 0,
+      "max_monthly_penalty": 0,
+      "description": "Implement intelligent rate limiting for public APIs to prevent abuse while maintaining performance for legitimate users. Include per-customer tier limits and burst handling.",
+      "activity_timeline": [
+        {
+          "id": "activity-007",
+          "timestamp": 1693536800000,
+          "user_id": "product-manager-001",
+          "user_name": "Alex Thompson",
+          "action": "Enhancement Requested",
+          "description": "API protection enhancement for enterprise customers",
+          "type": "user"
+        }
+      ],
+      "activityLog": [
+        "Created by product team - customer request",
+        "Assigned to Elena Petrov - senior backend engineer",
+        "Technical design review scheduled",
+        "Redis cluster provisioned for rate limiting"
+      ],
+      "relatedAutomation": null,
+      "relatedKnowledge": "KB-005"
+    },
+    {
+      "id": "WI-006",
+      "title": "Backup System Failure - Weekly Backup",
+      "status": "open",
+      "priority": "P1",
+      "type": "incident",
+      "slaBreached": true,
+      "createdAt": 1693535200000,
+      "closedAt": null,
+      "assignedTo": "user-2",
+      "teamId": "team-2",
+      "smartScore": 88,
+      "customer_id": "internal-001",
+      "customer_name": "Internal Operations", 
+      "customer_tier": "internal",
+      "contract_id": "internal-sla-001",
+      "contract_name": "Internal Service Agreement",
+      "primary_asset_id": "asset-backup-system-01",
+      "asset_criticality": "critical",
+      "location": "Backup Data Center",
+      "location_id": "dc-backup-001",
+      "cost_center_id": "cc-data-protection",
+      "estimated_cost": 18000,
+      "actual_cost": null,
+      "billable_hours": 16,
+      "parts_cost": 12000,
+      "labor_cost": 6000,
+      "required_skills": [
+        {"skill": "backup_systems", "proficiency": "expert", "required": true},
+        {"skill": "storage_systems", "proficiency": "advanced", "required": true},
+        {"skill": "disaster_recovery", "proficiency": "advanced", "required": true}
+      ],
+      "required_certifications": ["Veeam_Certified", "Storage_Professional"],
+      "compliance_status": "non_compliant",
+      "business_impact": "high",
+      "customer_impact": "compliance_risk",
+      "automation_available": true,
+      "available_skilled_techs": 2,
+      "revenue_impact_per_hour": 0,
+      "downtime_hours": 12,
+      "sla_penalty_rate": 0,
+      "max_monthly_penalty": 0,
+      "description": "Weekly backup job failed due to storage array hardware failure. Critical compliance requirement - all customer data must have 3-day recovery point. Hardware replacement and backup restoration required.",
+      "activity_timeline": [
+        {
+          "id": "activity-008",
+          "timestamp": 1693535200000,
+          "user_id": "system",
+          "user_name": "Backup Monitor",
+          "action": "Backup Failed",
+          "description": "Weekly backup job failed - storage hardware error",
+          "type": "system"
+        }
+      ],
+      "activityLog": [
+        "Created by backup monitoring system",
+        "Escalated to P1 - compliance requirement",
+        "Assigned to Mike Rodriguez - storage specialist", 
+        "Hardware vendor contacted for replacement parts"
+      ],
+      "relatedAutomation": "AUTO-004",
+      "relatedKnowledge": "KB-006"
     }
   ],
   "automations": [
     {
       "id": "AUTO-001",
-      "name": "Restart Service",
-      "description": "Restarts backend microservice on failure",
-      "runs": 10,
+      "name": "Payment Gateway Circuit Breaker Reset",
+      "description": "Automatically resets circuit breakers and clears connection pools for payment gateway timeouts",
+      "runs": 23,
       "lastRun": 1693547400000,
       "status": "active",
-      "script": "#!/bin/bash\nsudo systemctl restart login-service\necho 'Service restarted'",
-      "relatedWorkItemId": "WI-001"
+      "script": "#!/bin/bash\nkubectl rollout restart deployment/payment-gateway\nkubectl exec -it payment-gateway-0 -- /scripts/clear-connection-pools.sh\necho 'Payment gateway restarted and pools cleared'",
+      "relatedWorkItemId": "WI-001",
+      "success_rate": 94.2,
+      "avg_execution_time": "45 seconds",
+      "confidence_threshold": 90
     },
     {
-      "id": "AUTO-002",
-      "name": "Clear Temp Files",
-      "description": "Cleanup temporary files when disk usage high",
-      "runs": 25,
+      "id": "AUTO-002", 
+      "name": "Database Query Optimization",
+      "description": "Analyzes slow queries and applies automatic index optimizations",
+      "runs": 15,
       "lastRun": 1693546000000,
       "status": "active",
-      "script": "#!/bin/bash\nfind /tmp -type f -atime +7 -delete"
+      "script": "#!/bin/bash\npsql -h db-cluster-02 -c \"SELECT pg_stat_statements_reset();\"\npsql -h db-cluster-02 -f /scripts/optimize-indexes.sql\necho 'Database optimization completed'",
+      "relatedWorkItemId": "WI-002",
+      "success_rate": 87.6,
+      "avg_execution_time": "3 minutes",
+      "confidence_threshold": 85
+    },
+    {
+      "id": "AUTO-003",
+      "name": "Standard Laptop Deployment",
+      "description": "Automated deployment of standard corporate laptop configuration",
+      "runs": 156,
+      "lastRun": 1693544800000,
+      "status": "active", 
+      "script": "#!/bin/bash\n# Deploy standard image and software\nansible-playbook deploy-corporate-laptop.yml\necho 'Laptop deployment completed'",
+      "relatedWorkItemId": "WI-004",
+      "success_rate": 96.8,
+      "avg_execution_time": "25 minutes",
+      "confidence_threshold": 95
+    },
+    {
+      "id": "AUTO-004",
+      "name": "Backup System Health Check",
+      "description": "Validates backup system integrity and initiates recovery procedures",
+      "runs": 8,
+      "lastRun": 1693543200000,
+      "status": "active",
+      "script": "#!/bin/bash\nveeamconfig backup validate --all\nveeamconfig job start --name 'Emergency Backup'\necho 'Backup validation and recovery initiated'",
+      "relatedWorkItemId": "WI-006",
+      "success_rate": 78.3,
+      "avg_execution_time": "12 minutes", 
+      "confidence_threshold": 80
     }
   ],
   "knowledge": [
     {
       "id": "KB-001",
-      "title": "Restarting login service",
-      "content": "Steps to restart login microservice safely:\n1. Check service dependencies\n2. Drain connections\n3. Restart service\n4. Verify health checks\n5. Monitor for 5 minutes",
-      "relatedService": "Login Service",
+      "title": "Payment Gateway Timeout Troubleshooting",
+      "content": "## Payment Gateway Timeout Resolution\n\n### Immediate Steps:\n1. Check circuit breaker status in monitoring dashboard\n2. Verify connection pool metrics\n3. Review recent deployments for configuration changes\n4. Test with isolated transaction\n\n### Escalation Triggers:\n- Transaction failure rate > 10%\n- Response time > 5 seconds\n- Customer complaints received\n\n### Recovery Procedures:\n1. Execute circuit breaker reset automation\n2. Scale payment service horizontally if needed\n3. Implement traffic shaping if overload detected\n4. Contact payment provider if external issue suspected",
+      "relatedService": "Payment Gateway",
       "relatedWorkItemId": "WI-001",
-      "gap": false
+      "gap": false,
+      "usage_count": 47,
+      "success_rate": 92.3,
+      "last_updated": 1693400000000
     },
     {
       "id": "KB-002",
-      "title": "SSL Certificate Management",
-      "content": "Process for SSL certificate renewal:\n1. Generate new certificate\n2. Update load balancers\n3. Test all endpoints\n4. Update monitoring",
-      "relatedService": "Security",
-      "gap": false
+      "title": "Database Performance Tuning Guide",
+      "content": "## PostgreSQL Performance Optimization\n\n### Quick Diagnostics:\n1. Check current connections: `SELECT count(*) FROM pg_stat_activity;`\n2. Identify slow queries: `SELECT query FROM pg_stat_statements ORDER BY total_time DESC;`\n3. Review index usage: `SELECT schemaname,tablename,attname,n_distinct FROM pg_stats;`\n\n### Immediate Actions:\n1. Kill long-running queries if safe\n2. Update table statistics: `ANALYZE;`\n3. Consider connection pooling adjustments\n\n### Long-term Solutions:\n- Review and optimize slow queries\n- Add missing indexes\n- Consider partitioning for large tables\n- Implement query result caching",
+      "relatedService": "Database Services",
+      "relatedWorkItemId": "WI-002", 
+      "gap": false,
+      "usage_count": 34,
+      "success_rate": 88.7,
+      "last_updated": 1693350000000
+    },
+    {
+      "id": "KB-003",
+      "title": "SSL Certificate Renewal Process",
+      "content": "## SSL Certificate Renewal Procedure\n\n### Pre-Renewal Checklist:\n1. Verify certificate expiration date\n2. Check DNS ownership validation requirements\n3. Coordinate maintenance window with stakeholders\n4. Prepare rollback plan\n\n### Renewal Steps:\n1. Generate new CSR with current specifications\n2. Submit renewal request to certificate authority\n3. Complete domain validation process\n4. Download and verify new certificate\n5. Update load balancer configuration\n6. Test all endpoints after deployment\n\n### Post-Renewal Validation:\n- SSL Labs test for all domains\n- Certificate chain validation\n- Expiration date confirmation\n- Update monitoring alerts",
+      "relatedService": "Security Services",
+      "relatedWorkItemId": "WI-003",
+      "gap": false,
+      "usage_count": 12,
+      "success_rate": 95.8,
+      "last_updated": 1693300000000
+    },
+    {
+      "id": "KB-004", 
+      "title": "Employee Laptop Setup Standard",
+      "content": "## Standard Corporate Laptop Configuration\n\n### Hardware Requirements:\n- Business-grade laptop (Dell Latitude or equivalent)\n- Minimum 16GB RAM, 512GB SSD\n- TPM 2.0 chip for BitLocker encryption\n\n### Software Installation:\n1. Windows 11 Pro with latest updates\n2. Microsoft Office 365 suite\n3. Corporate VPN client (Cisco AnyConnect)\n4. Endpoint security (CrowdStrike)\n5. Standard productivity tools\n\n### Security Configuration:\n- BitLocker full disk encryption\n- Windows Hello biometric login\n- Automatic screen lock after 10 minutes\n- Software restriction policies\n\n### User Account Setup:\n- Active Directory domain join\n- Email profile configuration\n- VPN profile and certificates\n- Printer driver installation",
+      "relatedService": "IT Services",
+      "relatedWorkItemId": "WI-004",
+      "gap": false,
+      "usage_count": 89,
+      "success_rate": 97.2,
+      "last_updated": 1693250000000
+    },
+    {
+      "id": "KB-005",
+      "title": "API Rate Limiting Best Practices",
+      "content": "## Implementing Intelligent API Rate Limiting\n\n### Rate Limiting Strategy:\n1. **Tier-based limits:**\n   - Free tier: 1000 requests/hour\n   - Premium: 10000 requests/hour  \n   - Enterprise: 100000 requests/hour\n\n2. **Burst handling:**\n   - Allow short bursts up to 2x normal rate\n   - Implement sliding window algorithm\n   - Grace period for legitimate traffic spikes\n\n### Technical Implementation:\n- Redis cluster for distributed rate limiting\n- Custom headers for remaining quota\n- Exponential backoff recommendations\n- Bypass mechanism for critical integrations\n\n### Monitoring and Alerting:\n- Track rate limit hit ratios by customer\n- Monitor for potential abuse patterns\n- Alert on sustained high rejection rates",
+      "relatedService": "API Gateway",
+      "relatedWorkItemId": "WI-005",
+      "gap": false,
+      "usage_count": 23,
+      "success_rate": 91.3,
+      "last_updated": 1693200000000
+    },
+    {
+      "id": "KB-006",
+      "title": "Backup System Recovery Procedures",
+      "content": "## Backup System Failure Recovery\n\n### Emergency Response:\n1. **Immediate Assessment:**\n   - Identify scope of backup failure\n   - Check last successful backup timestamp\n   - Assess compliance impact timeline\n\n2. **Hardware Diagnostics:**\n   - Storage array health check\n   - Network connectivity validation\n   - Backup software service status\n\n### Recovery Procedures:\n1. **Hardware Replacement:**\n   - Contact vendor for emergency hardware\n   - Prepare temporary storage if available\n   - Plan data migration from failed drives\n\n2. **Backup Restoration:**\n   - Prioritize critical systems first\n   - Validate backup integrity before restore\n   - Test restored systems thoroughly\n\n### Prevention Measures:\n- Implement backup monitoring alerts\n- Schedule regular hardware health checks\n- Maintain spare hardware inventory",
+      "relatedService": "Data Protection",
+      "relatedWorkItemId": "WI-006",
+      "gap": false,
+      "usage_count": 8,
+      "success_rate": 85.4,
+      "last_updated": 1693150000000
     }
   ],
   "agents": [
     {
       "id": "AG-001",
-      "name": "Incident Triage Bot",
+      "name": "Payment System Triage Bot",
       "trainingData": {
-        "incidents_processed": 1500,
-        "accuracy": 0.85,
-        "last_training": "2025-08-15"
-      },
-      "version": "v1.2",
-      "linkedAutomationId": "AUTO-001",
-      "trainingNeeded": false
-    },
-    {
-      "id": "AG-002", 
-      "name": "Knowledge Assistant",
-      "trainingData": {
-        "queries_processed": 850,
-        "accuracy": 0.92,
+        "incidents_processed": 2847,
+        "accuracy": 0.91,
         "last_training": "2025-08-20"
       },
-      "version": "v2.1",
-      "trainingNeeded": true
+      "version": "v2.3",
+      "linkedAutomationId": "AUTO-001", 
+      "trainingNeeded": false,
+      "current_task": "Analyzing transaction failure patterns",
+      "confidence": 91,
+      "actions_taken": 156,
+      "last_action": "8 minutes ago"
+    },
+    {
+      "id": "AG-002",
+      "name": "Database Performance Advisor",
+      "trainingData": {
+        "queries_analyzed": 15420,
+        "accuracy": 0.87,
+        "last_training": "2025-08-18"
+      },
+      "version": "v1.8",
+      "linkedAutomationId": "AUTO-002",
+      "trainingNeeded": true,
+      "current_task": "Query optimization recommendations",
+      "confidence": 87,
+      "actions_taken": 89,
+      "last_action": "23 minutes ago"
+    },
+    {
+      "id": "AG-003", 
+      "name": "Security Compliance Monitor",
+      "trainingData": {
+        "compliance_checks": 9876,
+        "accuracy": 0.94,
+        "last_training": "2025-08-22"
+      },
+      "version": "v3.1",
+      "linkedAutomationId": null,
+      "trainingNeeded": false,
+      "current_task": "SSL certificate expiration monitoring",
+      "confidence": 94,
+      "actions_taken": 234,
+      "last_action": "2 hours ago"
     }
   ],
   "nudges": [
     {
       "id": "NU-001",
-      "title": "Review P1 incidents",
-      "message": "There are unresolved P1 incidents requiring attention",
+      "title": "High-Value Customer SLA Risk",
+      "message": "GlobalCommerce Inc (Platinum) has 2 active P0/P1 incidents. Consider dedicated war room to prevent SLA penalties.",
       "acknowledged": false,
-      "relatedEntityId": "WI-001"
+      "relatedEntityId": "WI-001",
+      "category": "customer_risk",
+      "severity": "high",
+      "cost_impact": 100000
     },
     {
       "id": "NU-002",
-      "title": "Automate log cleanup",
-      "message": "Log cleanup task performed 15+ times manually this week - consider automation",
+      "title": "Backup Compliance Gap",
+      "message": "Backup system failure creates 48-hour compliance gap. Consider emergency backup procedure activation.",
       "acknowledged": false,
-      "relatedEntityId": "AUTO-002"
+      "relatedEntityId": "WI-006", 
+      "category": "compliance_risk",
+      "severity": "critical",
+      "cost_impact": 50000
+    },
+    {
+      "id": "NU-003",
+      "title": "Database Automation Opportunity",
+      "message": "Similar database performance issues resolved 15 times this month. Consider creating automated optimization playbook.",
+      "acknowledged": false,
+      "relatedEntityId": "WI-002",
+      "category": "automation_opportunity", 
+      "severity": "medium",
+      "cost_impact": -8000
+    },
+    {
+      "id": "NU-004",
+      "title": "Knowledge Gap Detected",
+      "message": "API rate limiting implementation lacks documentation. 3 engineers have requested guidance this week.",
+      "acknowledged": false,
+      "relatedEntityId": "WI-005",
+      "category": "knowledge_gap",
+      "severity": "medium", 
+      "cost_impact": 5000
     }
   ],
   "businessServices": [
     {
       "id": "BS-001",
-      "name": "Payments API",
-      "owner": "SRE Team",
-      "status": "healthy"
+      "name": "Payment Processing Platform",
+      "owner": "Platform Team",
+      "status": "degraded",
+      "uptime_percentage": 97.2,
+      "customer_count": 1247,
+      "revenue_impact": "high"
     },
     {
-      "id": "BS-002",
-      "name": "Login Service",
-      "owner": "Platform Team", 
-      "status": "degraded"
+      "id": "BS-002", 
+      "name": "Customer Data Platform",
+      "owner": "Data Team",
+      "status": "healthy",
+      "uptime_percentage": 99.8,
+      "customer_count": 3421,
+      "revenue_impact": "medium"
     },
     {
       "id": "BS-003",
-      "name": "User Management",
-      "owner": "Identity Team",
-      "status": "healthy"
+      "name": "User Authentication Service", 
+      "owner": "Security Team",
+      "status": "healthy",
+      "uptime_percentage": 99.95,
+      "customer_count": 8934,
+      "revenue_impact": "critical"
     }
   ],
   "costs": [
     {
       "id": "COST-001",
       "serviceId": "BS-001",
-      "amount": 1200,
-      "period": "2025-08"
+      "amount": 15420,
+      "period": "2025-08",
+      "cost_center": "cc-platform-ops"
     },
     {
       "id": "COST-002",
-      "serviceId": "BS-002", 
-      "amount": 800,
-      "period": "2025-08"
+      "serviceId": "BS-002",
+      "amount": 8934,
+      "period": "2025-08",
+      "cost_center": "cc-data-ops"
+    },
+    {
+      "id": "COST-003",
+      "serviceId": "BS-003", 
+      "amount": 12847,
+      "period": "2025-08",
+      "cost_center": "cc-security-ops"
     }
   ],
   "roster": [
     {
       "id": "ROSTER-001",
-      "person": "Alice",
-      "team": "SRE",
+      "person": "Sarah Chen",
+      "team": "Platform Engineering",
       "start": "2025-09-02T09:00:00Z",
-      "end": "2025-09-02T17:00:00Z",
+      "end": "2025-09-02T17:00:00Z", 
       "shift": "Day",
-      "teamId": "team-1"
+      "teamId": "team-1",
+      "skills": ["payment_systems", "kubernetes", "incident_management"],
+      "on_call": true
     },
     {
       "id": "ROSTER-002",
-      "person": "Bob",
-      "team": "Platform", 
+      "person": "Mike Rodriguez",
+      "team": "Database Operations",
       "start": "2025-09-02T17:00:00Z",
       "end": "2025-09-03T01:00:00Z",
-      "shift": "Evening",
-      "teamId": "team-1"
+      "shift": "Evening", 
+      "teamId": "team-1",
+      "skills": ["postgresql", "performance_tuning", "backup_systems"],
+      "on_call": false
+    },
+    {
+      "id": "ROSTER-003",
+      "person": "Lisa Wang",
+      "team": "Security Operations",
+      "start": "2025-09-02T21:00:00Z", 
+      "end": "2025-09-03T05:00:00Z",
+      "shift": "Night",
+      "teamId": "team-2",
+      "skills": ["ssl_certificates", "security_compliance", "incident_response"],
+      "on_call": true
     }
   ],
   "schedule": [
     {
       "id": "SCH-001",
       "type": "maintenance",
-      "title": "DB Upgrade",
-      "start": "2025-09-10T09:00:00Z",
-      "end": "2025-09-10T11:00:00Z",
-      "date": "2025-09-10T09:00:00.000Z",
-      "teamId": "team-1",
-      "relatedWorkItemId": "WI-002"
+      "title": "SSL Certificate Renewal - Production",
+      "start": "2025-09-10T02:00:00Z",
+      "end": "2025-09-10T04:00:00Z",
+      "date": "2025-09-10T02:00:00.000Z",
+      "teamId": "team-2",
+      "relatedWorkItemId": "WI-003",
+      "impact": "minimal",
+      "approval_status": "approved"
     },
     {
       "id": "SCH-002",
       "type": "shift",
-      "title": "Alice Morning Shift",
-      "start": "2025-09-02T09:00:00Z", 
+      "title": "Sarah Chen - Platform Engineering Day Shift", 
+      "start": "2025-09-02T09:00:00Z",
       "end": "2025-09-02T17:00:00Z",
-      "user": "alice"
+      "user": "sarah.chen",
+      "skills_available": ["payment_systems", "kubernetes"]
+    },
+    {
+      "id": "SCH-003",
+      "type": "change",
+      "title": "API Rate Limiting Deployment",
+      "start": "2025-09-12T14:00:00Z",
+      "end": "2025-09-12T16:00:00Z",
+      "date": "2025-09-12T14:00:00.000Z",
+      "teamId": "team-1",
+      "relatedWorkItemId": "WI-005",
+      "impact": "low",
+      "approval_status": "pending"
     }
   ],
   "auth": [
     {
       "id": "currentUser",
-      "username": "alice",
-      "role": "Manager",
+      "username": "sarah.chen",
+      "role": "Senior Site Reliability Engineer",
       "teamId": "team-1",
-      "token": "demo-token-123"
+      "token": "demo-token-456",
+      "permissions": ["incident_management", "automation_execution", "knowledge_editing"],
+      "cost_center": "cc-platform-ops"
     }
   ],
   "notifications": [
     {
       "id": "NOTIF-001",
-      "message": "SLA breached on WI-001",
-      "type": "alert",
+      "message": "P0 Incident: Payment Gateway Timeout - Immediate attention required",
+      "type": "critical_alert",
       "acknowledged": false,
       "dismissed": false,
       "timestamp": 1693545600000,
-      "ttl": 172800000
+      "ttl": 172800000,
+      "related_work_item": "WI-001",
+      "urgency": "critical"
     },
     {
       "id": "NOTIF-002",
-      "message": "Automation AUTO-001 completed successfully", 
+      "message": "Backup system failure detected - Compliance risk identified",
+      "type": "compliance_alert",
+      "acknowledged": false,
+      "dismissed": false,
+      "timestamp": 1693535200000,
+      "ttl": 172800000,
+      "related_work_item": "WI-006",
+      "urgency": "high"
+    },
+    {
+      "id": "NOTIF-003",
+      "message": "Automation 'Payment Gateway Reset' executed successfully",
       "type": "success",
       "acknowledged": false,
       "dismissed": false,
       "timestamp": 1693547400000,
-      "ttl": 172800000
+      "ttl": 172800000,
+      "related_automation": "AUTO-001",
+      "urgency": "info"
+    },
+    {
+      "id": "NOTIF-004",
+      "message": "SSL Certificate expires in 14 days - Renewal scheduled",
+      "type": "maintenance_reminder", 
+      "acknowledged": false,
+      "dismissed": false,
+      "timestamp": 1693540000000,
+      "ttl": 172800000,
+      "related_work_item": "WI-003",
+      "urgency": "medium"
     }
   ]
 }

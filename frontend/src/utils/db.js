@@ -14,7 +14,8 @@ db.version(1).stores({
   businessServices: "id",
   roster: "id",
   schedule: "id",
-  syncQueue: "++id", // auto-increment
+  syncQueue: "++id",
+  failedSync: "++id",
   auth: "id",
   notifications: "id,timestamp", // ✅ added table for NotificationsContext
 });
