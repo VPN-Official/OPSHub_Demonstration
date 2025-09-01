@@ -42,7 +42,7 @@ const META_FIELDS = [
   { key: "asset_criticality", label: "Asset", type: "criticality" },
 ];
 
-export default function EnhancedWorkItemDetail() {
+export default function WorkItemDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { workItems = [] } = useWorkItems();
@@ -58,22 +58,19 @@ export default function EnhancedWorkItemDetail() {
   // Debug logging
   console.log("Enhanced WorkItemDetail Debug:", { id, workItem, workItems });
 
-  if (!workItem) {
-    return (
-      <div className="p-4">
-        <button
-          className="flex items-center text-blue-600 hover:underline"
-          onClick={() => navigate(-1)}
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
-        <p className="mt-4 text-gray-600">Work item not found. ID: {id}</p>
-        <div className="mt-2 text-xs text-gray-500">
-          Available work items: {workItems.map(w => w?.id).join(', ') || 'none'}
-        </div>
-      </div>
-    );
-  }
+if (!workItem) {
+  return (
+    <div className="p-4">
+      <button
+        className="flex items-center text-blue-600 hover:underline"
+        onClick={() => navigate(-1)}
+      >
+        <ArrowLeft size={16} /> Back
+      </button>
+      <p className="mt-4 text-gray-600">Work item not found. ID: {id}</p>
+    </div>
+  );
+}
 
   return (
     <div className="p-4 flex flex-col gap-4 max-w-7xl mx-auto">
