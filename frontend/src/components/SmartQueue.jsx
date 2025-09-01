@@ -3,10 +3,11 @@ import { useWorkItems } from "../contexts/WorkItemsContext.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import SmartQueueTable from "./SmartQueueTable.jsx";
 import SmartQueueCard from "./SmartQueueCard.jsx";
-import { Filter, Shuffle, Info, RefreshCw, Settings } from "lucide-react";
+import BulkOperationsWorkflow from "./BulkOperationsWorkflow.jsx";
+import { Filter, Shuffle, Info, RefreshCw, Settings, Users } from "lucide-react";
 import { getRoleConfig, getRoleBasedWorkItemFilter } from "../utils/RoleBasedDefaults.js";
 
-export default function EnhancedSmartQueue() {
+export default function CompleteSmartQueueWithBulk() {
   const { workItems = [] } = useWorkItems();
   const { user, role } = useAuth();
 
@@ -16,6 +17,10 @@ export default function EnhancedSmartQueue() {
   const [sortConfig, setSortConfig] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  
+  // Bulk Operations State
+  const [showBulkOps, setShowBulkOps] = useState(false);
+  const [selectedItems, setSelectedItems] = useState([]);
 
   // Get role-based configuration
   const roleConfig = useMemo(() => getRoleConfig(role), [role]);
@@ -100,7 +105,6 @@ export default function EnhancedSmartQueue() {
           break;
 
         case "my_expertise":
-          // Filter by required skills matching user skills
           if (user.skills) {
             relevantItems = relevantItems.filter(item => {
               if (!item.required_skills || !item.required_skills.length) return true;
@@ -154,7 +158,6 @@ export default function EnhancedSmartQueue() {
 
     const interval = setInterval(() => {
       setLastRefresh(Date.now());
-      // In real app, this would trigger data refresh
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
@@ -200,7 +203,6 @@ export default function EnhancedSmartQueue() {
   };
 
   const getFilterCount = (filterKey) => {
-    // Calculate count for each filter (simplified)
     switch (filterKey) {
       case "assigned_to_me":
         return workItems.filter(item => 
@@ -219,12 +221,23 @@ export default function EnhancedSmartQueue() {
 
   const handleRefresh = () => {
     setLastRefresh(Date.now());
-    // In real app, would trigger data refresh
+  };
+
+  // Bulk Operations Handlers
+  const handleBulkOpsToggle = () => {
+    setShowBulkOps(!showBulkOps);
+    if (showBulkOps) {
+      setSelectedItems([]);
+    }
+  };
+
+  const handleSelectionChange = (newSelection) => {
+    setSelectedItems(newSelection);
   };
 
   return (
     <div className="p-4 flex flex-col gap-4">
-      {/* Enhanced Header with Role Context */}
+      {/* Enhanced Header with Role Context and Bulk Operations */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -235,6 +248,11 @@ export default function EnhancedSmartQueue() {
             {roleConfig?.smartQueue.defaultFilter !== "all" && (
               <span className="ml-1 text-blue-600">
                 Filtered by {getFilterLabel(activeFilter)}
+              </span>
+            )}
+            {selectedItems.length > 0 && (
+              <span className="ml-2 text-purple-600 font-medium">
+                • {selectedItems.length} selected
               </span>
             )}
           </div>
@@ -248,6 +266,19 @@ export default function EnhancedSmartQueue() {
               Auto-refresh
             </div>
           )}
+
+          {/* Bulk Operations Toggle */}
+          <button
+            onClick={handleBulkOpsToggle}
+            className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
+              showBulkOps 
+                ? "bg-purple-600 text-white" 
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <Users size={14} />
+            Bulk Ops
+          </button>
 
           {/* Manual refresh */}
           <button
@@ -301,6 +332,22 @@ export default function EnhancedSmartQueue() {
       {/* Role-Specific Helper Text */}
       <RoleBasedHelpText role={role} activeFilter={activeFilter} />
 
+      {/* Bulk Operations Panel */}
+      {showBulkOps && (
+        <div className="bg-white border rounded-lg shadow">
+          <div className="p-3 border-b bg-purple-50">
+            <h3 className="font-semibold text-sm text-purple-900">Bulk Operations</h3>
+            <p className="text-xs text-purple-700 mt-1">
+              Select multiple items and apply actions in batch
+            </p>
+          </div>
+          <BulkOperationsWorkflow
+            items={filtered}
+            onSelectionChange={handleSelectionChange}
+          />
+        </div>
+      )}
+
       {/* Queue Content */}
       <div className="min-h-0 flex-1">
         {view === "table" ? (
@@ -309,19 +356,32 @@ export default function EnhancedSmartQueue() {
             columns={roleConfig?.smartQueue.showColumns}
             sortConfig={sortConfig}
             onSort={setSortConfig}
+            selectionMode={showBulkOps}
+            selectedItems={selectedItems}
+            onSelectionChange={setSelectedItems}
           />
         ) : (
-          <SmartQueueCard items={filtered} />
+          <SmartQueueCard 
+            items={filtered}
+            selectionMode={showBulkOps}
+            selectedItems={selectedItems}
+            onSelectionChange={setSelectedItems}
+          />
         )}
       </div>
 
-      {/* Queue Statistics */}
+      {/* Enhanced Queue Statistics */}
       <div className="flex justify-between items-center text-xs text-gray-600 pt-2 border-t">
         <div>
           Showing {filtered.length} of {workItems.length} items
           {roleConfig?.smartQueue.maxItems && filtered.length >= roleConfig.smartQueue.maxItems && (
             <span className="ml-2 text-orange-600">
               • Limited to {roleConfig.smartQueue.maxItems} items
+            </span>
+          )}
+          {selectedItems.length > 0 && (
+            <span className="ml-2 text-purple-600 font-medium">
+              • {selectedItems.length} selected for bulk operations
             </span>
           )}
         </div>
@@ -341,30 +401,30 @@ function RoleBasedHelpText({ role, activeFilter }) {
     switch (role) {
       case "Support Engineer":
         if (activeFilter === "assigned_to_me") {
-          return "Focus on your assigned work items. Use Smart Score to prioritize effectively.";
+          return "Focus on your assigned work items. Use Smart Score to prioritize effectively. Enable Bulk Ops for end-of-shift handovers.";
         }
         return "Items are pre-filtered for your role. Click Smart Scores to understand AI prioritization.";
 
       case "Senior Site Reliability Engineer":
         if (activeFilter === "high_priority") {
-          return "Critical incidents requiring SRE expertise. Consider automation opportunities.";
+          return "Critical incidents requiring SRE expertise. Consider automation opportunities. Use Bulk Ops for systematic automation deployment.";
         }
-        return "System reliability focus with automation recommendations highlighted.";
+        return "System reliability focus with automation recommendations highlighted. Bulk operations available for workflow automation.";
 
       case "Dispatcher":
         if (activeFilter === "my_team") {
-          return "Team workload overview. Balance assignments and watch SLA compliance.";
+          return "Team workload overview. Balance assignments and watch SLA compliance. Use Bulk Ops for efficient reassignment and escalation.";
         }
-        return "Assignment and escalation view. Monitor team utilization and SLA risks.";
+        return "Assignment and escalation view. Monitor team utilization and SLA risks. Bulk operations help with systematic workload management.";
 
       case "Manager":
-        return "Strategic overview with cost and performance impact. Monitor team efficiency and customer satisfaction.";
+        return "Strategic overview with cost and performance impact. Monitor team efficiency and customer satisfaction. Bulk operations enable policy enforcement and systematic workflows.";
 
       case "Automation Engineer":
         if (activeFilter === "automation_candidates") {
-          return "Items with high automation potential. Look for patterns and repetitive tasks.";
+          return "Items with high automation potential. Look for patterns and repetitive tasks. Bulk operations help deploy automation at scale.";
         }
-        return "Focus on automation opportunities and performance optimization.";
+        return "Focus on automation opportunities and performance optimization. Use bulk workflows for systematic automation rollout.";
 
       default:
         return null;

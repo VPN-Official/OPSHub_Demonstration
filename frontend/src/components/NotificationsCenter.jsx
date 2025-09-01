@@ -1,16 +1,26 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNotifications } from "../contexts/NotificationsContext.jsx";
+import { useWorkItems } from "../contexts/WorkItemsContext.jsx";
 import { useSync } from "../contexts/SyncContext.jsx";
-import { Bell, CheckCircle2, XCircle, Trash2, RefreshCw, AlertTriangle } from "lucide-react";
+import { useToast, TOAST_TYPES } from "../contexts/ToastContext.jsx";
+import { Link, useNavigate } from "react-router-dom";
+import { 
+  Bell, 
+  CheckCircle2, 
+  XCircle, 
+  Trash2, 
+  RefreshCw, 
+  AlertTriangle,
+  ExternalLink,
+  Clock,
+  Zap,
+  FileText,
+  User,
+  TrendingUp,
+  Filter
+} from "lucide-react";
 import SyncFailureNotification from "./SyncFailureNotification.jsx";
 
-/**
- * Enhanced NotificationsCenter
- * - Unified notification feed with sync failures
- * - Filters: All, Unacked, Dismissed, Sync Issues
- * - Badge count includes sync failures
- * - Integrated sync failure management
- */
 export default function EnhancedNotificationsCenter() {
   const {
     activeFeed,
@@ -19,189 +29,375 @@ export default function EnhancedNotificationsCenter() {
     dismissNotification,
     dismissAllNotifications,
     badgeCount,
+    addNotification
   } = useNotifications();
 
+  const { workItems } = useWorkItems();
   const { 
     failedOperations, 
     syncQueue, 
     totalPendingCount,
     online 
   } = useSync();
+  
+  const { addToast } = useToast();
+  const navigate = useNavigate();
 
   const [filter, setFilter] = useState("all");
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Enhanced badge count including sync issues
   const enhancedBadgeCount = badgeCount + totalPendingCount;
 
-  // Apply filter with sync awareness
+  // Generate contextual notifications based on work items and system state
+  useEffect(() => {
+    const generateContextualNotifications = () => {
+      if (!workItems.length) return;
+
+      // Check for SLA breaches
+      const slaBreaches = workItems.filter(item => item.slaBreached && !item.notified_sla);
+      slaBreaches.forEach(item => {
+        addNotification(
+          `SLA BREACH: ${item.id} - ${item.title}`,
+          "critical_alert",
+          172800000, // 48h TTL
+          {
+            relatedEntityId: item.id,
+            relatedEntityType: "workitem",
+            urgency: "critical",
+            actionRequired: true,
+            deepLink: `/workitem/${item.id}`,
+            actions: [
+              { label: "View Item", action: "navigate", target: `/workitem/${item.id}` },
+              { label: "Escalate", action: "escalate", target: item.id }
+            ]
+          }
+        );
+      });
+
+      // Check for automation opportunities  
+      const automationCandidates = workItems.filter(item => 
+        !item.automation_available && 
+        item.repeat_count > 3 && 
+        !item.notified_automation
+      );
+      
+      if (automationCandidates.length >= 3) {
+        addNotification(
+          `${automationCandidates.length} work items could benefit from automation`,
+          "automation_opportunity", 
+          172800000,
+          {
+            relatedEntityType: "intelligence",
+            urgency: "medium",
+            deepLink: "/intelligence?tab=automations",
+            actions: [
+              { label: "View Candidates", action: "navigate", target: "/smartqueue?filter=automation_candidates" },
+              { label: "Create Automation", action: "navigate", target: "/intelligence?tab=automations&action=create" }
+            ]
+          }
+        );
+      }
+
+      // Check for high-value customer issues
+      const platinumIssues = workItems.filter(item => 
+        item.customer_tier === "platinum" && 
+        item.status === "open" &&
+        !item.notified_platinum
+      );
+      
+      platinumIssues.forEach(item => {
+        addNotification(
+          `Platinum customer issue: ${item.customer_name} - ${item.title}`,
+          "customer_alert",
+          172800000,
+          {
+            relatedEntityId: item.id,
+            relatedEntityType: "workitem", 
+            urgency: "high",
+            deepLink: `/workitem/${item.id}`,
+            customerTier: "platinum"
+          }
+        );
+      });
+    };
+
+    // Run contextual notification generation every 5 minutes
+    const interval = setInterval(generateContextualNotifications, 5 * 60 * 1000);
+    generateContextualNotifications(); // Run immediately
+
+    return () => clearInterval(interval);
+  }, [workItems, addNotification]);
+
+  // Enhanced filtering with deep link support
   const getFilteredItems = () => {
+    let notifications = [];
+
     switch (filter) {
       case "all":
-        return activeFeed;
+        notifications = activeFeed;
+        break;
       case "unacked":
-        return activeFeed.filter((n) => !n.acknowledged);
+        notifications = activeFeed.filter((n) => !n.acknowledged);
+        break;
+      case "critical":
+        notifications = activeFeed.filter((n) => n.urgency === "critical");
+        break;
+      case "actionable":
+        notifications = activeFeed.filter((n) => n.extendedProps?.actionRequired);
+        break;
       case "dismissed":
-        return dismissedFeed;
+        notifications = dismissedFeed;
+        break;
       case "sync_issues":
-        return []; // Sync issues handled separately by SyncFailureNotification
+        return []; // Handled by SyncFailureNotification
       default:
-        return activeFeed;
+        notifications = activeFeed;
     }
+
+    return notifications.sort((a, b) => {
+      // Sort by urgency, then by timestamp
+      const urgencyOrder = { critical: 3, high: 2, medium: 1, info: 0 };
+      const aUrgency = urgencyOrder[a.urgency] || 0;
+      const bUrgency = urgencyOrder[b.urgency] || 0;
+      
+      if (aUrgency !== bUrgency) return bUrgency - aUrgency;
+      return b.timestamp - a.timestamp;
+    });
   };
 
   const filteredNotifications = getFilteredItems();
-
-  // Check if we should show sync issues filter
   const showSyncFilter = totalPendingCount > 0;
+
+  // Handle notification actions
+  const handleNotificationAction = async (notification, action) => {
+    try {
+      switch (action.action) {
+        case "navigate":
+          navigate(action.target);
+          await acknowledgeNotification(notification.id);
+          break;
+          
+        case "escalate":
+          // Implement escalation logic
+          addToast({ 
+            message: `Escalating ${action.target}...`, 
+            type: TOAST_TYPES.INFO 
+          });
+          await acknowledgeNotification(notification.id);
+          break;
+          
+        case "acknowledge":
+          await acknowledgeNotification(notification.id);
+          break;
+          
+        default:
+          console.log("Unknown action:", action);
+      }
+    } catch (error) {
+      addToast({ 
+        message: `Action failed: ${error.message}`, 
+        type: TOAST_TYPES.ERROR 
+      });
+    }
+  };
 
   return (
     <div className="p-4 flex flex-col gap-4">
-      {/* Enhanced Header */}
+      {/* Enhanced Header with Stats */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Bell size={20} /> Notifications
-        </h2>
-        <div className="flex items-center gap-2">
-          {/* Enhanced badge with sync awareness */}
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Bell size={20} /> 
+            Notifications
+          </h2>
+          <div className="text-sm text-gray-600 mt-1">
+            {enhancedBadgeCount} requiring attention • {activeFeed.length} total active
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {/* Connection status */}
+          <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
+            online ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${online ? "bg-green-500" : "bg-red-500"}`} />
+            {online ? "Online" : "Offline"}
+          </div>
+
+          {/* Enhanced badge */}
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
             enhancedBadgeCount > 0 
-              ? "bg-blue-600 text-white" 
+              ? "bg-red-100 text-red-800" 
               : "bg-gray-100 text-gray-600"
           }`}>
             {enhancedBadgeCount}
           </span>
-          
-          {/* Connection status indicator */}
-          <div className={`w-2 h-2 rounded-full ${
-            online ? "bg-green-500" : "bg-red-500"
-          }`} title={online ? "Online" : "Offline"} />
+
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+          >
+            Create Alert
+          </button>
         </div>
       </div>
 
       {/* Enhanced Filters */}
-      <div className="flex gap-3 text-sm border-b pb-2">
-        <FilterButton
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-          label="All"
-          count={activeFeed.length}
-        />
-        <FilterButton
-          active={filter === "unacked"}
-          onClick={() => setFilter("unacked")}
-          label="Unacknowledged"
-          count={activeFeed.filter(n => !n.acknowledged).length}
-        />
-        <FilterButton
-          active={filter === "dismissed"}
-          onClick={() => setFilter("dismissed")}
-          label="Dismissed"
-          count={dismissedFeed.length}
-        />
-        
-        {/* Sync Issues Filter - only shown when there are sync issues */}
-        {showSyncFilter && (
-          <FilterButton
-            active={filter === "sync_issues"}
-            onClick={() => setFilter("sync_issues")}
-            label="Sync Issues"
-            count={totalPendingCount}
-            variant="warning"
-          />
-        )}
-      </div>
-
-      {/* Sync Status Panel - Always visible when there are sync issues */}
-      {showSyncFilter && (
-        <SyncFailureNotification />
-      )}
-
-      {/* Regular Notifications Feed */}
-      {filter !== "sync_issues" && (
-        <div className="flex flex-col gap-2">
-          {filteredNotifications.length === 0 && (
-            <div className="text-sm text-gray-500 p-4 text-center border rounded-lg">
-              {filter === "all" && "No notifications"}
-              {filter === "unacked" && "No unacknowledged notifications"}
-              {filter === "dismissed" && "No dismissed notifications"}
-            </div>
-          )}
-
-          {filteredNotifications.map((n) => (
-            <NotificationItem
-              key={n.id}
-              notification={n}
-              onAcknowledge={acknowledgeNotification}
-              onDismiss={dismissNotification}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <Filter size={16} className="text-gray-600 flex-shrink-0" />
+        <div className="flex gap-2 min-w-0">
+          {[
+            { key: "all", label: "All", count: activeFeed.length },
+            { key: "unacked", label: "Unacknowledged", count: activeFeed.filter(n => !n.acknowledged).length },
+            { key: "critical", label: "Critical", count: activeFeed.filter(n => n.urgency === "critical").length, variant: "critical" },
+            { key: "actionable", label: "Actionable", count: activeFeed.filter(n => n.extendedProps?.actionRequired).length },
+            { key: "dismissed", label: "Dismissed", count: dismissedFeed.length }
+          ].map(filterOption => (
+            <FilterButton
+              key={filterOption.key}
+              active={filter === filterOption.key}
+              onClick={() => setFilter(filterOption.key)}
+              label={filterOption.label}
+              count={filterOption.count}
+              variant={filterOption.variant}
             />
           ))}
+          
+          {/* Sync Issues Filter */}
+          {showSyncFilter && (
+            <FilterButton
+              active={filter === "sync_issues"}
+              onClick={() => setFilter("sync_issues")}
+              label="Sync Issues"
+              count={totalPendingCount}
+              variant="warning"
+            />
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Enhanced Dismiss All */}
-      {filter !== "dismissed" && filter !== "sync_issues" && filteredNotifications.length > 0 && (
-        <div className="flex justify-end">
-          <button
-            onClick={dismissAllNotifications}
-            className="flex items-center gap-1 px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
-          >
-            <Trash2 size={14} /> Dismiss All Notifications
-          </button>
-        </div>
-      )}
-
-      {/* Sync Issues Summary (when not in sync filter) */}
-      {totalPendingCount > 0 && filter !== "sync_issues" && (
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-yellow-600" />
-            <div>
-              <div className="text-sm font-medium text-yellow-800">
+      {/* Sync Status Panel */}
+      {showSyncFilter && filter !== "sync_issues" && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-yellow-600" />
+              <span className="text-sm font-medium text-yellow-800">
                 {totalPendingCount} operations need attention
-              </div>
-              <div className="text-xs text-yellow-700">
-                {failedOperations.length} failed, {syncQueue.length} pending
-              </div>
+              </span>
             </div>
             <button
               onClick={() => setFilter("sync_issues")}
-              className="ml-auto px-2 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700"
+              className="text-sm bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-700"
             >
               View Details
             </button>
           </div>
         </div>
       )}
+
+      {/* Sync Issues Detail */}
+      {filter === "sync_issues" && (
+        <SyncFailureNotification />
+      )}
+
+      {/* Enhanced Notifications Feed */}
+      {filter !== "sync_issues" && (
+        <div className="flex flex-col gap-3">
+          {filteredNotifications.length === 0 ? (
+            <EmptyState filter={filter} />
+          ) : (
+            <>
+              {filteredNotifications.map((notification) => (
+                <EnhancedNotificationItem
+                  key={notification.id}
+                  notification={notification}
+                  onAcknowledge={acknowledgeNotification}
+                  onDismiss={dismissNotification}
+                  onAction={handleNotificationAction}
+                />
+              ))}
+              
+              {/* Bulk Actions */}
+              {filteredNotifications.length > 0 && filter !== "dismissed" && (
+                <div className="flex justify-between items-center pt-3 border-t">
+                  <span className="text-sm text-gray-500">
+                    {filteredNotifications.length} notifications
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        filteredNotifications.forEach(n => !n.acknowledged && acknowledgeNotification(n.id));
+                        addToast({ message: "All notifications acknowledged", type: TOAST_TYPES.SUCCESS });
+                      }}
+                      className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded hover:bg-green-200"
+                    >
+                      Acknowledge All
+                    </button>
+                    <button
+                      onClick={() => {
+                        dismissAllNotifications();
+                        addToast({ message: "All notifications dismissed", type: TOAST_TYPES.SUCCESS });
+                      }}
+                      className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200"
+                    >
+                      Dismiss All
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Create Notification Form */}
+      {showCreateForm && (
+        <CreateNotificationModal
+          onClose={() => setShowCreateForm(false)}
+          onCreate={(notificationData) => {
+            addNotification(
+              notificationData.message,
+              notificationData.type,
+              notificationData.ttl
+            );
+            setShowCreateForm(false);
+            addToast({ message: "Custom notification created", type: TOAST_TYPES.SUCCESS });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/**
- * Enhanced filter button with count and variant support
- */
+// Enhanced filter button component
 function FilterButton({ active, onClick, label, count = 0, variant = "default" }) {
   const getVariantClasses = () => {
     if (active) {
-      return variant === "warning" 
-        ? "text-yellow-600 font-semibold border-b-2 border-yellow-600"
-        : "text-blue-600 font-semibold border-b-2 border-blue-600";
+      switch (variant) {
+        case "critical": return "bg-red-600 text-white";
+        case "warning": return "bg-yellow-600 text-white";
+        default: return "bg-blue-600 text-white";
+      }
     }
-    return "text-gray-600 hover:text-gray-800";
+    
+    switch (variant) {
+      case "critical": return "text-red-600 hover:bg-red-50";
+      case "warning": return "text-yellow-600 hover:bg-yellow-50";
+      default: return "text-gray-600 hover:bg-gray-100";
+    }
   };
 
   return (
     <button
       onClick={onClick}
-      className={`pb-2 flex items-center gap-1 ${getVariantClasses()}`}
+      className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${getVariantClasses()}`}
     >
       {label}
       {count > 0 && (
-        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-          variant === "warning" 
-            ? "bg-yellow-100 text-yellow-700"
-            : active 
-              ? "bg-blue-100 text-blue-700"
-              : "bg-gray-100 text-gray-600"
+        <span className={`text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
+          active ? "bg-white bg-opacity-20" : "bg-gray-200 text-gray-600"
         }`}>
           {count}
         </span>
@@ -210,24 +406,30 @@ function FilterButton({ active, onClick, label, count = 0, variant = "default" }
   );
 }
 
-/**
- * Enhanced notification item component
- */
-function NotificationItem({ notification, onAcknowledge, onDismiss }) {
+// Enhanced notification item with deep linking and actions
+function EnhancedNotificationItem({ notification, onAcknowledge, onDismiss, onAction }) {
+  const [showActions, setShowActions] = useState(false);
+
   const getNotificationIcon = () => {
+    const iconProps = { size: 16 };
+    
     switch (notification.type) {
       case "critical_alert":
-        return <AlertTriangle size={16} className="text-red-600" />;
+        return <AlertTriangle {...iconProps} className="text-red-600" />;
+      case "customer_alert":
+        return <User {...iconProps} className="text-purple-600" />;
+      case "automation_opportunity":
+        return <Zap {...iconProps} className="text-green-600" />;
       case "compliance_alert":
-        return <AlertTriangle size={16} className="text-orange-600" />;
+        return <FileText {...iconProps} className="text-orange-600" />;
       case "success":
-        return <CheckCircle2 size={16} className="text-green-600" />;
+        return <CheckCircle2 {...iconProps} className="text-green-600" />;
       case "maintenance_reminder":
-        return <Bell size={16} className="text-blue-600" />;
-      case "sync_failure":
-        return <RefreshCw size={16} className="text-red-600" />;
+        return <Clock {...iconProps} className="text-blue-600" />;
+      case "performance_alert":
+        return <TrendingUp {...iconProps} className="text-yellow-600" />;
       default:
-        return <Bell size={16} className="text-gray-600" />;
+        return <Bell {...iconProps} className="text-gray-600" />;
     }
   };
 
@@ -246,49 +448,216 @@ function NotificationItem({ notification, onAcknowledge, onDismiss }) {
     }
   };
 
+  const hasActions = notification.extendedProps?.actions?.length > 0;
+
   return (
-    <div className={`p-3 border rounded-lg flex justify-between items-start gap-3 ${getUrgencyClasses()}`}>
-      <div className="flex items-start gap-2 flex-1 min-w-0">
-        {getNotificationIcon()}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm break-words">{notification.message}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-gray-500">
-              {new Date(notification.timestamp).toLocaleString()}
-            </span>
-            {notification.urgency && (
-              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                notification.urgency === "critical" ? "bg-red-100 text-red-700" :
-                notification.urgency === "high" ? "bg-orange-100 text-orange-700" :
-                notification.urgency === "medium" ? "bg-yellow-100 text-yellow-700" :
-                "bg-gray-100 text-gray-700"
-              }`}>
-                {notification.urgency.toUpperCase()}
+    <div className={`border rounded-lg shadow-sm ${getUrgencyClasses()}`}>
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0">
+            {getNotificationIcon()}
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 break-words">
+              {notification.message}
+            </p>
+            
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs text-gray-500">
+                {new Date(notification.timestamp).toLocaleString()}
               </span>
+              
+              {notification.urgency && (
+                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                  notification.urgency === "critical" ? "bg-red-100 text-red-700" :
+                  notification.urgency === "high" ? "bg-orange-100 text-orange-700" :
+                  notification.urgency === "medium" ? "bg-yellow-100 text-yellow-700" :
+                  "bg-gray-100 text-gray-700"
+                }`}>
+                  {notification.urgency.toUpperCase()}
+                </span>
+              )}
+
+              {notification.extendedProps?.relatedEntityType && (
+                <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                  {notification.extendedProps.relatedEntityType}
+                </span>
+              )}
+            </div>
+
+            {/* Deep Link */}
+            {notification.extendedProps?.deepLink && (
+              <Link
+                to={notification.extendedProps.deepLink}
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-2"
+                onClick={() => onAcknowledge(notification.id)}
+              >
+                <ExternalLink size={12} />
+                View Details
+              </Link>
+            )}
+
+            {/* Quick Actions */}
+            {hasActions && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setShowActions(!showActions)}
+                  className="text-xs text-gray-600 hover:text-gray-800"
+                >
+                  Actions {showActions ? "▾" : "▸"}
+                </button>
+                
+                {showActions && (
+                  <div className="flex gap-2 mt-2">
+                    {notification.extendedProps.actions.map((action, index) => (
+                      <button
+                        key={index}
+                        onClick={() => onAction(notification, action)}
+                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex gap-2 flex-shrink-0">
+            {!notification.acknowledged && !notification.dismissed && (
+              <button
+                onClick={() => onAcknowledge(notification.id)}
+                className="text-green-600 hover:text-green-800 p-1"
+                title="Acknowledge"
+              >
+                <CheckCircle2 size={16} />
+              </button>
+            )}
+            {!notification.dismissed && (
+              <button
+                onClick={() => onDismiss(notification.id)}
+                className="text-red-600 hover:text-red-800 p-1"
+                title="Dismiss"
+              >
+                <XCircle size={16} />
+              </button>
             )}
           </div>
         </div>
       </div>
-      
-      <div className="flex gap-2 flex-shrink-0">
-        {!notification.acknowledged && !notification.dismissed && (
-          <button
-            onClick={() => onAcknowledge(notification.id)}
-            className="text-green-600 hover:text-green-800 p-1"
-            title="Acknowledge"
-          >
-            <CheckCircle2 size={16} />
-          </button>
-        )}
-        {!notification.dismissed && (
-          <button
-            onClick={() => onDismiss(notification.id)}
-            className="text-red-600 hover:text-red-800 p-1"
-            title="Dismiss"
-          >
-            <XCircle size={16} />
-          </button>
-        )}
+    </div>
+  );
+}
+
+// Empty state component
+function EmptyState({ filter }) {
+  const getEmptyMessage = () => {
+    switch (filter) {
+      case "critical":
+        return "No critical notifications - system operating normally";
+      case "unacked": 
+        return "All notifications have been acknowledged";
+      case "actionable":
+        return "No notifications require immediate action";
+      case "dismissed":
+        return "No dismissed notifications";
+      default:
+        return "No notifications to display";
+    }
+  };
+
+  return (
+    <div className="text-center py-8">
+      <Bell size={48} className="mx-auto text-gray-300 mb-3" />
+      <p className="text-gray-500">{getEmptyMessage()}</p>
+    </div>
+  );
+}
+
+// Create notification modal
+function CreateNotificationModal({ onClose, onCreate }) {
+  const [formData, setFormData] = useState({
+    message: "",
+    type: "info",
+    urgency: "medium",
+    ttl: 172800000 // 48 hours
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onCreate(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h3 className="text-lg font-semibold mb-4">Create Custom Notification</h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Message
+            </label>
+            <textarea
+              value={formData.message}
+              onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
+              className="w-full border rounded px-3 py-2 text-sm h-20"
+              required
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Type
+              </label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
+                className="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="info">Info</option>
+                <option value="success">Success</option>
+                <option value="warning">Warning</option>
+                <option value="critical_alert">Critical</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Urgency
+              </label>
+              <select
+                value={formData.urgency}
+                onChange={(e) => setFormData(prev => ({ ...prev, urgency: e.target.value }))}
+                className="w-full border rounded px-3 py-2 text-sm"
+              >
+                <option value="info">Info</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="flex gap-2 justify-end pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Create
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
