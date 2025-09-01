@@ -1,6 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { User, Zap, MessageSquare, Info, MoreHorizontal, Clock, CheckCircle2 } from "lucide-react";
+import { 
+  User, 
+  Zap, 
+  MessageSquare, 
+  Info, 
+  MoreHorizontal, 
+  Clock, 
+  CheckCircle2 
+} from "lucide-react";
 import SmartScoreExplanation from "./SmartScoreExplanation.jsx";
 import { useWorkItems } from "../contexts/WorkItemsContext.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -12,7 +20,6 @@ export default function CompleteSmartQueueTable({
   columns, 
   sortConfig, 
   onSort,
-  // ← ADD SELECTION PROPS
   selectionMode = false,
   selectedItems = [],
   onSelectionChange
@@ -22,11 +29,24 @@ export default function CompleteSmartQueueTable({
   const { queueChange } = useSync();
   const { addToast } = useToast();
   
-  const [actionDropdowns, setActionDropdowns] = useState({});
-  const [processingActions, setProcessingActions] = useState({});
+  const [openDropdowns, setOpenDropdowns] = useState(new Set());
+  const [loadingActions, setLoadingActions] = useState(new Set());
 
-  // ← ADD SELECTION HANDLERS
-  const toggleItemSelection = (itemId) => {
+  // Default columns configuration
+  const defaultColumns = [
+    { key: "id", label: "ID" },
+    { key: "title", label: "Title" },
+    { key: "priority", label: "Priority" },
+    { key: "status", label: "Status" },
+    { key: "type", label: "Type" },
+    { key: "slaBreached", label: "SLA" },
+    { key: "smartScore", label: "AI Score" },
+  ];
+
+  const displayColumns = columns || defaultColumns;
+
+  // Selection handlers
+  const handleToggleItem = (itemId) => {
     if (!selectionMode || !onSelectionChange) return;
     
     const newSelection = selectedItems.includes(itemId)
@@ -36,19 +56,34 @@ export default function CompleteSmartQueueTable({
     onSelectionChange(newSelection);
   };
 
-  const toggleAllSelection = () => {
+  const handleToggleAll = () => {
     if (!selectionMode || !onSelectionChange) return;
     
-    if (selectedItems.length === items.length) {
-      onSelectionChange([]);
-    } else {
-      onSelectionChange(items.map(item => item.id));
-    }
+    const allSelected = selectedItems.length === items.length && items.length > 0;
+    onSelectionChange(allSelected ? [] : items.map(item => item.id));
   };
 
-  // Action handlers with full functionality
+  // Dropdown management
+  const toggleDropdown = (itemId) => {
+    setOpenDropdowns(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.clear(); // Close all others
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
+
+  const closeAllDropdowns = () => {
+    setOpenDropdowns(new Set());
+  };
+
+  // Action handlers
   const handleReassign = async (workItem, targetUser = null) => {
-    setProcessingActions(prev => ({ ...prev, [workItem.id]: true }));
+    setLoadingActions(prev => new Set([...prev, workItem.id]));
     
     try {
       const updates = {
@@ -70,7 +105,7 @@ export default function CompleteSmartQueueTable({
       });
 
       addToast({ 
-        message: `${workItem.id} reassigned to ${targetUser || "dispatcher queue"}`, 
+        message: `${workItem.id} reassigned successfully`, 
         type: TOAST_TYPES.SUCCESS 
       });
 
@@ -80,21 +115,25 @@ export default function CompleteSmartQueueTable({
         type: TOAST_TYPES.ERROR 
       });
     } finally {
-      setProcessingActions(prev => ({ ...prev, [workItem.id]: false }));
-      setActionDropdowns(prev => ({ ...prev, [workItem.id]: false }));
+      setLoadingActions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(workItem.id);
+        return newSet;
+      });
+      closeAllDropdowns();
     }
   };
 
   const handleAutomation = async (workItem) => {
     if (!workItem.automation_available) {
       addToast({ 
-        message: "No automation available for this work item", 
+        message: "No automation available for this item", 
         type: TOAST_TYPES.WARNING 
       });
       return;
     }
 
-    setProcessingActions(prev => ({ ...prev, [workItem.id]: true }));
+    setLoadingActions(prev => new Set([...prev, workItem.id]));
 
     try {
       const updates = {
@@ -125,13 +164,17 @@ export default function CompleteSmartQueueTable({
         type: TOAST_TYPES.ERROR 
       });
     } finally {
-      setProcessingActions(prev => ({ ...prev, [workItem.id]: false }));
-      setActionDropdowns(prev => ({ ...prev, [workItem.id]: false }));
+      setLoadingActions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(workItem.id);
+        return newSet;
+      });
+      closeAllDropdowns();
     }
   };
 
   const handleChat = async (workItem) => {
-    setProcessingActions(prev => ({ ...prev, [workItem.id]: true }));
+    setLoadingActions(prev => new Set([...prev, workItem.id]));
     
     try {
       const updates = {
@@ -161,13 +204,17 @@ export default function CompleteSmartQueueTable({
         type: TOAST_TYPES.ERROR 
       });
     } finally {
-      setProcessingActions(prev => ({ ...prev, [workItem.id]: false }));
-      setActionDropdowns(prev => ({ ...prev, [workItem.id]: false }));
+      setLoadingActions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(workItem.id);
+        return newSet;
+      });
+      closeAllDropdowns();
     }
   };
 
   const handleStatusUpdate = async (workItem, newStatus) => {
-    setProcessingActions(prev => ({ ...prev, [workItem.id]: true }));
+    setLoadingActions(prev => new Set([...prev, workItem.id]));
     
     try {
       const updates = {
@@ -202,68 +249,58 @@ export default function CompleteSmartQueueTable({
         type: TOAST_TYPES.ERROR 
       });
     } finally {
-      setProcessingActions(prev => ({ ...prev, [workItem.id]: false }));
-      setActionDropdowns(prev => ({ ...prev, [workItem.id]: false }));
+      setLoadingActions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(workItem.id);
+        return newSet;
+      });
+      closeAllDropdowns();
     }
-  };
-
-  const toggleActionDropdown = (workItemId) => {
-    setActionDropdowns(prev => ({
-      ...prev,
-      [workItemId]: !prev[workItemId]
-    }));
-  };
-
-  const closeAllDropdowns = () => {
-    setActionDropdowns({});
   };
 
   const handleSort = (columnKey) => {
-    if (onSort) {
-      const direction = sortConfig?.field === columnKey && sortConfig?.direction === "asc" ? "desc" : "asc";
-      onSort({ field: columnKey, direction });
-    }
+    if (!onSort) return;
+    
+    const direction = sortConfig?.field === columnKey && sortConfig?.direction === "asc" 
+      ? "desc" 
+      : "asc";
+    onSort({ field: columnKey, direction });
   };
 
   // Click outside handler to close dropdowns
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = () => closeAllDropdowns();
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
+  // Early return for empty state
   if (!Array.isArray(items) || items.length === 0) {
-    return <p className="text-sm text-gray-500">No work items available</p>;
+    return (
+      <div className="text-center py-8 text-gray-500 bg-white rounded-lg shadow">
+        <p>No work items available</p>
+      </div>
+    );
   }
-
-  // Default columns if not provided
-  const defaultColumns = [
-    { key: "id", label: "ID" },
-    { key: "title", label: "Title" },
-    { key: "priority", label: "Priority" },
-    { key: "status", label: "Status" },
-    { key: "type", label: "Type" },
-    { key: "slaBreached", label: "SLA" },
-    { key: "smartScore", label: "AI Score" },
-  ];
-
-  const displayColumns = columns || defaultColumns;
 
   return (
     <div className="overflow-x-auto bg-white shadow rounded-lg">
-      {/* ← ADD SELECTION HEADER (only in selection mode) */}
+      {/* Selection Header */}
       {selectionMode && (
         <div className="p-3 bg-purple-50 border-b border-purple-200">
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={selectedItems.length === items.length && items.length > 0}
-                onChange={toggleAllSelection}
+                onChange={handleToggleAll}
                 className="rounded"
               />
               <span className="font-medium text-purple-900">
-                {selectedItems.length === items.length && items.length > 0 ? "Deselect All" : "Select All"}
+                {selectedItems.length === items.length && items.length > 0 
+                  ? "Deselect All" 
+                  : "Select All"
+                }
                 ({selectedItems.length}/{items.length})
               </span>
             </label>
@@ -278,24 +315,28 @@ export default function CompleteSmartQueueTable({
       )}
 
       <table className="min-w-full text-sm">
+        {/* Table Header */}
         <thead className="bg-gray-50 text-gray-700 border-b">
           <tr>
-            {/* ← SELECTION COLUMN HEADER */}
+            {/* Selection Column Header */}
             {selectionMode && (
               <th className="p-3 text-left w-12">
                 <span className="text-xs font-medium text-purple-700">Select</span>
               </th>
             )}
             
-            {displayColumns.map((col) => (
+            {/* Data Column Headers */}
+            {displayColumns.map((column) => (
               <th 
-                key={col.key} 
-                className={`p-3 text-left ${onSort ? "cursor-pointer hover:bg-gray-100" : ""}`}
-                onClick={() => handleSort(col.key)}
+                key={column.key}
+                className={`p-3 text-left ${
+                  onSort ? "cursor-pointer hover:bg-gray-100" : ""
+                }`}
+                onClick={() => handleSort(column.key)}
               >
                 <div className="flex items-center gap-2">
-                  {col.label}
-                  {onSort && sortConfig?.field === col.key && (
+                  {column.label}
+                  {onSort && sortConfig?.field === column.key && (
                     <span className="text-xs">
                       {sortConfig.direction === "asc" ? "↑" : "↓"}
                     </span>
@@ -303,97 +344,37 @@ export default function CompleteSmartQueueTable({
                 </div>
               </th>
             ))}
+            
+            {/* Actions Column Header */}
             <th className="p-3 text-left">Actions</th>
           </tr>
         </thead>
+
+        {/* Table Body */}
         <tbody className="divide-y divide-gray-200">
           {items
             .filter(Boolean)
             .map((workItem) => (
-              <tr 
-                key={workItem.id} 
-                className={`hover:bg-gray-50 transition-colors ${
-                  selectionMode && selectedItems.includes(workItem.id) 
-                    ? "bg-purple-50" 
-                    : ""
-                }`}
-              >
-                {/* ← SELECTION CELL */}
-                {selectionMode && (
-                  <td className="p-3">
-                    <div className="flex flex-col items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={selectedItems.includes(workItem.id)}
-                        onChange={() => toggleItemSelection(workItem.id)}
-                        className="rounded"
-                      />
-                      {selectedItems.includes(workItem.id) && (
-                        <span className="text-xs text-purple-600 font-medium">✓</span>
-                      )}
-                    </div>
-                  </td>
-                )}
-                
-                {displayColumns.map((col) => (
-                  <td key={col.key} className="p-3">
-                    <CellContent 
-                      workItem={workItem} 
-                      columnKey={col.key} 
-                      isProcessing={processingActions[workItem.id]}
-                      selectionMode={selectionMode}
-                      isSelected={selectedItems.includes(workItem.id)}
-                    />
-                  </td>
-                ))}
-                <td className="p-3">
-                  <div className="relative" onClick={(e) => e.stopPropagation()}>
-                    {/* ← MODIFIED ACTIONS CELL FOR SELECTION MODE */}
-                    {selectionMode ? (
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/workitem/${workItem.id}`}
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 rounded hover:bg-blue-100"
-                        >
-                          <Info size={12} />
-                          Details
-                        </Link>
-                        {selectedItems.includes(workItem.id) && (
-                          <span className="text-xs text-purple-600 font-medium">
-                            Selected
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => toggleActionDropdown(workItem.id)}
-                          disabled={processingActions[workItem.id]}
-                          className="flex items-center gap-1 px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded disabled:opacity-50"
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
-
-                        {actionDropdowns[workItem.id] && (
-                          <ActionDropdown
-                            workItem={workItem}
-                            onReassign={handleReassign}
-                            onAutomation={handleAutomation}
-                            onChat={handleChat}
-                            onStatusUpdate={handleStatusUpdate}
-                            isProcessing={processingActions[workItem.id]}
-                          />
-                        )}
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
+              <TableRow
+                key={workItem.id}
+                workItem={workItem}
+                columns={displayColumns}
+                selectionMode={selectionMode}
+                isSelected={selectedItems.includes(workItem.id)}
+                isLoading={loadingActions.has(workItem.id)}
+                isDropdownOpen={openDropdowns.has(workItem.id)}
+                onToggleSelection={() => handleToggleItem(workItem.id)}
+                onToggleDropdown={() => toggleDropdown(workItem.id)}
+                onReassign={handleReassign}
+                onAutomation={handleAutomation}
+                onChat={handleChat}
+                onStatusUpdate={handleStatusUpdate}
+              />
             ))}
         </tbody>
       </table>
 
-      {/* ← ADD SELECTION SUMMARY FOOTER */}
+      {/* Selection Summary Footer */}
       {selectionMode && selectedItems.length > 0 && (
         <div className="p-3 bg-purple-50 border-t border-purple-200">
           <div className="flex items-center justify-between text-sm">
@@ -413,7 +394,104 @@ export default function CompleteSmartQueueTable({
   );
 }
 
-// Enhanced cell content renderer with selection awareness
+// Table Row Component
+function TableRow({ 
+  workItem, 
+  columns, 
+  selectionMode, 
+  isSelected, 
+  isLoading,
+  isDropdownOpen,
+  onToggleSelection, 
+  onToggleDropdown,
+  onReassign,
+  onAutomation,
+  onChat,
+  onStatusUpdate
+}) {
+  return (
+    <tr 
+      className={`hover:bg-gray-50 transition-colors ${
+        selectionMode && isSelected ? "bg-purple-50" : ""
+      }`}
+    >
+      {/* Selection Cell */}
+      {selectionMode && (
+        <td className="p-3">
+          <div className="flex flex-col items-center gap-1">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={onToggleSelection}
+              className="rounded"
+            />
+            {isSelected && (
+              <span className="text-xs text-purple-600 font-medium">✓</span>
+            )}
+          </div>
+        </td>
+      )}
+      
+      {/* Data Cells */}
+      {columns.map((column) => (
+        <td key={column.key} className="p-3">
+          <CellContent 
+            workItem={workItem} 
+            columnKey={column.key} 
+            isProcessing={isLoading}
+            selectionMode={selectionMode}
+            isSelected={isSelected}
+          />
+        </td>
+      ))}
+      
+      {/* Actions Cell */}
+      <td className="p-3">
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+          {selectionMode ? (
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/workitem/${workItem.id}`}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 rounded hover:bg-blue-100"
+              >
+                <Info size={12} />
+                Details
+              </Link>
+              {isSelected && (
+                <span className="text-xs text-purple-600 font-medium">
+                  Selected
+                </span>
+              )}
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={onToggleDropdown}
+                disabled={isLoading}
+                className="flex items-center gap-1 px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded disabled:opacity-50"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+
+              {isDropdownOpen && (
+                <ActionDropdown
+                  workItem={workItem}
+                  onReassign={onReassign}
+                  onAutomation={onAutomation}
+                  onChat={onChat}
+                  onStatusUpdate={onStatusUpdate}
+                  isProcessing={isLoading}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// Cell Content Renderer
 function CellContent({ workItem, columnKey, isProcessing, selectionMode = false, isSelected = false }) {
   const value = workItem[columnKey];
 
@@ -465,7 +543,6 @@ function CellContent({ workItem, columnKey, isProcessing, selectionMode = false,
           {isProcessing && (
             <div className="w-3 h-3 border border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
           )}
-          {/* Selection mode indicator */}
           {selectionMode && isSelected && (
             <span className="text-xs text-purple-600">•</span>
           )}
@@ -483,7 +560,6 @@ function CellContent({ workItem, columnKey, isProcessing, selectionMode = false,
           >
             {value || "—"}
           </Link>
-          {/* Selection indicator for title */}
           {selectionMode && isSelected && (
             <span className="text-xs bg-purple-100 text-purple-700 px-1 rounded">
               SELECTED
@@ -512,7 +588,7 @@ function CellContent({ workItem, columnKey, isProcessing, selectionMode = false,
   }
 }
 
-// Enhanced action dropdown with full functionality
+// Action Dropdown Component
 function ActionDropdown({ 
   workItem, 
   onReassign, 
@@ -521,26 +597,31 @@ function ActionDropdown({
   onStatusUpdate,
   isProcessing 
 }) {
-  const dropdownItems = [
+  // Create action items with unique keys
+  const actionItems = [
     {
+      id: `${workItem.id}-reassign-queue`,
       label: "Reassign to Queue",
       icon: User,
       action: () => onReassign(workItem),
       disabled: false
     },
     {
+      id: `${workItem.id}-assign-me`,
       label: "Assign to Me",
       icon: User,
       action: () => onReassign(workItem, "current-user"),
       disabled: false
     },
     {
+      id: `${workItem.id}-automation`,
       label: "Trigger Automation",
       icon: Zap,
       action: () => onAutomation(workItem),
       disabled: !workItem.automation_available
     },
     {
+      id: `${workItem.id}-chat`,
       label: "Initiate Chat",
       icon: MessageSquare,
       action: () => onChat(workItem),
@@ -550,7 +631,8 @@ function ActionDropdown({
 
   // Add status-specific actions
   if (workItem.status === "open") {
-    dropdownItems.push({
+    actionItems.push({
+      id: `${workItem.id}-start-work`,
       label: "Start Work",
       icon: Clock,
       action: () => onStatusUpdate(workItem, "in-progress"),
@@ -559,7 +641,8 @@ function ActionDropdown({
   }
 
   if (workItem.status === "in-progress") {
-    dropdownItems.push({
+    actionItems.push({
+      id: `${workItem.id}-mark-resolved`,
       label: "Mark Resolved",
       icon: CheckCircle2,
       action: () => onStatusUpdate(workItem, "resolved"),
@@ -569,16 +652,18 @@ function ActionDropdown({
 
   return (
     <div className="absolute right-0 top-8 z-50 w-48 bg-white border rounded-lg shadow-lg py-1">
+      {/* Header */}
       <div className="px-3 py-2 border-b">
         <div className="text-xs font-medium text-gray-900">{workItem.id}</div>
         <div className="text-xs text-gray-500 truncate">{workItem.title}</div>
       </div>
       
-      {dropdownItems.map((item, index) => {
+      {/* Action Items */}
+      {actionItems.map((item) => {
         const IconComponent = item.icon;
         return (
           <button
-            key={index}
+            key={item.id}
             onClick={item.action}
             disabled={item.disabled || isProcessing}
             className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -589,6 +674,7 @@ function ActionDropdown({
         );
       })}
 
+      {/* Detail Link */}
       <div className="border-t mt-1 pt-1">
         <Link
           to={`/workitem/${workItem.id}`}
