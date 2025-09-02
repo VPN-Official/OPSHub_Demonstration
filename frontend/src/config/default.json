@@ -1,0 +1,557 @@
+{
+  "statuses": {
+    "incidents": ["new", "in_progress", "resolved", "closed", "cancelled"],
+    "problems": ["new", "in_analysis", "known_error", "mitigated", "closed"],
+    "change_requests": ["draft", "submitted", "approved", "scheduled", "in_progress", "completed", "closed", "cancelled"],
+    "service_requests": ["new", "approved", "in_progress", "fulfilled", "closed"],
+    "maintenances": ["scheduled", "in_progress", "completed", "cancelled"],
+    "alerts": ["new", "acknowledged", "in_progress", "resolved", "closed"],
+    "metrics": ["active", "archived", "deprecated"],
+    "logs": ["active", "archived", "processed"],
+    "events": ["new", "correlated", "processed", "archived"],
+    "traces": ["active", "processed", "archived"],
+    "value_streams": ["active", "inactive", "deprecated"],
+    "business_services": ["operational", "maintenance", "retired"],
+    "service_components": ["operational", "degraded", "offline"],
+    "assets": ["active", "maintenance", "retired", "disposed"],
+    "customers": ["active", "inactive", "suspended"],
+    "vendors": ["active", "inactive", "terminated"],
+    "contracts": ["active", "expiring", "expired", "terminated"],
+    "cost_centers": ["active", "inactive", "merged"],
+    "risks": ["identified", "assessed", "mitigation_planned", "mitigated", "accepted", "rejected", "closed"],
+    "compliance": ["compliant", "non_compliant", "under_review", "remediated"],
+    "knowledge_base": ["draft", "published", "retired"],
+    "runbooks": ["draft", "approved", "deprecated"],
+    "automation_rules": ["draft", "approved", "retired"],
+    "ai_agents": ["active", "inactive", "retired"],
+    "kpis": ["active", "inactive", "deprecated"]
+  },
+  "priorities": {
+    "P1": {
+      "label": "Critical",
+      "color": "#dc2626",
+      "sla_minutes": 60,
+      "escalation_rules": {
+        "notify_after_minutes": 15,
+        "escalate_after_minutes": 45,
+        "escalation_path": ["manager", "director", "vp"]
+      }
+    },
+    "P2": {
+      "label": "High",
+      "color": "#ea580c",
+      "sla_minutes": 240,
+      "escalation_rules": {
+        "notify_after_minutes": 60,
+        "escalate_after_minutes": 180,
+        "escalation_path": ["manager", "director"]
+      }
+    },
+    "P3": {
+      "label": "Medium",
+      "color": "#ca8a04",
+      "sla_minutes": 1440,
+      "escalation_rules": {
+        "notify_after_minutes": 360,
+        "escalate_after_minutes": 1080,
+        "escalation_path": ["manager"]
+      }
+    },
+    "P4": {
+      "label": "Low",
+      "color": "#16a34a",
+      "sla_minutes": 2880,
+      "escalation_rules": {
+        "notify_after_minutes": 720,
+        "escalate_after_minutes": 2160,
+        "escalation_path": []
+      }
+    },
+    "low": {
+      "label": "Low Priority",
+      "color": "#16a34a",
+      "sla_minutes": 1440
+    },
+    "medium": {
+      "label": "Medium Priority", 
+      "color": "#ca8a04",
+      "sla_minutes": 720
+    },
+    "high": {
+      "label": "High Priority",
+      "color": "#ea580c", 
+      "sla_minutes": 240
+    },
+    "emergency": {
+      "label": "Emergency",
+      "color": "#dc2626",
+      "sla_minutes": 30
+    }
+  },
+  "severities": {
+    "info": {
+      "label": "Informational",
+      "color": "#2563eb",
+      "impact_level": 1,
+      "auto_escalate": false
+    },
+    "warning": {
+      "label": "Warning",
+      "color": "#ca8a04",
+      "impact_level": 2,
+      "auto_escalate": false
+    },
+    "minor": {
+      "label": "Minor",
+      "color": "#ea580c",
+      "impact_level": 3,
+      "auto_escalate": false
+    },
+    "major": {
+      "label": "Major",
+      "color": "#dc2626",
+      "impact_level": 4,
+      "auto_escalate": true
+    },
+    "critical": {
+      "label": "Critical",
+      "color": "#991b1b",
+      "impact_level": 5,
+      "auto_escalate": true
+    }
+  },
+  "tiers": {
+    "platinum": {
+      "label": "Platinum",
+      "description": "Premium tier with highest SLA",
+      "sla_multiplier": 0.5
+    },
+    "gold": {
+      "label": "Gold",
+      "description": "High-priority tier",
+      "sla_multiplier": 0.7
+    },
+    "silver": {
+      "label": "Silver", 
+      "description": "Standard tier",
+      "sla_multiplier": 1.0
+    },
+    "bronze": {
+      "label": "Bronze",
+      "description": "Basic tier",
+      "sla_multiplier": 1.5
+    },
+    "strategic": {
+      "label": "Strategic Partner",
+      "description": "Strategic vendor relationship",
+      "sla_multiplier": 0.5
+    },
+    "preferred": {
+      "label": "Preferred Vendor",
+      "description": "Preferred vendor status",
+      "sla_multiplier": 0.8
+    },
+    "approved": {
+      "label": "Approved Vendor",
+      "description": "Standard approved vendor",
+      "sla_multiplier": 1.0
+    },
+    "other": {
+      "label": "Other",
+      "description": "Unclassified vendor",
+      "sla_multiplier": 1.2
+    }
+  },
+  "slas": {
+    "incidents": {
+      "P1": {
+        "target_minutes": 60,
+        "warning_threshold": 80,
+        "breach_threshold": 100,
+        "escalation_rules": {
+          "warning_actions": ["notify_manager", "update_stakeholders"],
+          "breach_actions": ["escalate_to_director", "create_war_room"]
+        }
+      },
+      "P2": {
+        "target_minutes": 240,
+        "warning_threshold": 80,
+        "breach_threshold": 100,
+        "escalation_rules": {
+          "warning_actions": ["notify_manager"],
+          "breach_actions": ["escalate_to_director"]
+        }
+      },
+      "P3": {
+        "target_minutes": 1440,
+        "warning_threshold": 80,
+        "breach_threshold": 100
+      },
+      "P4": {
+        "target_minutes": 2880,
+        "warning_threshold": 90,
+        "breach_threshold": 100
+      }
+    },
+    "service_requests": {
+      "low": {
+        "target_minutes": 1440,
+        "warning_threshold": 85,
+        "breach_threshold": 100
+      },
+      "medium": {
+        "target_minutes": 720,
+        "warning_threshold": 80,
+        "breach_threshold": 100
+      },
+      "high": {
+        "target_minutes": 240,
+        "warning_threshold": 75,
+        "breach_threshold": 100
+      }
+    },
+    "change_requests": {
+      "standard": {
+        "target_minutes": 10080,
+        "warning_threshold": 90,
+        "breach_threshold": 100
+      },
+      "normal": {
+        "target_minutes": 4320,
+        "warning_threshold": 85,
+        "breach_threshold": 100
+      },
+      "emergency": {
+        "target_minutes": 120,
+        "warning_threshold": 75,
+        "breach_threshold": 100
+      }
+    },
+    "problems": {
+      "low": {
+        "target_minutes": 7200,
+        "warning_threshold": 85,
+        "breach_threshold": 100
+      },
+      "medium": {
+        "target_minutes": 2880,
+        "warning_threshold": 80,
+        "breach_threshold": 100
+      },
+      "high": {
+        "target_minutes": 720,
+        "warning_threshold": 75,
+        "breach_threshold": 100
+      },
+      "critical": {
+        "target_minutes": 240,
+        "warning_threshold": 70,
+        "breach_threshold": 100
+      }
+    }
+  },
+  "kpis": [
+    {
+      "id": "availability",
+      "name": "Service Availability",
+      "description": "Overall service uptime percentage",
+      "type": "availability",
+      "unit": "%",
+      "target_value": 99.9,
+      "target_operator": "gte",
+      "calculation_method": "uptime_minutes / total_minutes * 100",
+      "data_source": "monitoring_system",
+      "refresh_interval": 5,
+      "enabled": true
+    },
+    {
+      "id": "mttr",
+      "name": "Mean Time to Recovery",
+      "description": "Average time to resolve incidents",
+      "type": "performance",
+      "unit": "minutes",
+      "target_value": 240,
+      "target_operator": "lt",
+      "calculation_method": "sum(resolution_time) / count(incidents)",
+      "data_source": "incident_management",
+      "refresh_interval": 15,
+      "enabled": true
+    },
+    {
+      "id": "mtta",
+      "name": "Mean Time to Acknowledge",
+      "description": "Average time to acknowledge incidents",
+      "type": "performance",
+      "unit": "minutes",
+      "target_value": 15,
+      "target_operator": "lt",
+      "calculation_method": "sum(ack_time) / count(incidents)",
+      "data_source": "incident_management",
+      "refresh_interval": 15,
+      "enabled": true
+    },
+    {
+      "id": "customer_satisfaction",
+      "name": "Customer Satisfaction Score",
+      "description": "Average customer satisfaction rating",
+      "type": "quality",
+      "unit": "score",
+      "target_value": 4.5,
+      "target_operator": "gte",
+      "calculation_method": "sum(ratings) / count(ratings)",
+      "data_source": "customer_feedback",
+      "refresh_interval": 60,
+      "enabled": true
+    },
+    {
+      "id": "cost_per_transaction",
+      "name": "Cost per Transaction",
+      "description": "Average cost per business transaction",
+      "type": "cost",
+      "unit": "USD",
+      "target_value": 0.50,
+      "target_operator": "lt",
+      "calculation_method": "total_cost / transaction_count",
+      "data_source": "financial_system",
+      "refresh_interval": 1440,
+      "enabled": true
+    },
+    {
+      "id": "response_time",
+      "name": "Average Response Time",
+      "description": "Average API response time",
+      "type": "performance",
+      "unit": "ms",
+      "target_value": 200,
+      "target_operator": "lt",
+      "calculation_method": "sum(response_times) / count(requests)",
+      "data_source": "apm_system",
+      "refresh_interval": 5,
+      "enabled": true
+    },
+    {
+      "id": "error_rate",
+      "name": "Error Rate",
+      "description": "Percentage of requests resulting in errors",
+      "type": "quality",
+      "unit": "%",
+      "target_value": 1.0,
+      "target_operator": "lt",
+      "calculation_method": "error_count / total_requests * 100",
+      "data_source": "logging_system",
+      "refresh_interval": 5,
+      "enabled": true
+    },
+    {
+      "id": "sla_compliance",
+      "name": "SLA Compliance Rate",
+      "description": "Percentage of SLAs met",
+      "type": "compliance",
+      "unit": "%",
+      "target_value": 95.0,
+      "target_operator": "gte",
+      "calculation_method": "slas_met / total_slas * 100",
+      "data_source": "sla_tracking",
+      "refresh_interval": 60,
+      "enabled": true
+    }
+  ],
+  "automation": [
+    {
+      "id": "auto_incident_triage",
+      "name": "Automated Incident Triage",
+      "description": "Automatically categorize and assign incidents based on keywords and patterns",
+      "trigger_conditions": {
+        "entity_type": "incidents",
+        "status": "new",
+        "has_keywords": ["database", "network", "application"]
+      },
+      "actions": [
+        {
+          "type": "categorize",
+          "parameters": {
+            "category_mapping": {
+              "database": "infrastructure",
+              "network": "network",
+              "application": "application"
+            }
+          }
+        },
+        {
+          "type": "assign",
+          "parameters": {
+            "assignment_rules": {
+              "infrastructure": "db_team",
+              "network": "network_team",
+              "application": "app_team"
+            }
+          }
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "sla_breach_notification",
+      "name": "SLA Breach Notification",
+      "description": "Send notifications when SLA thresholds are breached",
+      "trigger_conditions": {
+        "sla_status": "warning",
+        "threshold_percentage": 80
+      },
+      "actions": [
+        {
+          "type": "notify",
+          "parameters": {
+            "channels": ["email", "slack"],
+            "recipients": ["manager", "team_lead"],
+            "template": "sla_warning"
+          }
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "auto_resolve_known_issues",
+      "name": "Auto-resolve Known Issues",
+      "description": "Automatically resolve incidents that match known problem patterns",
+      "trigger_conditions": {
+        "entity_type": "incidents",
+        "has_matching_problem": true,
+        "problem_status": "known_error"
+      },
+      "actions": [
+        {
+          "type": "resolve",
+          "parameters": {
+            "resolution_template": "Applied known resolution from Problem #{problem_id}"
+          }
+        },
+        {
+          "type": "link_to_problem",
+          "parameters": {
+            "relationship_type": "resolved_by"
+          }
+        }
+      ],
+      "enabled": true
+    }
+  ],
+  "ai_agents": [
+    {
+      "id": "incident_classifier",
+      "name": "Incident Classification Agent",
+      "description": "Uses ML to classify incident severity and category",
+      "type": "diagnostic",
+      "model_config": {
+        "model_type": "classification",
+        "features": ["title", "description", "source_system", "affected_services"],
+        "algorithm": "random_forest",
+        "confidence_threshold": 0.8
+      },
+      "triggers": ["incident_created", "incident_updated"],
+      "confidence_threshold": 0.7,
+      "enabled": true
+    },
+    {
+      "id": "anomaly_detector",
+      "name": "Metric Anomaly Detection",
+      "description": "Detects anomalies in system metrics and creates alerts",
+      "type": "predictive",
+      "model_config": {
+        "model_type": "anomaly_detection",
+        "algorithm": "isolation_forest",
+        "sensitivity": 0.1,
+        "window_minutes": 15
+      },
+      "triggers": ["metric_ingested"],
+      "confidence_threshold": 0.85,
+      "enabled": true
+    },
+    {
+      "id": "root_cause_analyzer",
+      "name": "Root Cause Analysis Assistant",
+      "description": "Suggests potential root causes for problems based on historical data",
+      "type": "diagnostic",
+      "model_config": {
+        "model_type": "correlation_analysis",
+        "features": ["symptoms", "affected_components", "recent_changes", "similar_problems"],
+        "algorithm": "gradient_boosting",
+        "lookback_days": 30
+      },
+      "triggers": ["problem_created"],
+      "confidence_threshold": 0.6,
+      "enabled": true
+    },
+    {
+      "id": "change_risk_assessor",
+      "name": "Change Risk Assessment",
+      "description": "Evaluates risk level of proposed changes",
+      "type": "predictive",
+      "model_config": {
+        "model_type": "risk_assessment",
+        "features": ["change_type", "affected_systems", "deployment_method", "historical_failures"],
+        "algorithm": "neural_network"
+      },
+      "triggers": ["change_request_submitted"],
+      "confidence_threshold": 0.75,
+      "enabled": true
+    }
+  ],
+  "tenant_settings": {
+    "timezone": "UTC",
+    "business_hours": {
+      "start": "09:00",
+      "end": "17:00",
+      "days": [1, 2, 3, 4, 5]
+    },
+    "notification_settings": {
+      "email_enabled": true,
+      "sms_enabled": true,
+      "slack_enabled": true,
+      "default_channels": ["email", "slack"]
+    },
+    "compliance_frameworks": ["SOX", "PCI-DSS", "HIPAA", "GDPR", "ISO27001"]
+  },
+  "validation": {
+    "required_fields": {
+      "incidents": ["title", "description", "priority", "status"],
+      "service_requests": ["title", "description", "priority", "requested_by"],
+      "change_requests": ["title", "description", "type", "risk_level", "implementation_date"],
+      "problems": ["title", "description", "priority", "category"],
+      "assets": ["name", "type", "owner", "tier"]
+    },
+    "field_constraints": {
+      "incidents": {
+        "title": {
+          "type": "string",
+          "min_length": 5,
+          "max_length": 200
+        },
+        "description": {
+          "type": "string",
+          "min_length": 10,
+          "max_length": 5000
+        },
+        "priority": {
+          "type": "enum",
+          "enum_values": ["P1", "P2", "P3", "P4"]
+        },
+        "status": {
+          "type": "enum",
+          "enum_values": ["new", "in_progress", "resolved", "closed", "cancelled"]
+        }
+      },
+      "service_requests": {
+        "title": {
+          "type": "string",
+          "min_length": 5,
+          "max_length": 200
+        },
+        "priority": {
+          "type": "enum", 
+          "enum_values": ["low", "medium", "high"]
+        }
+      }
+    }
+  }
+}

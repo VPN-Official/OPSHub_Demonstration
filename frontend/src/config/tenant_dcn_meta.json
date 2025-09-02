@@ -1,0 +1,12 @@
+{
+  "sla": {
+    "uptime_targets": {
+      "gold": 99.999,
+      "silver": 99.95,
+      "bronze": 99.9
+    }
+  },
+  "kpis": [
+    { "id": "kpi_latency", "name": "Network Latency", "unit": "ms", "category": "performance" }
+  ]
+}
