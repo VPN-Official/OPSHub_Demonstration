@@ -9,7 +9,7 @@ export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOps
     systemMetrics = [
       {
         id: `${tenantId}_systemMetrics01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "SystemMetrics Example 1",
         description: "Seeded SystemMetrics entity for DCN Meta.",
         created_at: now,
@@ -24,7 +24,7 @@ export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOps
     systemMetrics = [
       {
         id: `${tenantId}_systemMetrics01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "SystemMetrics Example 1",
         description: "Seeded SystemMetrics entity for AV Google.",
         created_at: now,
@@ -39,7 +39,7 @@ export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOps
     systemMetrics = [
       {
         id: `${tenantId}_systemMetrics01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "SystemMetrics Example 1",
         description: "Seeded SystemMetrics entity for Gates Foundation.",
         created_at: now,
@@ -55,18 +55,18 @@ export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOps
 
     await db.put("audit_logs", {
       id: `${entity.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "systemMetrics",
       entity_id: entity.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + entity.id,
+      hash: "hash_" + id,
       tags: ["seed"],
     });
 
     await db.put("activities", {
       id: `${entity.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "systemMetrics",
       entity_id: entity.id,
       action: "created",

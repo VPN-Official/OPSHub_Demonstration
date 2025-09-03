@@ -10,7 +10,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     metrics = [
       {
         id: `${tenantId}_metric01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Prometheus",
         name: "router_cpu_usage",
         value: 92,
@@ -24,7 +24,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
       },
       {
         id: `${tenantId}_metric02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Prometheus",
         name: "switch_port_errors",
         value: 150,
@@ -43,7 +43,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     metrics = [
       {
         id: `${tenantId}_metric01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Datadog",
         name: "stream_latency",
         value: 32000,
@@ -57,7 +57,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
       },
       {
         id: `${tenantId}_metric02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "GKE",
         name: "pod_memory_usage",
         value: 85,
@@ -76,7 +76,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     metrics = [
       {
         id: `${tenantId}_metric01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Exchange Monitor",
         name: "mail_queue_depth",
         value: 650,
@@ -90,7 +90,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
       },
       {
         id: `${tenantId}_metric02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Cisco ASA",
         name: "vpn_tunnel_drops",
         value: 12,
@@ -111,7 +111,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     // Light audit log
     await db.put("audit_logs", {
       id: `${metric.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "metric",
       entity_id: metric.id,
       action: "create",
@@ -123,7 +123,7 @@ export const seedMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     // Light activity
     await db.put("activities", {
       id: `${metric.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "metric",
       entity_id: metric.id,
       action: "collected",

@@ -10,7 +10,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
     changes = [
       {
         id: `${tenantId}_chg01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Upgrade Router Firmware",
         description: "Planned upgrade to mitigate recurring CPU spikes.",
         status: "submitted",
@@ -35,7 +35,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
       },
       {
         id: `${tenantId}_chg02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Emergency BGP Config Rollback",
         description: "Rollback to restore connectivity after outage.",
         status: "in_progress",
@@ -62,7 +62,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
     changes = [
       {
         id: `${tenantId}_chg01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Patch Transcoding Cluster",
         description: "Deploy fix for memory leak in ffmpeg library.",
         status: "scheduled",
@@ -87,7 +87,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
       },
       {
         id: `${tenantId}_chg02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Scale Edge Nodes",
         description: "Increase edge node pool size to reduce streaming latency.",
         status: "submitted",
@@ -114,7 +114,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
     changes = [
       {
         id: `${tenantId}_chg01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Email Server Patch",
         description: "Apply Microsoft Exchange security patch.",
         status: "approved",
@@ -138,7 +138,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
       },
       {
         id: `${tenantId}_chg02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "VPN Config Change",
         description: "Reconfigure VPN appliance for stronger encryption.",
         status: "submitted",
@@ -171,7 +171,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
     // Light Audit log
     await db.put("audit_logs", {
       id: `${chg.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "change_request",
       entity_id: chg.id,
       action: "create",
@@ -183,7 +183,7 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
     // Light Activity timeline
     await db.put("activities", {
       id: `${chg.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "change_request",
       entity_id: chg.id,
       action: "created",

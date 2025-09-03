@@ -9,7 +9,7 @@ export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AI
     stakeholderComms = [
       {
         id: `${tenantId}_stakeholderComms01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "StakeholderComms Example 1",
         description: "Seeded StakeholderComms entity for DCN Meta.",
         created_at: now,
@@ -24,7 +24,7 @@ export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AI
     stakeholderComms = [
       {
         id: `${tenantId}_stakeholderComms01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "StakeholderComms Example 1",
         description: "Seeded StakeholderComms entity for AV Google.",
         created_at: now,
@@ -39,7 +39,7 @@ export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AI
     stakeholderComms = [
       {
         id: `${tenantId}_stakeholderComms01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "StakeholderComms Example 1",
         description: "Seeded StakeholderComms entity for Gates Foundation.",
         created_at: now,
@@ -55,18 +55,18 @@ export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AI
 
     await db.put("audit_logs", {
       id: `${entity.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "stakeholderComms",
       entity_id: entity.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + entity.id,
+      hash: "hash_" + id,
       tags: ["seed"],
     });
 
     await db.put("activities", {
       id: `${entity.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "stakeholderComms",
       entity_id: entity.id,
       action: "created",

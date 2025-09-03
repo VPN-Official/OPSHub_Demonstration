@@ -10,7 +10,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
     articles = [
       {
         id: `${tenantId}_kb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Router CPU Spike Troubleshooting",
         type: "troubleshooting",
         status: "published",
@@ -23,7 +23,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
       },
       {
         id: `${tenantId}_kb02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Switch CRC Error SOP",
         type: "sop",
         status: "published",
@@ -41,7 +41,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
     articles = [
       {
         id: `${tenantId}_kb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Stream Latency Tuning Guide",
         type: "how_to",
         status: "published",
@@ -54,7 +54,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
       },
       {
         id: `${tenantId}_kb02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Transcoding Pod OOM Fix",
         type: "troubleshooting",
         status: "published",
@@ -72,7 +72,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
     articles = [
       {
         id: `${tenantId}_kb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Exchange Mail Queue Troubleshooting",
         type: "troubleshooting",
         status: "published",
@@ -85,7 +85,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
       },
       {
         id: `${tenantId}_kb02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "VPN Tunnel Drop SOP",
         type: "sop",
         status: "published",
@@ -104,7 +104,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
 
     await db.put("audit_logs", {
       id: `${kb.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "knowledge",
       entity_id: kb.id,
       action: "create",
@@ -115,7 +115,7 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
 
     await db.put("activities", {
       id: `${kb.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "knowledge",
       entity_id: kb.id,
       action: "created",

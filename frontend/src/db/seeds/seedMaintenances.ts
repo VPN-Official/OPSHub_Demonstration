@@ -10,7 +10,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
     maintenances = [
       {
         id: `${tenantId}_mnt01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Router Firmware Patch",
         description: "Scheduled patch to fix CPU spike issue.",
         status: "scheduled",
@@ -36,7 +36,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
       },
       {
         id: `${tenantId}_mnt02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Switch Replacement",
         description: "Corrective maintenance for faulty TOR switch.",
         status: "in_progress",
@@ -67,7 +67,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
     maintenances = [
       {
         id: `${tenantId}_mnt01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Transcoding Cluster Upgrade",
         description: "Upgrade GKE nodes to latest version.",
         status: "scheduled",
@@ -93,7 +93,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
       },
       {
         id: `${tenantId}_mnt02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Edge Cache Expansion",
         description: "Add more edge cache nodes to reduce streaming latency.",
         status: "completed",
@@ -124,7 +124,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
     maintenances = [
       {
         id: `${tenantId}_mnt01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Exchange Server Security Patch",
         description: "Apply Microsoft patch to address CVE-2025-1234.",
         status: "scheduled",
@@ -150,7 +150,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
       },
       {
         id: `${tenantId}_mnt02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "VPN Appliance Upgrade",
         description: "Upgrade Cisco VPN firmware for encryption improvements.",
         status: "in_progress",
@@ -184,7 +184,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
     // Light Audit log
     await db.put("audit_logs", {
       id: `${mnt.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "maintenance",
       entity_id: mnt.id,
       action: "create",
@@ -196,7 +196,7 @@ export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsD
     // Light Activity timeline
     await db.put("activities", {
       id: `${mnt.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "maintenance",
       entity_id: mnt.id,
       action: "created",

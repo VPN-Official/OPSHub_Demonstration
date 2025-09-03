@@ -10,7 +10,7 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     kpis = [
       {
         id: `${tenantId}_kpi01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Network Uptime",
         unit: "%",
         description: "Availability of core network services",
@@ -25,7 +25,7 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     kpis = [
       {
         id: `${tenantId}_kpi01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Streaming Latency",
         unit: "ms",
         description: "Median stream latency",
@@ -40,7 +40,7 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     kpis = [
       {
         id: `${tenantId}_kpi01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Ticket Resolution Time",
         unit: "minutes",
         description: "Mean time to resolve tickets",
@@ -56,7 +56,7 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
 
     await db.put("audit_logs", {
       id: `${kpi.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "kpi",
       entity_id: kpi.id,
       action: "create",
@@ -67,7 +67,7 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
 
     await db.put("activities", {
       id: `${kpi.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "kpi",
       entity_id: kpi.id,
       action: "created",

@@ -10,7 +10,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
     components = [
       {
         id: `${tenantId}_comp_router01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Core Router",
         description: "Cisco core router in SJC-1.",
         type: "infrastructure",
@@ -24,7 +24,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
       },
       {
         id: `${tenantId}_comp_switch01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "TOR Switch",
         description: "Top of Rack switch in SJC-1.",
         type: "infrastructure",
@@ -38,7 +38,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
       },
       {
         id: `${tenantId}_comp_vpn01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "VPN Gateway",
         description: "Remote access VPN appliance.",
         type: "infrastructure",
@@ -57,7 +57,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
     components = [
       {
         id: `${tenantId}_comp_edge01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Edge Node Pool",
         description: "VMs serving video content at the edge.",
         type: "application",
@@ -71,7 +71,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
       },
       {
         id: `${tenantId}_comp_gke_cluster01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Transcoding Cluster",
         description: "Kubernetes cluster running video transcoding.",
         type: "application",
@@ -90,7 +90,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
     components = [
       {
         id: `${tenantId}_comp_exchange01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Exchange Server",
         description: "Email messaging backend.",
         type: "application",
@@ -104,7 +104,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
       },
       {
         id: `${tenantId}_comp_vpn01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "VPN Appliance",
         description: "Cisco VPN concentrator.",
         type: "infrastructure",
@@ -118,7 +118,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
       },
       {
         id: `${tenantId}_comp_ad01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Active Directory",
         description: "Authentication and identity service.",
         type: "middleware",
@@ -138,7 +138,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
 
     await db.put("audit_logs", {
       id: `${comp.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "service_component",
       entity_id: comp.id,
       action: "create",
@@ -149,7 +149,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
 
     await db.put("activities", {
       id: `${comp.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "service_component",
       entity_id: comp.id,
       action: "created",

@@ -10,7 +10,7 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     vendors = [
       {
         id: `${tenantId}_vendor01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Cisco",
         tier: "strategic",
         created_at: now,
@@ -26,7 +26,7 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     vendors = [
       {
         id: `${tenantId}_vendor01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "GCP",
         tier: "strategic",
         created_at: now,
@@ -42,7 +42,7 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
     vendors = [
       {
         id: `${tenantId}_vendor01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Microsoft",
         tier: "strategic",
         created_at: now,
@@ -59,7 +59,7 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
 
     await db.put("audit_logs", {
       id: `${vendor.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "vendor",
       entity_id: vendor.id,
       action: "create",
@@ -70,7 +70,7 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
 
     await db.put("activities", {
       id: `${vendor.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "vendor",
       entity_id: vendor.id,
       action: "created",

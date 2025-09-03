@@ -10,7 +10,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
     rules = [
       {
         id: `${tenantId}_auto01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Auto-Restart Router Process",
         type: "script",
         status: "approved",
@@ -27,7 +27,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
     rules = [
       {
         id: `${tenantId}_auto01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Auto-Scale Edge Nodes",
         type: "workflow",
         status: "approved",
@@ -44,7 +44,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
     rules = [
       {
         id: `${tenantId}_auto01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Reset VPN Tunnel",
         type: "script",
         status: "approved",
@@ -62,7 +62,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
 
     await db.put("audit_logs", {
       id: `${rule.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "automation_rule",
       entity_id: rule.id,
       action: "create",
@@ -73,7 +73,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
 
     await db.put("activities", {
       id: `${rule.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "automation_rule",
       entity_id: rule.id,
       action: "created",

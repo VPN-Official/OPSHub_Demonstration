@@ -10,7 +10,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
     services = [
       {
         id: `${tenantId}_svc_network`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Global DCN Service",
         description: "Backbone networking service for Meta DCs.",
         tier: "gold",
@@ -34,7 +34,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
     services = [
       {
         id: `${tenantId}_svc_streaming`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "YouTube Streaming",
         description: "End-to-end live video streaming.",
         tier: "gold",
@@ -53,7 +53,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
       },
       {
         id: `${tenantId}_svc_transcoding`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Video Transcoding",
         description: "Cloud-based video transcoding workloads.",
         tier: "silver",
@@ -77,7 +77,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
     services = [
       {
         id: `${tenantId}_svc_email`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Email Service",
         description: "Microsoft Exchange based email service.",
         tier: "gold",
@@ -96,7 +96,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
       },
       {
         id: `${tenantId}_svc_vpn`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "VPN Service",
         description: "Secure VPN connectivity for remote staff.",
         tier: "silver",
@@ -115,7 +115,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
       },
       {
         id: `${tenantId}_svc_hr_portal`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "HR Portal",
         description: "Employee HR and payroll portal.",
         tier: "bronze",
@@ -134,7 +134,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
       },
       {
         id: `${tenantId}_svc_sharepoint`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Collaboration Service",
         description: "SharePoint collaboration platform.",
         tier: "silver",
@@ -159,7 +159,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
 
     await db.put("audit_logs", {
       id: `${svc.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "business_service",
       entity_id: svc.id,
       action: "create",
@@ -170,7 +170,7 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
 
     await db.put("activities", {
       id: `${svc.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "business_service",
       entity_id: svc.id,
       action: "created",

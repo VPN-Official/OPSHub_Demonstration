@@ -10,7 +10,7 @@ export const seedCompliance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
     reqs = [
       {
         id: `${tenantId}_comp01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "ISO27001 A.12",
         type: "standard",
         status: "active",
@@ -27,7 +27,7 @@ export const seedCompliance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
     reqs = [
       {
         id: `${tenantId}_comp01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "SOC2 Type II",
         type: "standard",
         status: "active",
@@ -44,7 +44,7 @@ export const seedCompliance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
     reqs = [
       {
         id: `${tenantId}_comp01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "HIPAA Section 164",
         type: "regulatory",
         status: "active",
@@ -62,7 +62,7 @@ export const seedCompliance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
 
     await db.put("audit_logs", {
       id: `${req.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "compliance",
       entity_id: req.id,
       action: "create",
@@ -73,7 +73,7 @@ export const seedCompliance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
 
     await db.put("activities", {
       id: `${req.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "compliance",
       entity_id: req.id,
       action: "created",

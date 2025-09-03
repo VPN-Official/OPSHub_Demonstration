@@ -10,7 +10,7 @@ export const seedRunbooks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     runbooks = [
       {
         id: `${tenantId}_rb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Router Firmware Upgrade",
         type: "semi_automated",
         status: "approved",
@@ -31,7 +31,7 @@ export const seedRunbooks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     runbooks = [
       {
         id: `${tenantId}_rb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "GKE Pod Restart Procedure",
         type: "manual",
         status: "approved",
@@ -51,7 +51,7 @@ export const seedRunbooks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     runbooks = [
       {
         id: `${tenantId}_rb01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Exchange Mail Queue Clear",
         type: "manual",
         status: "approved",
@@ -72,7 +72,7 @@ export const seedRunbooks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
 
     await db.put("audit_logs", {
       id: `${rb.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "runbook",
       entity_id: rb.id,
       action: "create",
@@ -83,7 +83,7 @@ export const seedRunbooks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
 
     await db.put("activities", {
       id: `${rb.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "runbook",
       entity_id: rb.id,
       action: "created",

@@ -10,7 +10,7 @@ export const seedRisks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
     risks = [
       {
         id: `${tenantId}_risk01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Unpatched Router Firmware",
         category: "security",
         status: "identified",
@@ -32,7 +32,7 @@ export const seedRisks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
     risks = [
       {
         id: `${tenantId}_risk01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Transcoding Memory Leaks",
         category: "availability",
         status: "assessed",
@@ -54,7 +54,7 @@ export const seedRisks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
     risks = [
       {
         id: `${tenantId}_risk01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Exchange Vulnerability CVE-2025-1234",
         category: "security",
         status: "mitigation_planned",
@@ -77,7 +77,7 @@ export const seedRisks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
 
     await db.put("audit_logs", {
       id: `${risk.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "risk",
       entity_id: risk.id,
       action: "create",
@@ -88,7 +88,7 @@ export const seedRisks = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
 
     await db.put("activities", {
       id: `${risk.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "risk",
       entity_id: risk.id,
       action: "created",

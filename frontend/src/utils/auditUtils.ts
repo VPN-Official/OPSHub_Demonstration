@@ -74,7 +74,7 @@ const generateFallbackHash = (input: string): string => {
  */
 export const validateImmutableHash = async (
   log: { 
-    immutable_hash: string;
+    hash: string; // FIXED: Changed from immutable_hash to hash
     entity_type: string;
     entity_id: string;
     action: string;
@@ -90,7 +90,7 @@ export const validateImmutableHash = async (
 ): Promise<boolean> => {
   try {
     const recomputed = await generateImmutableHash(log);
-    return log.immutable_hash === recomputed;
+    return log.hash === recomputed; // FIXED: Use hash instead of immutable_hash
   } catch (error) {
     console.error('Failed to validate immutable hash:', error);
     return false;
@@ -158,7 +158,7 @@ export const generateAuditId = async (
  */
 export const verifyAuditTrail = async (
   auditLogs: Array<{
-    immutable_hash: string;
+    hash: string; // FIXED: Changed from immutable_hash to hash
     entity_type: string;
     entity_id: string;
     action: string;

@@ -10,7 +10,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
     srs = [
       {
         id: `${tenantId}_sr01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Request VPN Access",
         description: "Network engineer requires VPN access for remote work.",
         status: "new",
@@ -40,7 +40,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       },
       {
         id: `${tenantId}_sr02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Hardware Request – New Switch",
         description: "New TOR switch required for expansion.",
         status: "approved",
@@ -72,7 +72,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
     srs = [
       {
         id: `${tenantId}_sr01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Access Request – Transcoding Logs",
         description: "Dev team member requests read access to GKE logs.",
         status: "new",
@@ -99,7 +99,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       },
       {
         id: `${tenantId}_sr02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Software Request – ffmpeg Upgrade",
         description: "Developer requests upgraded ffmpeg binaries for testing.",
         status: "fulfilled",
@@ -131,7 +131,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
     srs = [
       {
         id: `${tenantId}_sr01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Password Reset Request",
         description: "Staff member unable to access HR portal.",
         status: "in_progress",
@@ -156,7 +156,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       },
       {
         id: `${tenantId}_sr02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Access Request – SharePoint Site",
         description: "Staff requests access to Finance SharePoint.",
         status: "approved",
@@ -191,7 +191,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
     // Light Audit log
     await db.put("audit_logs", {
       id: `${sr.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "service_request",
       entity_id: sr.id,
       action: "create",
@@ -203,7 +203,7 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
     // Light Activity timeline
     await db.put("activities", {
       id: `${sr.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "service_request",
       entity_id: sr.id,
       action: "created",

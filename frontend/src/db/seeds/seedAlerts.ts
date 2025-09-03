@@ -10,7 +10,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     alerts = [
       {
         id: `${tenantId}_alert01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Router CPU > 90%",
         description: "Core router CPU utilization high for 5+ minutes.",
         status: "open",
@@ -31,7 +31,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_alert02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Switch Port Errors",
         description: "High CRC errors detected on TOR switch.",
         status: "acknowledged",
@@ -57,7 +57,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     alerts = [
       {
         id: `${tenantId}_alert01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Stream Latency > 30s",
         description: "YouTube Live latency exceeded threshold.",
         status: "open",
@@ -78,7 +78,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_alert02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Transcoding Pod OOM Killed",
         description: "GKE pod terminated due to out-of-memory.",
         status: "acknowledged",
@@ -104,7 +104,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     alerts = [
       {
         id: `${tenantId}_alert01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Mail Queue Backlog > 500",
         description: "Exchange mail queues are growing rapidly.",
         status: "open",
@@ -125,7 +125,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_alert02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "VPN Tunnel Drops",
         description: "Intermittent tunnel drops on VPN appliance.",
         status: "acknowledged",
@@ -154,7 +154,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light Audit log
     await db.put("audit_logs", {
       id: `${alert.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "alert",
       entity_id: alert.id,
       action: "create",
@@ -166,7 +166,7 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light Activity timeline
     await db.put("activities", {
       id: `${alert.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "alert",
       entity_id: alert.id,
       action: "created",

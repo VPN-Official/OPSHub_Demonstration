@@ -10,7 +10,7 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
     centers = [
       {
         id: `${tenantId}_cc01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         code: "DCN-OPS-01",
         name: "Networking Operations",
         created_at: now,
@@ -28,7 +28,7 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
     centers = [
       {
         id: `${tenantId}_cc01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         code: "STREAM-OPS-01",
         name: "Streaming Operations",
         created_at: now,
@@ -46,7 +46,7 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
     centers = [
       {
         id: `${tenantId}_cc01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         code: "IT-OPS-01",
         name: "IT Operations",
         created_at: now,
@@ -65,7 +65,7 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
 
     await db.put("audit_logs", {
       id: `${cc.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "cost_center",
       entity_id: cc.id,
       action: "create",
@@ -76,7 +76,7 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
 
     await db.put("activities", {
       id: `${cc.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "cost_center",
       entity_id: cc.id,
       action: "created",

@@ -10,7 +10,7 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
     streams = [
       {
         id: `${tenantId}_vs01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Data Center Networking",
         description: "End-to-end networking for Meta’s global DCN.",
         industry: "Hi-Tech",
@@ -33,7 +33,7 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
     streams = [
       {
         id: `${tenantId}_vs01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "AV & Streaming",
         description: "End-to-end video streaming for Google services.",
         industry: "Media",
@@ -56,7 +56,7 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
     streams = [
       {
         id: `${tenantId}_vs01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Service Desk",
         description: "End-to-end IT support for Gates Foundation staff.",
         industry: "Non-Profit",
@@ -81,7 +81,7 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
     // Light audit log
     await db.put("audit_logs", {
       id: `${vs.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "value_stream",
       entity_id: vs.id,
       action: "create",
@@ -93,7 +93,7 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
     // Light activity
     await db.put("activities", {
       id: `${vs.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "value_stream",
       entity_id: vs.id,
       action: "created",

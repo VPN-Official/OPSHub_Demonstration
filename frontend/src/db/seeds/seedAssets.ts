@@ -10,7 +10,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     assets = [
       {
         id: `${tenantId}_asset_router01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Router-SJC-01",
         type: "network_device",
         status: "active",
@@ -24,7 +24,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_asset_switch01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Switch-TOR-42",
         type: "network_device",
         status: "active",
@@ -43,7 +43,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     assets = [
       {
         id: `${tenantId}_asset_gce_vm01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "VM-Edge-EU-01",
         type: "vm",
         status: "active",
@@ -57,7 +57,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_asset_gke_node01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Node-Transcode-01",
         type: "container",
         status: "active",
@@ -76,7 +76,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     assets = [
       {
         id: `${tenantId}_asset_mx01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Exchange-Mail-01",
         type: "server",
         status: "active",
@@ -90,7 +90,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_asset_vpn_appliance01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "VPN-Appliance-01",
         type: "network_device",
         status: "active",
@@ -104,7 +104,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_asset_ad_server01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "AD-Server-01",
         type: "server",
         status: "active",
@@ -124,7 +124,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
 
     await db.put("audit_logs", {
       id: `${asset.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "asset",
       entity_id: asset.id,
       action: "create",
@@ -135,7 +135,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
 
     await db.put("activities", {
       id: `${asset.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "asset",
       entity_id: asset.id,
       action: "created",

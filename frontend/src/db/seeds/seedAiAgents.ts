@@ -10,7 +10,7 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Router Triage Agent",
         type: "incident_triage",
         status: "active",
@@ -29,7 +29,7 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Latency Reduction Agent",
         type: "alert_correlation",
         status: "active",
@@ -48,7 +48,7 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Service Desk Assistant",
         type: "knowledge_recommendation",
         status: "active",
@@ -68,7 +68,7 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
 
     await db.put("audit_logs", {
       id: `${agent.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "ai_agent",
       entity_id: agent.id,
       action: "create",
@@ -79,7 +79,7 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
 
     await db.put("activities", {
       id: `${agent.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "ai_agent",
       entity_id: agent.id,
       action: "created",

@@ -10,7 +10,7 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Recurring Router CPU Spikes",
         description: "Multiple incidents linked to core router overutilization.",
         status: "analysis",
@@ -36,7 +36,7 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Transcoding Cluster Memory Leaks",
         description: "Incidents show recurring OOM kills in transcoding pods.",
         status: "root_cause_identified",
@@ -62,7 +62,7 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         title: "Recurring VPN Authentication Failures",
         description: "VPN outage incidents traced to faulty RADIUS config.",
         status: "analysis",
@@ -91,7 +91,7 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     // Light Audit log
     await db.put("audit_logs", {
       id: `${prob.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "problem",
       entity_id: prob.id,
       action: "create",
@@ -103,7 +103,7 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     // Light Activity timeline
     await db.put("activities", {
       id: `${prob.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "problem",
       entity_id: prob.id,
       action: "created",

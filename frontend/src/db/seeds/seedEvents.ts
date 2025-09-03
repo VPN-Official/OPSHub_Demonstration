@@ -10,7 +10,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     events = [
       {
         id: `${tenantId}_event01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Syslog",
         message: "Router process restarted automatically",
         severity: "info",
@@ -23,7 +23,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_event02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Syslog",
         message: "BGP session flaps detected on edge switch",
         severity: "warning",
@@ -41,7 +41,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     events = [
       {
         id: `${tenantId}_event01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "GKE",
         message: "Autoscaling triggered: 5 new pods added",
         severity: "info",
@@ -54,7 +54,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_event02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Datadog",
         message: "High latency alert cleared after scaling",
         severity: "info",
@@ -72,7 +72,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     events = [
       {
         id: `${tenantId}_event01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Exchange Monitor",
         message: "Database backup completed successfully",
         severity: "info",
@@ -85,7 +85,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_event02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Cisco ASA",
         message: "VPN configuration updated successfully",
         severity: "info",
@@ -105,7 +105,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light audit log
     await db.put("audit_logs", {
       id: `${event.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "event",
       entity_id: event.id,
       action: "create",
@@ -117,7 +117,7 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light activity
     await db.put("activities", {
       id: `${event.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "event",
       entity_id: event.id,
       action: "collected",

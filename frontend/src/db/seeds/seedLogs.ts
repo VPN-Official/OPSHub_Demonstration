@@ -10,7 +10,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     logs = [
       {
         id: `${tenantId}_log01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Syslog",
         message: "CRITICAL: Router CPU utilization exceeded 90%",
         level: "error",
@@ -23,7 +23,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
       },
       {
         id: `${tenantId}_log02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Syslog",
         message: "WARN: Switch port errors increasing on TOR switch",
         level: "warn",
@@ -41,7 +41,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     logs = [
       {
         id: `${tenantId}_log01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Stackdriver",
         message: "ERROR: Stream latency threshold breached on EU edge node",
         level: "error",
@@ -54,7 +54,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
       },
       {
         id: `${tenantId}_log02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "GKE",
         message: "WARN: Pod OOM kill event detected in transcoding workload",
         level: "warn",
@@ -72,7 +72,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     logs = [
       {
         id: `${tenantId}_log01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Exchange Monitor",
         message: "ERROR: Mail queue backlog exceeded 500 messages",
         level: "error",
@@ -85,7 +85,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
       },
       {
         id: `${tenantId}_log02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "Cisco ASA",
         message: "WARN: VPN tunnel drops observed during peak hours",
         level: "warn",
@@ -105,7 +105,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     // Light audit log
     await db.put("audit_logs", {
       id: `${log.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "log",
       entity_id: log.id,
       action: "create",
@@ -117,7 +117,7 @@ export const seedLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
     // Light activity
     await db.put("activities", {
       id: `${log.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "log",
       entity_id: log.id,
       action: "collected",

@@ -589,7 +589,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({
           ...expenseData,
           recorded_by: userId,
-          tenant_id: tenantId,
+          tenantId: tenantId,
         }),
       });
       
@@ -630,7 +630,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({
           allocations,
           updated_by: userId,
-          tenant_id: tenantId,
+          tenantId: tenantId,
         }),
       });
       
@@ -671,7 +671,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({
           changes: approvalChanges,
           updated_by: userId,
-          tenant_id: tenantId,
+          tenantId: tenantId,
         }),
       });
       
@@ -728,7 +728,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...params,
-          tenant_id: tenantId,
+          tenantId: tenantId,
         }),
       });
       

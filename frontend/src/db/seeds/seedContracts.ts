@@ -10,7 +10,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Cisco Support SLA",
         type: "vendor",
         status: "active",
@@ -30,7 +30,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "GCP Service SLA",
         type: "vendor",
         status: "active",
@@ -50,7 +50,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Microsoft Enterprise Agreement",
         type: "vendor",
         status: "active",
@@ -71,7 +71,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("audit_logs", {
       id: `${contract.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "contract",
       entity_id: contract.id,
       action: "create",
@@ -82,7 +82,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("activities", {
       id: `${contract.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "contract",
       entity_id: contract.id,
       action: "created",

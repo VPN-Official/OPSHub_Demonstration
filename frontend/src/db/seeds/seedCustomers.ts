@@ -10,7 +10,7 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Meta Internal Teams",
         tier: "platinum",
         created_at: now,
@@ -26,7 +26,7 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "YouTube Users",
         tier: "gold",
         created_at: now,
@@ -42,7 +42,7 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         name: "Gates Foundation Staff",
         tier: "gold",
         created_at: now,
@@ -59,7 +59,7 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("audit_logs", {
       id: `${cust.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "customer",
       entity_id: cust.id,
       action: "create",
@@ -70,7 +70,7 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("activities", {
       id: `${cust.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "customer",
       entity_id: cust.id,
       action: "created",

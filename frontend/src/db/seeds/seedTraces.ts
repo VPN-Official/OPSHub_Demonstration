@@ -10,7 +10,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     traces = [
       {
         id: `${tenantId}_trace01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-dcn-001",
         span_id: "span-router-cpu",
@@ -26,7 +26,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_trace02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-dcn-002",
         span_id: "span-switch-forward",
@@ -47,7 +47,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     traces = [
       {
         id: `${tenantId}_trace01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-av-001",
         span_id: "span-edge-latency",
@@ -63,7 +63,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_trace02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-av-002",
         span_id: "span-transcode-ffmpeg",
@@ -84,7 +84,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     traces = [
       {
         id: `${tenantId}_trace01`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-sd-001",
         span_id: "span-exchange-mail",
@@ -100,7 +100,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
       {
         id: `${tenantId}_trace02`,
-        tenant_id: tenantId,
+        tenantId: tenantId,
         source_system: "OpenTelemetry",
         trace_id: "trace-sd-002",
         span_id: "span-vpn-auth",
@@ -123,7 +123,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light audit log
     await db.put("audit_logs", {
       id: `${trace.id}_audit01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       entity_type: "trace",
       entity_id: trace.id,
       action: "create",
@@ -135,7 +135,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     // Light activity
     await db.put("activities", {
       id: `${trace.id}_act01`,
-      tenant_id: tenantId,
+      tenantId: tenantId,
       type: "trace",
       entity_id: trace.id,
       action: "collected",
