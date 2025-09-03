@@ -100,7 +100,23 @@ export interface WorkItemUIState {
 interface ApiOperation<T> {
   optimisticId?: string;
   promise: Promise<T>;
+  abortController?: AbortController;
 }
+
+/**
+ * Retry configuration for API calls
+ */
+interface RetryConfig {
+  maxAttempts: number;
+  baseDelay: number;
+  maxDelay: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxAttempts: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+};
 
 // ---------------------------------
 // 2. Context Interface
@@ -159,6 +175,7 @@ const WorkItemsContext = createContext<WorkItemsContextType | undefined>(undefin
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const OPTIMISTIC_TIMEOUT = 30 * 1000; // 30 seconds
 const STALE_THRESHOLD = 2 * 60 * 1000; // Consider stale after 2 minutes
+const REQUEST_DEDUP_WINDOW = 500; // Deduplicate requests within 500ms
 
 // ---------------------------------
 // 4. Provider Implementation
@@ -190,9 +207,11 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
     lastAction: null,
   });
 
-  // Optimistic updates tracking
+  // Optimistic updates tracking with enhanced memory management
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, WorkItem>>(new Map());
-  const pendingOperations = useRef<Set<string>>(new Set());
+  const pendingOperations = useRef<Map<string, AbortController>>(new Map());
+  const requestDedup = useRef<Map<string, number>>(new Map());
+  const currentWorkItemsCache = useRef<{ items: WorkItem[], timestamp: number } | null>(null);
 
   /**
    * Update async state helper
@@ -209,10 +228,32 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   /**
+   * Clean up stale optimistic updates
+   */
+  const cleanupStaleOptimisticUpdates = useCallback(() => {
+    const now = Date.now();
+    setOptimisticUpdates(prev => {
+      const updated = new Map(prev);
+      let hasChanges = false;
+      
+      prev.forEach((item, id) => {
+        // Remove optimistic updates older than timeout
+        const itemAge = now - new Date(item.updated_at).getTime();
+        if (itemAge > OPTIMISTIC_TIMEOUT) {
+          updated.delete(id);
+          hasChanges = true;
+        }
+      });
+      
+      return hasChanges ? updated : prev;
+    });
+  }, []);
+
+  /**
    * Record action for UI feedback
    */
   const recordAction = useCallback((
-    type: WorkItemUIState['lastAction']['type'],
+    type: 'create' | 'update' | 'delete' | 'bulk_assign' | 'bulk_status_change',
     success: boolean,
     error?: string
   ) => {
@@ -235,42 +276,95 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
   }, [workItemsState.lastFetch]);
 
   /**
-   * API call wrapper with error handling
+   * Sleep helper for retry logic
+   */
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  /**
+   * Calculate exponential backoff delay
+   */
+  const calculateBackoffDelay = (attempt: number, config: RetryConfig): number => {
+    const delay = Math.min(
+      config.baseDelay * Math.pow(2, attempt - 1),
+      config.maxDelay
+    );
+    // Add jitter to prevent thundering herd
+    return delay + Math.random() * 1000;
+  };
+
+  /**
+   * API call wrapper with error handling and retry logic
    */
   const apiCall = useCallback(async <T>(
-    operation: () => Promise<T>,
-    errorContext: string
+    operation: (signal: AbortSignal) => Promise<T>,
+    errorContext: string,
+    retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
   ): Promise<T> => {
-    try {
-      return await operation();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : `${errorContext} failed`;
-      updateState({ error: errorMessage });
-      throw error;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= retryConfig.maxAttempts; attempt++) {
+      const abortController = new AbortController();
+      
+      try {
+        const result = await operation(abortController.signal);
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(`${errorContext} failed`);
+        
+        // Don't retry on abort or client errors (4xx)
+        if (lastError.name === 'AbortError' || 
+            (lastError.message.includes('HTTP 4') && !lastError.message.includes('HTTP 429'))) {
+          break;
+        }
+        
+        // Retry on network errors, 5xx errors, and rate limits (429)
+        if (attempt < retryConfig.maxAttempts) {
+          const delay = calculateBackoffDelay(attempt, retryConfig);
+          console.log(`Retrying ${errorContext} after ${delay}ms (attempt ${attempt}/${retryConfig.maxAttempts})`);
+          await sleep(delay);
+        }
+      }
     }
+    
+    const errorMessage = lastError?.message || `${errorContext} failed after ${retryConfig.maxAttempts} attempts`;
+    updateState({ error: errorMessage });
+    throw lastError || new Error(errorMessage);
   }, [updateState]);
 
   /**
-   * Refresh work items from backend
-   * Backend handles all filtering, sorting, and business logic
+   * Refresh work items from backend with deduplication and cancellation
    */
   const refreshWorkItems = useCallback(async () => {
     if (!tenantId || workItemsState.loading) return;
 
+    // Request deduplication
+    const dedupKey = `refresh-${tenantId}`;
+    const lastRequest = requestDedup.current.get(dedupKey);
+    if (lastRequest && Date.now() - lastRequest < REQUEST_DEDUP_WINDOW) {
+      return;
+    }
+    requestDedup.current.set(dedupKey, Date.now());
+
     updateState({ loading: true, error: null });
+    
+    const abortController = new AbortController();
+    const operationId = `refresh-${Date.now()}`;
+    pendingOperations.current.set(operationId, abortController);
 
     try {
-      // Backend API call - handles all business logic, aggregation, and AI scoring
-      const response = await fetch(`/api/tenants/${tenantId}/work-items`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const data = await apiCall(async (signal) => {
+        const response = await fetch(`/api/tenants/${tenantId}/work-items`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal,
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch work items: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-      const data: WorkItem[] = await response.json();
+        return response.json();
+      }, 'Fetch work items');
 
       updateState({
         data,
@@ -278,14 +372,20 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
         lastFetch: Date.now(),
         stale: false,
       });
+      
+      // Clear cache when data is refreshed
+      currentWorkItemsCache.current = null;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh work items';
-      updateState({
-        loading: false,
-        error: errorMessage,
-      });
+      if (error instanceof Error && error.name !== 'AbortError') {
+        updateState({
+          loading: false,
+          error: error.message,
+        });
+      }
+    } finally {
+      pendingOperations.current.delete(operationId);
     }
-  }, [tenantId, workItemsState.loading, updateState]);
+  }, [tenantId, workItemsState.loading, updateState, apiCall]);
 
   /**
    * Create work item with optimistic UI update
@@ -310,15 +410,17 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistic UI update
     setOptimisticUpdates(prev => new Map(prev.set(optimisticId, optimisticItem)));
-    pendingOperations.current.add(optimisticId);
+    const abortController = new AbortController();
+    pendingOperations.current.set(optimisticId, abortController);
 
     try {
       // Backend handles ALL business logic, validation, and AI processing
-      const response = await apiCall(async () => {
+      const response = await apiCall(async (signal) => {
         const res = await fetch(`/api/tenants/${tenantId}/work-items/${type}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(itemData),
+          signal,
         });
 
         if (!res.ok) {
@@ -355,6 +457,7 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       throw error;
     } finally {
       pendingOperations.current.delete(optimisticId);
+      currentWorkItemsCache.current = null; // Invalidate cache
     }
   }, [tenantId, workItemsState.data, updateState, apiCall, recordAction]);
 
@@ -380,15 +483,17 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
     };
     
     setOptimisticUpdates(prev => new Map(prev.set(id, optimisticItem)));
-    pendingOperations.current.add(id);
+    const abortController = new AbortController();
+    pendingOperations.current.set(id, abortController);
 
     try {
       // Backend handles ALL business logic, validation, and AI re-processing
-      const response = await apiCall(async () => {
+      const response = await apiCall(async (signal) => {
         const res = await fetch(`/api/tenants/${tenantId}/work-items/${existingItem.type}/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates),
+          signal,
         });
 
         if (!res.ok) {
@@ -425,6 +530,7 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       throw error;
     } finally {
       pendingOperations.current.delete(id);
+      currentWorkItemsCache.current = null; // Invalidate cache
     }
   }, [tenantId, workItemsState.data, updateState, apiCall, recordAction]);
 
@@ -443,11 +549,16 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       data: workItemsState.data.filter(item => item.id !== id),
     });
 
+    const abortController = new AbortController();
+    const operationId = `delete-${id}`;
+    pendingOperations.current.set(operationId, abortController);
+
     try {
       // Backend handles ALL deletion business logic
-      await apiCall(async () => {
+      await apiCall(async (signal) => {
         const res = await fetch(`/api/tenants/${tenantId}/work-items/${itemToDelete.type}/${id}`, {
           method: 'DELETE',
+          signal,
         });
 
         if (!res.ok) {
@@ -465,12 +576,14 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       });
       recordAction('delete', false, error instanceof Error ? error.message : 'Deletion failed');
       throw error;
+    } finally {
+      pendingOperations.current.delete(operationId);
+      currentWorkItemsCache.current = null; // Invalidate cache
     }
   }, [tenantId, workItemsState.data, updateState, apiCall, recordAction]);
 
   /**
-   * Bulk assign items to user or team
-   * Backend handles all assignment business rules
+   * Bulk assign items to user or team with better error recovery
    */
   const bulkAssign = useCallback(async (
     itemIds: string[],
@@ -481,10 +594,14 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
 
     updateUIState({ bulkOperationInProgress: true });
 
+    // Store original states for rollback
+    const originalStates = new Map<string, WorkItem>();
+    
     // Optimistic updates for all items
     itemIds.forEach(id => {
       const existingItem = workItemsState.data.find(item => item.id === id);
       if (existingItem) {
+        originalStates.set(id, existingItem);
         const assignmentField = assigneeType === 'user' ? 'assigned_to_user_id' : 'assigned_to_team_id';
         const optimisticItem = { 
           ...existingItem, 
@@ -495,9 +612,13 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
+    const abortController = new AbortController();
+    const operationId = `bulk-assign-${Date.now()}`;
+    pendingOperations.current.set(operationId, abortController);
+
     try {
       // Backend handles ALL assignment business logic and validation
-      await apiCall(async () => {
+      await apiCall(async (signal) => {
         const res = await fetch(`/api/tenants/${tenantId}/work-items/bulk-assign`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -506,6 +627,7 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
             assignee_id: assigneeId,
             assignee_type: assigneeType,
           }),
+          signal,
         });
 
         if (!res.ok) {
@@ -526,24 +648,25 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       updateState({ stale: true });
       recordAction('bulk_assign', true);
     } catch (error) {
-      // Rollback optimistic updates
-      itemIds.forEach(id => {
-        setOptimisticUpdates(prev => {
-          const updated = new Map(prev);
+      // Rollback optimistic updates with original states
+      setOptimisticUpdates(prev => {
+        const updated = new Map(prev);
+        originalStates.forEach((originalItem, id) => {
           updated.delete(id);
-          return updated;
         });
+        return updated;
       });
       recordAction('bulk_assign', false, error instanceof Error ? error.message : 'Bulk assignment failed');
       throw error;
     } finally {
       updateUIState({ bulkOperationInProgress: false });
+      pendingOperations.current.delete(operationId);
+      currentWorkItemsCache.current = null; // Invalidate cache
     }
   }, [tenantId, workItemsState.data, updateState, updateUIState, apiCall, recordAction]);
 
   /**
-   * Bulk update status for multiple items
-   * Backend handles all status change business rules
+   * Bulk update status for multiple items with better error recovery
    */
   const bulkStatusUpdate = useCallback(async (
     itemIds: string[],
@@ -553,10 +676,14 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
 
     updateUIState({ bulkOperationInProgress: true });
 
+    // Store original states for rollback
+    const originalStates = new Map<string, WorkItem>();
+    
     // Optimistic updates
     itemIds.forEach(id => {
       const existingItem = workItemsState.data.find(item => item.id === id);
       if (existingItem) {
+        originalStates.set(id, existingItem);
         const optimisticItem = { 
           ...existingItem, 
           status: newStatus,
@@ -566,9 +693,13 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
+    const abortController = new AbortController();
+    const operationId = `bulk-status-${Date.now()}`;
+    pendingOperations.current.set(operationId, abortController);
+
     try {
       // Backend handles ALL status change business logic
-      await apiCall(async () => {
+      await apiCall(async (signal) => {
         const res = await fetch(`/api/tenants/${tenantId}/work-items/bulk-status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -576,6 +707,7 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
             item_ids: itemIds,
             status: newStatus,
           }),
+          signal,
         });
 
         if (!res.ok) {
@@ -596,18 +728,20 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       updateState({ stale: true });
       recordAction('bulk_status_change', true);
     } catch (error) {
-      // Rollback optimistic updates
-      itemIds.forEach(id => {
-        setOptimisticUpdates(prev => {
-          const updated = new Map(prev);
+      // Rollback optimistic updates with original states  
+      setOptimisticUpdates(prev => {
+        const updated = new Map(prev);
+        originalStates.forEach((originalItem, id) => {
           updated.delete(id);
-          return updated;
         });
+        return updated;
       });
       recordAction('bulk_status_change', false, error instanceof Error ? error.message : 'Bulk status update failed');
       throw error;
     } finally {
       updateUIState({ bulkOperationInProgress: false });
+      pendingOperations.current.delete(operationId);
+      currentWorkItemsCache.current = null; // Invalidate cache
     }
   }, [tenantId, workItemsState.data, updateState, updateUIState, apiCall, recordAction]);
 
@@ -620,12 +754,19 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
       lastFetch: null,
       error: null 
     });
+    currentWorkItemsCache.current = null;
   }, [updateState]);
 
   /**
-   * Get current work items with optimistic updates applied
+   * Get current work items with optimistic updates applied (with caching)
    */
   const getCurrentWorkItems = useCallback((): WorkItem[] => {
+    // Check cache first (valid for 100ms to batch multiple calls in same render)
+    if (currentWorkItemsCache.current && 
+        Date.now() - currentWorkItemsCache.current.timestamp < 100) {
+      return currentWorkItemsCache.current.items;
+    }
+    
     const baseItems = workItemsState.data;
     const result = [...baseItems];
 
@@ -638,6 +779,12 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
         result.push(optimisticItem);
       }
     });
+
+    // Cache the result
+    currentWorkItemsCache.current = {
+      items: result,
+      timestamp: Date.now()
+    };
 
     return result;
   }, [workItemsState.data, optimisticUpdates]);
@@ -782,11 +929,28 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
   }, [workItemsState.lastFetch, workItemsState.stale, isCacheStale, updateState]);
 
   /**
+   * Clean up stale optimistic updates periodically
+   */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cleanupStaleOptimisticUpdates();
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [cleanupStaleOptimisticUpdates]);
+
+  /**
    * Cleanup on unmount
    */
   useEffect(() => {
     return () => {
+      // Cancel all pending operations
+      pendingOperations.current.forEach((controller) => {
+        controller.abort();
+      });
       pendingOperations.current.clear();
+      requestDedup.current.clear();
+      currentWorkItemsCache.current = null;
       setOptimisticUpdates(new Map());
       updateUIState({
         selectedItems: new Set(),
@@ -920,16 +1084,30 @@ export const useWorkItemsSearch = (query: string, debounceMs: number = 300) => {
 
 /**
  * Hook for filtered work items with memoization
+ * IMPORTANT: Memoize the filters object in the consuming component to prevent infinite re-renders
  */
 export const useFilteredWorkItems = (filters: WorkItemUIFilters) => {
   const { getFilteredWorkItems, workItemsState } = useWorkItems();
   
+  // Stabilize the filters object to prevent unnecessary re-renders
+  const stableFilters = useMemo(() => filters, [
+    filters.type,
+    filters.status,
+    filters.priority,
+    filters.assigned_to_user_id,
+    filters.assigned_to_team_id,
+    filters.business_service_id,
+    filters.searchQuery,
+    filters.sla_breach_risk,
+    filters.tags?.join(','), // Convert array to stable string
+  ]);
+  
   return useMemo(() => ({
-    items: getFilteredWorkItems(filters),
+    items: getFilteredWorkItems(stableFilters),
     loading: workItemsState.loading,
     error: workItemsState.error,
     stale: workItemsState.stale,
-  }), [getFilteredWorkItems, filters, workItemsState.loading, workItemsState.error, workItemsState.stale]);
+  }), [getFilteredWorkItems, stableFilters, workItemsState.loading, workItemsState.error, workItemsState.stale]);
 };
 
 /**
