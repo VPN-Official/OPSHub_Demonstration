@@ -16,7 +16,7 @@ import {
 } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
-import { loadConfig } from "../config/configLoader";
+import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
 // 1. Type Definitions
@@ -75,15 +75,24 @@ export interface RunbookDetails extends Runbook {
 }
 
 /**
- * Enhanced AsyncState interface for robust UI state management
+ * AsyncState interface for robust UI state management
  */
 export interface AsyncState<T> {
   data: T;
   loading: boolean;
   error: string | null;
   lastFetch: string | null;
-  isStale: boolean;
-  optimisticUpdates: Map<string, T>;
+  stale: boolean;
+}
+
+/**
+ * Optimistic update tracking
+ */
+interface OptimisticUpdate<T> {
+  id: string;
+  action: 'create' | 'update' | 'delete';
+  entity: T;
+  timestamp: number;
 }
 
 // ---------------------------------
@@ -91,7 +100,7 @@ export interface AsyncState<T> {
 // ---------------------------------
 interface RunbooksContextType {
   // Core async state
-  state: AsyncState<Runbook[]>;
+  runbooks: AsyncState<Runbook[]>;
   
   // Core CRUD operations - thin API wrappers only
   addRunbook: (rb: Omit<Runbook, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<void>;
@@ -109,21 +118,22 @@ interface RunbooksContextType {
 
   // Cache management for UI performance
   invalidateCache: () => void;
-  isDataStale: () => boolean;
+  isStale: boolean;
   
   // Config integration from backend
   config: {
     types: string[];
     statuses: string[];
-    isLoaded: boolean;
   };
+
+  // Optimistic updates
+  optimisticUpdates: OptimisticUpdate<Runbook>[];
 }
 
 const RunbooksContext = createContext<RunbooksContextType | undefined>(undefined);
 
-// Constants for cache management
+// Cache configuration
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 // ---------------------------------
 // 3. Provider
@@ -131,68 +141,44 @@ const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
+  const { config: globalConfig, validateEnum } = useConfig();
 
-  // Enhanced state management
-  const [state, setState] = useState<AsyncState<Runbook[]>>({
+  // Core async state
+  const [runbooks, setRunbooks] = useState<AsyncState<Runbook[]>>({
     data: [],
     loading: false,
     error: null,
     lastFetch: null,
-    isStale: true,
-    optimisticUpdates: new Map(),
+    stale: true,
   });
 
-  const [config, setConfig] = useState<{
-    types: string[];
-    statuses: string[];
-    isLoaded: boolean;
-  }>({
-    types: [],
-    statuses: [],
-    isLoaded: false,
-  });
+  // Optimistic updates state
+  const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate<Runbook>[]>([]);
 
-  // Load configuration when tenant changes
-  useEffect(() => {
-    if (tenantId) {
-      loadConfig(tenantId)
-        .then((tenantConfig) => {
-          setConfig({
-            types: tenantConfig.runbooks?.types || [],
-            statuses: tenantConfig.runbooks?.statuses || [],
-            isLoaded: true,
-          });
-        })
-        .catch((error) => {
-          console.error('Failed to load runbooks config:', error);
-          setState(prev => ({ ...prev, error: 'Failed to load configuration' }));
-        });
-    } else {
-      setConfig({ types: [], statuses: [], isLoaded: false });
-    }
-  }, [tenantId]);
+  // UI configuration from backend
+  const config = useMemo(() => ({
+    types: globalConfig?.runbooks?.types || [
+      'procedure', 'troubleshooting', 'maintenance', 'emergency', 'diagnostic', 'rollback'
+    ],
+    statuses: globalConfig?.statuses?.runbooks || [
+      'draft', 'review', 'approved', 'published', 'deprecated', 'archived'
+    ],
+  }), [globalConfig]);
 
-  // Auto-refresh when tenant changes
-  useEffect(() => {
-    if (tenantId && config.isLoaded) {
-      refreshRunbooks();
-    }
-  }, [tenantId, config.isLoaded]);
+  // Check if data is stale
+  const isStale = useMemo(() => {
+    if (!runbooks.lastFetch) return true;
+    return Date.now() - new Date(runbooks.lastFetch).getTime() > CACHE_TTL_MS;
+  }, [runbooks.lastFetch]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      setState(prev => ({ 
-        ...prev, 
-        optimisticUpdates: new Map() 
-      }));
-    };
-  }, []);
+  // ---------------------------------
+  // UI Helpers
+  // ---------------------------------
 
   /**
-   * Metadata enrichment helper (UI-only metadata)
+   * UI metadata enrichment helper (UI-only metadata)
    */
-  const ensureMetadata = useCallback((runbook: Runbook): Runbook => {
+  const ensureUIMetadata = useCallback((runbook: Partial<Runbook>): Partial<Runbook> => {
     const now = new Date().toISOString();
     return {
       ...runbook,
@@ -214,49 +200,78 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
    * Basic UI validation only - complex business rules handled by backend
    */
   const validateForUI = useCallback((runbook: Partial<Runbook>): void => {
-    if (!runbook.title?.trim()) {
-      throw new Error("Title is required");
-    }
-    if (runbook.title.trim().length < 3) {
+    if (!runbook.title || runbook.title.trim().length < 3) {
       throw new Error("Title must be at least 3 characters");
     }
-    if (runbook.type && !config.types.includes(runbook.type)) {
+    
+    if (!runbook.description || runbook.description.trim().length < 5) {
+      throw new Error("Description must be at least 5 characters");
+    }
+    
+    // Use global config validation
+    if (runbook.type && !validateEnum('runbooks', runbook.type)) {
       throw new Error(`Invalid runbook type: ${runbook.type}`);
     }
-    if (runbook.status && !config.statuses.includes(runbook.status)) {
+    
+    if (runbook.status && !validateEnum('statuses', runbook.status, 'runbooks')) {
       throw new Error(`Invalid runbook status: ${runbook.status}`);
     }
-  }, [config.types, config.statuses]);
+  }, [validateEnum]);
 
   /**
-   * Core data fetching
+   * Apply optimistic updates to data
+   */
+  const getRunbooksWithOptimisticUpdates = useCallback((): Runbook[] => {
+    let result = [...runbooks.data];
+    
+    optimisticUpdates.forEach(update => {
+      if (update.action === 'create') {
+        result = [update.entity, ...result];
+      } else if (update.action === 'update') {
+        result = result.map(rb => rb.id === update.entity.id ? update.entity : rb);
+      } else if (update.action === 'delete') {
+        result = result.filter(rb => rb.id !== update.entity.id);
+      }
+    });
+    
+    return result;
+  }, [runbooks.data, optimisticUpdates]);
+
+  // ---------------------------------
+  // Core Data Operations
+  // ---------------------------------
+
+  /**
+   * Refresh runbooks from backend
    */
   const refreshRunbooks = useCallback(async (): Promise<void> => {
     if (!tenantId) {
-      setState(prev => ({ ...prev, error: "No tenant selected" }));
+      setRunbooks(prev => ({ ...prev, error: "No tenant selected" }));
       return;
     }
 
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    setRunbooks(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const runbooks = await getAll<Runbook>(tenantId, "runbooks");
+      const data = await getAll<Runbook>(tenantId, "runbooks");
       const now = new Date().toISOString();
 
-      setState(prev => ({
-        ...prev,
-        data: runbooks,
+      setRunbooks({
+        data,
         loading: false,
+        error: null,
         lastFetch: now,
-        isStale: false,
-        optimisticUpdates: new Map(), // Clear optimistic updates on successful fetch
-      }));
+        stale: false,
+      });
 
-      console.log(`Loaded ${runbooks.length} runbooks for tenant ${tenantId}`);
+      // Clear optimistic updates on successful fetch
+      setOptimisticUpdates([]);
+
+      console.log(`Loaded ${data.length} runbooks for tenant ${tenantId}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load runbooks';
       console.error('Runbooks loading error:', errorMessage);
-      setState(prev => ({
+      setRunbooks(prev => ({
         ...prev,
         loading: false,
         error: errorMessage,
@@ -271,14 +286,16 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
     if (!tenantId || !id) return undefined;
     
     // Check optimistic updates first
-    const optimisticUpdate = state.optimisticUpdates.get(id);
+    const optimisticUpdate = optimisticUpdates.find(update => 
+      update.entity.id === id && (update.action === 'create' || update.action === 'update')
+    );
     if (optimisticUpdate) {
-      return optimisticUpdate;
+      return optimisticUpdate.entity;
     }
 
     // Check local cache
-    const cached = state.data.find(rb => rb.id === id);
-    if (cached && !isDataStale()) {
+    const cached = runbooks.data.find(rb => rb.id === id);
+    if (cached && !isStale) {
       return cached;
     }
 
@@ -289,7 +306,7 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
       console.error(`Failed to get runbook ${id}:`, error);
       return undefined;
     }
-  }, [tenantId, state.data, state.optimisticUpdates]);
+  }, [tenantId, runbooks.data, optimisticUpdates, isStale]);
 
   /**
    * Add runbook with optimistic UI updates
@@ -304,20 +321,21 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
     validateForUI(runbookData);
 
     const now = new Date().toISOString();
-    const tempId = crypto.randomUUID();
-    const optimisticRunbook = ensureMetadata({
+    const tempId = `temp_${Date.now()}`;
+    const optimisticRunbook = ensureUIMetadata({
       ...runbookData,
       id: tempId,
       created_at: now,
       updated_at: now,
-    } as Runbook);
+    }) as Runbook;
 
-    // Optimistic update
-    setState(prev => ({
-      ...prev,
-      data: [...prev.data, optimisticRunbook],
-      optimisticUpdates: new Map(prev.optimisticUpdates).set(tempId, optimisticRunbook),
-    }));
+    // Add optimistic update
+    setOptimisticUpdates(prev => [...prev, {
+      id: tempId,
+      action: 'create',
+      entity: optimisticRunbook,
+      timestamp: Date.now(),
+    }]);
 
     try {
       // Backend handles ALL business validation and logic
@@ -347,20 +365,14 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
       // Refresh to get server-generated data
       await refreshRunbooks();
     } catch (error) {
-      // Rollback optimistic update on failure
-      setState(prev => {
-        const newUpdates = new Map(prev.optimisticUpdates);
-        newUpdates.delete(tempId);
-        return {
-          ...prev,
-          data: prev.data.filter(rb => rb.id !== tempId),
-          optimisticUpdates: newUpdates,
-          error: error instanceof Error ? error.message : 'Failed to create runbook',
-        };
-      });
+      // Remove optimistic update on failure
+      setOptimisticUpdates(prev => prev.filter(update => update.id !== tempId));
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create runbook';
+      setRunbooks(prev => ({ ...prev, error: errorMessage }));
       throw error;
     }
-  }, [tenantId, validateForUI, ensureMetadata, enqueueItem, refreshRunbooks]);
+  }, [tenantId, validateForUI, ensureUIMetadata, enqueueItem, refreshRunbooks]);
 
   /**
    * Update runbook with optimistic UI updates
@@ -370,17 +382,18 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
 
     validateForUI(runbook);
 
-    const enriched = ensureMetadata({
+    const enriched = ensureUIMetadata({
       ...runbook,
       updated_at: new Date().toISOString(),
-    });
+    }) as Runbook;
 
-    // Optimistic update
-    setState(prev => ({
-      ...prev,
-      data: prev.data.map(rb => rb.id === runbook.id ? enriched : rb),
-      optimisticUpdates: new Map(prev.optimisticUpdates).set(runbook.id, enriched),
-    }));
+    // Add optimistic update
+    setOptimisticUpdates(prev => [...prev, {
+      id: runbook.id,
+      action: 'update',
+      entity: enriched,
+      timestamp: Date.now(),
+    }]);
 
     try {
       await putWithAudit(
@@ -405,23 +418,21 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
 
       console.log(`Successfully updated runbook: ${runbook.title}`);
       
-      // Clear optimistic update on success
-      setState(prev => {
-        const newUpdates = new Map(prev.optimisticUpdates);
-        newUpdates.delete(runbook.id);
-        return { ...prev, optimisticUpdates: newUpdates };
-      });
+      // Remove optimistic update on success
+      setOptimisticUpdates(prev => prev.filter(update => 
+        !(update.id === runbook.id && update.action === 'update')
+      ));
     } catch (error) {
-      // Rollback optimistic update and refresh from server
-      setState(prev => {
-        const newUpdates = new Map(prev.optimisticUpdates);
-        newUpdates.delete(runbook.id);
-        return { ...prev, optimisticUpdates: newUpdates };
-      });
-      await refreshRunbooks();
+      // Remove optimistic update on failure
+      setOptimisticUpdates(prev => prev.filter(update => 
+        !(update.id === runbook.id && update.action === 'update')
+      ));
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update runbook';
+      setRunbooks(prev => ({ ...prev, error: errorMessage }));
       throw error;
     }
-  }, [tenantId, validateForUI, ensureMetadata, enqueueItem, refreshRunbooks]);
+  }, [tenantId, validateForUI, ensureUIMetadata, enqueueItem]);
 
   /**
    * Delete runbook with optimistic UI updates
@@ -429,16 +440,18 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
   const deleteRunbook = useCallback(async (id: string, userId?: string): Promise<void> => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    const runbookToDelete = state.data.find(rb => rb.id === id);
+    const runbookToDelete = runbooks.data.find(rb => rb.id === id);
     if (!runbookToDelete) {
       throw new Error("Runbook not found");
     }
 
-    // Optimistic update
-    setState(prev => ({
-      ...prev,
-      data: prev.data.filter(rb => rb.id !== id),
-    }));
+    // Add optimistic update
+    setOptimisticUpdates(prev => [...prev, {
+      id,
+      action: 'delete',
+      entity: runbookToDelete,
+      timestamp: Date.now(),
+    }]);
 
     try {
       await removeWithAudit(
@@ -461,70 +474,110 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
       });
 
       console.log(`Successfully deleted runbook: ${runbookToDelete.title}`);
-    } catch (error) {
-      // Rollback on failure
-      setState(prev => ({
+      
+      // Remove from actual data
+      setRunbooks(prev => ({
         ...prev,
-        data: [...prev.data, runbookToDelete].sort((a, b) => a.title.localeCompare(b.title)),
-        error: error instanceof Error ? error.message : 'Failed to delete runbook',
+        data: prev.data.filter(rb => rb.id !== id),
       }));
+      
+      // Remove optimistic update
+      setOptimisticUpdates(prev => prev.filter(update => 
+        !(update.id === id && update.action === 'delete')
+      ));
+    } catch (error) {
+      // Remove optimistic update on failure
+      setOptimisticUpdates(prev => prev.filter(update => 
+        !(update.id === id && update.action === 'delete')
+      ));
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete runbook';
+      setRunbooks(prev => ({ ...prev, error: errorMessage }));
       throw error;
     }
-  }, [tenantId, state.data, enqueueItem]);
+  }, [tenantId, runbooks.data, enqueueItem]);
 
   // ---------------------------------
   // Simple Client-Side Filtering for UI Responsiveness
   // ---------------------------------
   
+  const currentRunbooks = getRunbooksWithOptimisticUpdates();
+
   const getRunbooksByType = useCallback((type: string): Runbook[] => {
-    return state.data.filter(runbook => runbook.type === type);
-  }, [state.data]);
+    return currentRunbooks.filter(runbook => runbook.type === type);
+  }, [currentRunbooks]);
 
   const getRunbooksByStatus = useCallback((status: string): Runbook[] => {
-    return state.data.filter(runbook => runbook.status === status);
-  }, [state.data]);
+    return currentRunbooks.filter(runbook => runbook.status === status);
+  }, [currentRunbooks]);
 
   const getRunbooksByOwner = useCallback((ownerId: string): Runbook[] => {
-    return state.data.filter(runbook => 
+    return currentRunbooks.filter(runbook => 
       runbook.owner_user_id === ownerId || runbook.owner_team_id === ownerId
     );
-  }, [state.data]);
+  }, [currentRunbooks]);
 
   const searchRunbooks = useCallback((query: string): Runbook[] => {
-    if (!query.trim()) return state.data;
+    if (!query.trim()) return currentRunbooks;
     
     const lowerQuery = query.toLowerCase();
-    return state.data.filter(runbook =>
+    return currentRunbooks.filter(runbook =>
       runbook.title.toLowerCase().includes(lowerQuery) ||
       runbook.description?.toLowerCase().includes(lowerQuery) ||
       runbook.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
     );
-  }, [state.data]);
+  }, [currentRunbooks]);
 
   const getRecentRunbooks = useCallback((limit = 10): Runbook[] => {
-    return [...state.data]
+    return [...currentRunbooks]
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, limit);
-  }, [state.data]);
+  }, [currentRunbooks]);
 
   // ---------------------------------
   // Cache Management
   // ---------------------------------
   
   const invalidateCache = useCallback((): void => {
-    setState(prev => ({ ...prev, isStale: true, lastFetch: null }));
+    setRunbooks(prev => ({ ...prev, stale: true, lastFetch: null }));
   }, []);
 
-  const isDataStale = useCallback((): boolean => {
-    if (!state.lastFetch) return true;
-    const now = new Date().getTime();
-    const lastFetchTime = new Date(state.lastFetch).getTime();
-    return (now - lastFetchTime) > STALE_THRESHOLD_MS;
-  }, [state.lastFetch]);
+  // ---------------------------------
+  // Effects
+  // ---------------------------------
 
-  // Memoize context value to prevent unnecessary re-renders
+  // Initialize data when tenant/config changes
+  useEffect(() => {
+    if (tenantId && globalConfig) {
+      refreshRunbooks();
+    } else {
+      // Reset state when no tenant
+      setRunbooks({ data: [], loading: false, error: null, lastFetch: null, stale: false });
+      setOptimisticUpdates([]);
+    }
+  }, [tenantId, globalConfig, refreshRunbooks]);
+
+  // Auto-refresh when data becomes stale
+  useEffect(() => {
+    if (runbooks.stale && !runbooks.loading && tenantId) {
+      console.log("🔄 Runbooks data is stale, auto-refreshing...");
+      refreshRunbooks();
+    }
+  }, [runbooks.stale, runbooks.loading, tenantId, refreshRunbooks]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setOptimisticUpdates([]);
+    };
+  }, []);
+
+  // ---------------------------------
+  // Context Value (Memoized for Performance)
+  // ---------------------------------
+
   const contextValue = useMemo((): RunbooksContextType => ({
-    state,
+    runbooks,
     addRunbook,
     updateRunbook,
     deleteRunbook,
@@ -536,10 +589,11 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
     searchRunbooks,
     getRecentRunbooks,
     invalidateCache,
-    isDataStale,
+    isStale,
     config,
+    optimisticUpdates,
   }), [
-    state,
+    runbooks,
     addRunbook,
     updateRunbook,
     deleteRunbook,
@@ -551,8 +605,9 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
     searchRunbooks,
     getRecentRunbooks,
     invalidateCache,
-    isDataStale,
+    isStale,
     config,
+    optimisticUpdates,
   ]);
 
   return (
@@ -579,7 +634,7 @@ export const useRunbooks = () => {
  * Selective subscription hook for specific runbook
  */
 export const useRunbookDetails = (id: string) => {
-  const { state, getRunbook } = useRunbooks();
+  const { getRunbook, runbooks } = useRunbooks();
   const [runbook, setRunbook] = useState<Runbook | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -604,7 +659,7 @@ export const useRunbookDetails = (id: string) => {
     };
 
     fetchRunbook();
-  }, [id, getRunbook, state.lastFetch]); // Re-fetch when data refreshes
+  }, [id, getRunbook, runbooks.lastFetch]); // Re-fetch when data refreshes
 
   return { runbook, loading };
 };
@@ -623,12 +678,4 @@ export const useRunbooksByStatus = (status: string) => {
 export const useRunbooksByType = (type: string) => {
   const { getRunbooksByType } = useRunbooks();
   return useMemo(() => getRunbooksByType(type), [getRunbooksByType, type]);
-};
-
-/**
- * Hook for async state management
- */
-export const useRunbooksState = () => {
-  const { state, refreshRunbooks, invalidateCache, isDataStale } = useRunbooks();
-  return { state, refreshRunbooks, invalidateCache, isDataStale };
 };
