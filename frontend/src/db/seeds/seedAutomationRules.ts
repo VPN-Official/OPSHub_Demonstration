@@ -75,11 +75,11 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
       entity_id: rule.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + rule.id,
+      hash: "hash_" + rule.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${rule.id}_act01`,
       tenantId,
       type: "automation_rule",

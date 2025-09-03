@@ -80,11 +80,11 @@ export const seedPolicy = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       entity_id: pol.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + pol.id,
+      hash: "hash_" + pol.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${pol.id}_act01`,
       tenantId,
       type: "policy",

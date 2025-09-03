@@ -70,11 +70,11 @@ export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AI
       entity_id: comm.id,
       action: "send",
       timestamp: now,
-      immutable_hash: "hash_" + comm.id,
+      hash: "hash_" + comm.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${comm.id}_act01`,
       tenantId,
       type: "stakeholder_comm",

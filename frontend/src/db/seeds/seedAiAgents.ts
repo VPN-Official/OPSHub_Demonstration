@@ -81,12 +81,12 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
       entity_id: agent.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + agent.id,
+      hash: "hash_" + agent.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${agent.id}_act01`,
       tenantId,
       type: "ai_agent",

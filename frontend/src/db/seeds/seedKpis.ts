@@ -85,11 +85,11 @@ export const seedKpis = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
       entity_id: kpi.id,
       action: "record",
       timestamp: now,
-      immutable_hash: "hash_" + kpi.id,
+      hash: "hash_" + kpi.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${kpi.id}_act01`,
       tenantId,
       type: "kpi",

@@ -79,7 +79,7 @@ export const seedAuditLogs = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     ip_address: "10.0.0.1",
     location: tenantId,
     device_id: "seed-runner",
-    immutable_hash: uuidv4(),
+    hash: uuidv4(),
     compliance_flags: ["SOX"],
     tags: ["seed", "init"],
     custom_fields: { tenantId },

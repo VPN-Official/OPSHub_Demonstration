@@ -51,7 +51,7 @@ export const seedWorkItems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
   }
 
   for (const entity of workItems) {
-    await db.put("workItems", entity);
+    await db.put("workItem", entity);
 
     await db.put("audit_logs", {
       id: `${entity.id}_audit01`,
@@ -64,7 +64,7 @@ export const seedWorkItems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${entity.id}_act01`,
       tenantId: tenantId,
       type: "workItems",

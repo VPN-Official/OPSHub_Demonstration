@@ -121,12 +121,12 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
       entity_id: chg.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + chg.id,
+      hash: "hash_" + chg.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${chg.id}_act01`,
       tenantId,
       type: "change_request",

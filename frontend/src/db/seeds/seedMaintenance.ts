@@ -117,7 +117,7 @@ export const seedMaintenance = async (tenantId: string, db: IDBPDatabase<AIOpsDB
   }
 
   for (const mnt of maintenances) {
-    await db.put("maintenances", mnt);
+    await db.put("maintenance", mnt);
 
     // Audit log
     await db.put("audit_logs", {
@@ -127,12 +127,12 @@ export const seedMaintenance = async (tenantId: string, db: IDBPDatabase<AIOpsDB
       entity_id: mnt.id,
       action: "create",
       timestamp: now.toISOString(),
-      immutable_hash: "hash_" + mnt.id,
+      hash: "hash_" + mnt.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${mnt.id}_act01`,
       tenantId,
       type: "maintenance",

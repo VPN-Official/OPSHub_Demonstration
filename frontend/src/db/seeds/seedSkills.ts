@@ -36,7 +36,7 @@ export const seedSkills = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       entity_id: skill.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + skill.id,
+      hash: "hash_" + skill.id,
       tags: ["seed"],
     });
   }

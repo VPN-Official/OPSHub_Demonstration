@@ -45,11 +45,11 @@ export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOps
       entity_id: metric.id,
       action: "record",
       timestamp: now,
-      immutable_hash: "hash_" + metric.id,
+      hash: "hash_" + metric.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${metric.id}_act01`,
       tenantId,
       type: "system_metric",

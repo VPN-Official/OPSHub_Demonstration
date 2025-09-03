@@ -66,11 +66,11 @@ export const seedVendors = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =
       entity_id: vendor.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + vendor.id,
+      hash: "hash_" + vendor.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${vendor.id}_act01`,
       tenantId,
       type: "vendor",

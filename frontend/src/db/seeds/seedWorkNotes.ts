@@ -57,7 +57,7 @@ export const seedWorkNotes = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
       entity_id: wn.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + wn.id,
+      hash: "hash_" + wn.id,
       tags: ["seed"],
     });
   }

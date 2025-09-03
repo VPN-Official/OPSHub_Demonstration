@@ -33,7 +33,7 @@ export const seedOnCall = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       entity_id: oc.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + oc.id,
+      hash: "hash_" + oc.id,
       tags: ["seed"],
     });
   }

@@ -37,7 +37,7 @@ export const seedActivities = async (tenantId: string, db: IDBPDatabase<AIOpsDB>
   }));
 
   for (const act of activities) {
-    await db.put("activities", act);
+    await db.put("activity_timeline", act);
   }
 
   console.log(`✅ Seeded ${activities.length} activities for ${tenantId}`);

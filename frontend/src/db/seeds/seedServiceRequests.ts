@@ -115,12 +115,12 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       entity_id: sr.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + sr.id,
+      hash: "hash_" + sr.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${sr.id}_act01`,
       tenantId,
       type: "service_request",

@@ -115,12 +115,12 @@ export const seedAlerts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       entity_id: alert.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + alert.id,
+      hash: "hash_" + alert.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${alert.id}_act01`,
       tenantId,
       type: "alert",

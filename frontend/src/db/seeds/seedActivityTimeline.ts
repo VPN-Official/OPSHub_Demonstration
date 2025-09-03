@@ -57,7 +57,7 @@ export const seedActivityTimeline = async (tenantId: string, db: IDBPDatabase<AI
       entity_id: tl.id,
       action: "create",
       timestamp: now.toISOString(),
-      immutable_hash: "hash_" + tl.id,
+      hash: "hash_" + tl.id,
       tags: ["seed"],
     });
   }

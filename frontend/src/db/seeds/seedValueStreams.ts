@@ -58,12 +58,12 @@ export const seedValueStreams = async (tenantId: string, db: IDBPDatabase<AIOpsD
       entity_id: vs.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + vs.id,
+      hash: "hash_" + vs.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${vs.id}_act01`,
       tenantId,
       type: "value_stream",

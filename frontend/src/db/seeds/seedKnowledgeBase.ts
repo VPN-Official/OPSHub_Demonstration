@@ -75,11 +75,11 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
       entity_id: kb.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + kb.id,
+      hash: "hash_" + kb.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${kb.id}_act01`,
       tenantId,
       type: "knowledge_base",

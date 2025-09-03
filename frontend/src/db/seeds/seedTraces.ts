@@ -100,12 +100,12 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       entity_id: trace.id,
       action: "collect",
       timestamp: now.toISOString(),
-      immutable_hash: "hash_" + trace.id,
+      hash: "hash_" + trace.id,
       tags: ["seed"],
     });
 
     // Activity
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${trace.id}_act01`,
       tenantId,
       type: "trace",

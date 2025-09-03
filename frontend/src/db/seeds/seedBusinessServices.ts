@@ -75,11 +75,11 @@ export const seedBusinessServices = async (tenantId: string, db: IDBPDatabase<AI
       entity_id: svc.id,
       action: "create",
       timestamp: now,
-      immutable_hash: "hash_" + svc.id,
+      hash: "hash_" + svc.id,
       tags: ["seed"],
     });
 
-    await db.put("activities", {
+    await db.put("activity_timeline", {
       id: `${svc.id}_act01`,
       tenantId,
       type: "business_service",
