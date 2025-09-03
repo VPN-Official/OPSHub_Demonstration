@@ -1,13 +1,54 @@
-// src/contexts/CustomersContext.tsx (STANDARDIZED)
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+// src/contexts/CustomersContext.tsx (ENTERPRISE FRONTEND ONLY)
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend UI State Types
 // ---------------------------------
+
+/**
+ * Async state wrapper for UI state management
+ * Provides loading states, error states, and data staleness for optimal UX
+ */
+export interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+/**
+ * UI-focused filters for client-side responsiveness
+ * Complex business filtering is handled by backend APIs
+ */
+export interface CustomerUIFilters {
+  tier?: string;
+  region?: string;
+  industry?: string;
+  healthStatus?: "green" | "yellow" | "orange" | "red" | "gray";
+  churnRisk?: "low" | "medium" | "high" | "critical";
+  hasContacts?: boolean;
+  hasSLABreach?: boolean;
+  searchQuery?: string;
+}
+
+/**
+ * Optimistic update state for better UX during API calls
+ */
+export interface OptimisticUpdate {
+  entityId: string;
+  operation: "create" | "update" | "delete";
+  data: any;
+  timestamp: string;
+}
+
+/**
+ * Core customer entity - only UI metadata, business logic in backend
+ */
 export interface CustomerContact {
   id: string;
   name: string;
@@ -25,31 +66,17 @@ export interface CustomerContact {
   };
 }
 
-export interface CustomerSLA {
-  uptime_target: number;
-  response_time_target_minutes: number;
-  resolution_time_target_hours: number;
-  availability_window: string; // "24x7", "business_hours", etc.
-  penalty_rate?: number;
-  credits_eligible?: boolean;
-  escalation_matrix?: Array<{
-    level: number;
-    timeframe_minutes: number;
-    contact_roles: string[];
-  }>;
-}
-
 export interface Customer {
   id: string;
   name: string;
   description?: string;
-  industry?: string; // config-driven
-  region?: string;   // config-driven
-  tier: string;      // config-driven
+  industry?: string;
+  region?: string;
+  tier: string;
   created_at: string;
   updated_at: string;
 
-  // Relationships
+  // Relationship IDs (frontend doesn't manage relationships, just displays)
   end_user_ids: string[];
   business_service_ids: string[];
   contract_ids: string[];
@@ -63,49 +90,28 @@ export interface Customer {
   billing_contact_id?: string;
   technical_contact_id?: string;
 
-  // Business & Financial
-  sla_level?: string; // config-driven
+  // Business metrics (provided by backend, displayed by frontend)
   annual_contract_value?: number;
   monthly_recurring_revenue?: number;
-  penalty_costs_incurred?: number;
   currency?: string;
   payment_terms?: string;
   billing_frequency?: "monthly" | "quarterly" | "annually";
 
-  // Customer Success & Health
-  health_score?: number; // 0-100
-  satisfaction_score?: number; // 1-10
-  net_promoter_score?: number; // -100 to 100
-  last_survey_date?: string;
-  renewal_date?: string;
-  renewal_probability?: number; // 0-100
+  // Health metrics (calculated by backend)
+  health_score?: number;
+  satisfaction_score?: number;
+  net_promoter_score?: number;
   churn_risk?: "low" | "medium" | "high" | "critical";
+  renewal_probability?: number;
 
-  // Service Level Agreements
-  sla_details?: CustomerSLA;
-  current_sla_compliance?: number; // percentage
+  // Support metrics (provided by backend)
+  current_sla_compliance?: number;
   sla_breach_count_30d?: number;
-  last_sla_breach?: string;
-
-  // Support Metrics
   ticket_count_30d?: number;
   average_resolution_time_hours?: number;
   escalation_count_30d?: number;
-  satisfaction_rating_avg?: number; // 1-5
 
-  // Engagement & Usage
-  last_login_date?: string;
-  active_users_count?: number;
-  feature_adoption_score?: number; // 0-100
-  product_usage_trend?: "increasing" | "stable" | "decreasing";
-
-  // Risk & Compliance
-  risk_score?: number;
-  compliance_requirement_ids: string[];
-  data_residency_requirements?: string[];
-  security_classification?: "standard" | "enhanced" | "premium";
-
-  // Metadata
+  // UI metadata
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
@@ -115,745 +121,604 @@ export interface Customer {
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 2. Frontend Context Interface
 // ---------------------------------
 interface CustomersContextType {
-  customers: Customer[];
-  addCustomer: (cust: Customer, userId?: string) => Promise<void>;
-  updateCustomer: (cust: Customer, userId?: string) => Promise<void>;
+  // Core async state
+  customers: AsyncState<Customer[]>;
+  
+  // CRUD Operations (thin API wrappers)
+  addCustomer: (customer: Customer, userId?: string) => Promise<void>;
+  updateCustomer: (customer: Customer, userId?: string) => Promise<void>;
   deleteCustomer: (id: string, userId?: string) => Promise<void>;
   refreshCustomers: () => Promise<void>;
   getCustomer: (id: string) => Promise<Customer | undefined>;
 
-  // Customer-specific operations
-  updateCustomerHealth: (customerId: string, healthData: Partial<Customer>, userId?: string) => Promise<void>;
+  // Customer-specific API operations
+  updateCustomerHealth: (customerId: string, userId?: string) => Promise<void>;
   addCustomerContact: (customerId: string, contact: CustomerContact, userId?: string) => Promise<void>;
   updateCustomerContact: (customerId: string, contactId: string, updates: Partial<CustomerContact>, userId?: string) => Promise<void>;
   removeCustomerContact: (customerId: string, contactId: string, userId?: string) => Promise<void>;
-  updateCustomerSLA: (customerId: string, slaData: CustomerSLA, userId?: string) => Promise<void>;
-  calculateCustomerHealth: (customerId: string) => Promise<{ status: string; score: number; factors: string[] }>;
   recordCustomerInteraction: (customerId: string, interaction: { type: string; notes: string }, userId?: string) => Promise<void>;
 
-  // Filtering and querying
-  getCustomersByTier: (tier: string) => Customer[];
-  getCustomersByRegion: (region: string) => Customer[];
-  getCustomersByIndustry: (industry: string) => Customer[];
-  getHighValueCustomers: (akvThreshold?: number) => Customer[];
-  getAtRiskCustomers: (riskLevel?: Customer['churn_risk']) => Customer[];
-  getCustomersWithSLABreaches: () => Customer[];
-  getCustomersDueForRenewal: (daysAhead?: number) => Customer[];
-  getInactiveCustomers: (daysThreshold?: number) => Customer[];
+  // Client-side UI helpers (for immediate responsiveness)
+  getFilteredCustomers: (filters: CustomerUIFilters) => Customer[];
   searchCustomers: (query: string) => Customer[];
+  sortCustomers: (customers: Customer[], sortBy: string, sortOrder: 'asc' | 'desc') => Customer[];
 
-  // Analytics
-  getCustomerRevenueStats: () => {
-    totalACV: number;
-    totalMRR: number;
-    averageACV: number;
-    averageMRR: number;
-    revenueByTier: Record<string, number>;
-    revenueByRegion: Record<string, number>;
-    revenueGrowthRate: number;
-  };
-
-  getCustomerHealthStats: () => {
-    averageHealthScore: number;
-    averageSatisfactionScore: number;
-    averageNPS: number;
-    healthyCustomers: number;
-    atRiskCustomers: number;
-    churnPrediction: number;
-    renewalRate: number;
-  };
-
-  getCustomerSupportStats: () => {
-    averageResolutionTime: number;
-    totalTickets30d: number;
-    averageSatisfactionRating: number;
-    slaComplianceRate: number;
-    escalationRate: number;
-  };
-
-  // Config integration
+  // Optimistic updates for better UX
+  optimisticUpdates: OptimisticUpdate[];
+  
+  // UI configuration from backend
   config: {
     tiers: string[];
     industries: string[];
     regions: string[];
-    sla_levels: string[];
     currencies: string[];
     payment_terms: string[];
+    health_statuses: string[];
+    churn_risk_levels: string[];
   };
+
+  // Cache management
+  clearCache: () => void;
+  refreshCache: () => Promise<void>;
+  isCacheStale: boolean;
 }
 
 const CustomersContext = createContext<CustomersContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 3. Enterprise Provider
 // ---------------------------------
 export const CustomersProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { config: globalConfig, validateEnum } = useConfig();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-
-  // Extract customer-specific config from global config
-  const config = {
+  const { config: globalConfig } = useConfig();
+  
+  // Async state for customers
+  const [customers, setCustomers] = useState<AsyncState<Customer[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true
+  });
+  
+  // Optimistic updates state
+  const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
+  
+  // Cache configuration
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  
+  // Extract customer config from global config
+  const config = useMemo(() => ({
     tiers: globalConfig?.business?.customers?.tiers || 
            ['enterprise', 'premium', 'standard', 'starter'],
     industries: globalConfig?.business?.customers?.industries || 
-                ['technology', 'financial_services', 'healthcare', 'manufacturing', 'retail', 'education'],
+                ['technology', 'financial_services', 'healthcare', 'manufacturing'],
     regions: globalConfig?.business?.customers?.regions || 
-             ['north_america', 'europe', 'asia_pacific', 'latin_america', 'africa', 'middle_east'],
-    sla_levels: globalConfig?.business?.customers?.sla_levels || 
-                ['platinum', 'gold', 'silver', 'bronze'],
+             ['north_america', 'europe', 'asia_pacific', 'latin_america'],
     currencies: globalConfig?.business?.customers?.currencies || 
-                ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'],
-    payment_terms: ['net_15', 'net_30', 'net_45', 'net_60', 'prepaid', 'custom'],
-  };
+                ['USD', 'EUR', 'GBP', 'JPY'],
+    payment_terms: ['net_15', 'net_30', 'net_45', 'net_60'],
+    health_statuses: ['green', 'yellow', 'orange', 'red', 'gray'],
+    churn_risk_levels: ['low', 'medium', 'high', 'critical'],
+  }), [globalConfig]);
 
-  const validateCustomer = useCallback((cust: Customer) => {
-    if (!globalConfig) {
-      throw new Error("Configuration not loaded");
+  // Check if cache is stale
+  const isCacheStale = useMemo(() => {
+    if (!customers.lastFetch) return true;
+    const lastFetch = new Date(customers.lastFetch).getTime();
+    const now = Date.now();
+    return now - lastFetch > CACHE_TTL_MS;
+  }, [customers.lastFetch]);
+
+  // Basic UI validation (NOT business rules)
+  const validateCustomerForUI = useCallback((customer: Customer) => {
+    const errors: string[] = [];
+    
+    if (!customer.name?.trim()) {
+      errors.push("Customer name is required");
     }
-
-    // Validate tier
-    if (!config.tiers.includes(cust.tier)) {
-      throw new Error(`Invalid customer tier: ${cust.tier}. Valid options: ${config.tiers.join(', ')}`);
-    }
-
-    // Validate industry if provided
-    if (cust.industry && !config.industries.includes(cust.industry)) {
-      throw new Error(`Invalid industry: ${cust.industry}. Valid options: ${config.industries.join(', ')}`);
-    }
-
-    // Validate region if provided
-    if (cust.region && !config.regions.includes(cust.region)) {
-      throw new Error(`Invalid region: ${cust.region}. Valid options: ${config.regions.join(', ')}`);
-    }
-
-    // Validate SLA level if provided
-    if (cust.sla_level && !config.sla_levels.includes(cust.sla_level)) {
-      throw new Error(`Invalid SLA level: ${cust.sla_level}. Valid options: ${config.sla_levels.join(', ')}`);
-    }
-
-    // Validate currency if provided
-    if (cust.currency && !config.currencies.includes(cust.currency)) {
-      throw new Error(`Invalid currency: ${cust.currency}. Valid options: ${config.currencies.join(', ')}`);
-    }
-
-    // Validate required fields
-    if (!cust.name || cust.name.trim().length < 2) {
-      throw new Error("Customer name must be at least 2 characters long");
-    }
-
-    // Validate financial values
-    if (cust.annual_contract_value !== undefined && cust.annual_contract_value < 0) {
-      throw new Error("Annual contract value must be a positive number");
-    }
-
-    if (cust.monthly_recurring_revenue !== undefined && cust.monthly_recurring_revenue < 0) {
-      throw new Error("Monthly recurring revenue must be a positive number");
-    }
-
-    // Validate score ranges
-    if (cust.health_score !== undefined && (cust.health_score < 0 || cust.health_score > 100)) {
-      throw new Error("Health score must be between 0 and 100");
-    }
-
-    if (cust.satisfaction_score !== undefined && (cust.satisfaction_score < 1 || cust.satisfaction_score > 10)) {
-      throw new Error("Satisfaction score must be between 1 and 10");
-    }
-
-    if (cust.net_promoter_score !== undefined && (cust.net_promoter_score < -100 || cust.net_promoter_score > 100)) {
-      throw new Error("Net Promoter Score must be between -100 and 100");
-    }
-
-    if (cust.renewal_probability !== undefined && (cust.renewal_probability < 0 || cust.renewal_probability > 100)) {
-      throw new Error("Renewal probability must be between 0 and 100");
-    }
-
-    // Validate contacts
-    if (cust.contacts) {
-      cust.contacts.forEach((contact, index) => {
-        if (!contact.name || contact.name.trim().length < 2) {
-          throw new Error(`Contact at index ${index} must have a name of at least 2 characters`);
+    
+    if (customer.contacts) {
+      customer.contacts.forEach((contact, index) => {
+        if (!contact.name?.trim()) {
+          errors.push(`Contact ${index + 1} name is required`);
         }
         if (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
-          throw new Error(`Contact at index ${index} has invalid email format`);
+          errors.push(`Contact ${index + 1} has invalid email format`);
         }
       });
-
-      // Check for multiple primary contacts
-      const primaryContacts = cust.contacts.filter(c => c.is_primary);
-      if (primaryContacts.length > 1) {
-        throw new Error("Only one contact can be marked as primary");
-      }
     }
-
-    // Validate SLA details
-    if (cust.sla_details) {
-      if (cust.sla_details.uptime_target < 0 || cust.sla_details.uptime_target > 100) {
-        throw new Error("SLA uptime target must be between 0 and 100 percent");
-      }
-      if (cust.sla_details.response_time_target_minutes < 0) {
-        throw new Error("SLA response time target must be a positive number");
-      }
-      if (cust.sla_details.resolution_time_target_hours < 0) {
-        throw new Error("SLA resolution time target must be a positive number");
-      }
+    
+    if (errors.length > 0) {
+      throw new Error(`UI Validation failed: ${errors.join(', ')}`);
     }
-  }, [globalConfig, config]);
+  }, []);
 
-  const ensureMetadata = useCallback((cust: Customer): Customer => {
-    const now = new Date().toISOString();
-    return {
-      ...cust,
-      tenantId,
-      tags: cust.tags || [],
-      health_status: cust.health_status || "gray",
-      sync_status: cust.sync_status || "dirty",
-      synced_at: cust.synced_at || now,
-      end_user_ids: cust.end_user_ids || [],
-      business_service_ids: cust.business_service_ids || [],
-      contract_ids: cust.contract_ids || [],
-      compliance_requirement_ids: cust.compliance_requirement_ids || [],
-      contacts: cust.contacts || [],
-      data_residency_requirements: cust.data_residency_requirements || [],
-      churn_risk: cust.churn_risk || "low",
-      security_classification: cust.security_classification || "standard",
-      billing_frequency: cust.billing_frequency || "monthly",
-    };
-  }, [tenantId]);
+  // Error state management
+  const setError = useCallback((error: string | Error | null) => {
+    const errorMessage = error instanceof Error ? error.message : error;
+    setCustomers(prev => ({ ...prev, error: errorMessage, loading: false }));
+  }, []);
 
+  // Loading state management
+  const setLoading = useCallback((loading: boolean) => {
+    setCustomers(prev => ({ ...prev, loading, error: loading ? null : prev.error }));
+  }, []);
+
+  // Optimistic update helpers
+  const addOptimisticUpdate = useCallback((update: OptimisticUpdate) => {
+    setOptimisticUpdates(prev => [...prev, update]);
+  }, []);
+
+  const removeOptimisticUpdate = useCallback((entityId: string) => {
+    setOptimisticUpdates(prev => prev.filter(u => u.entityId !== entityId));
+  }, []);
+
+  const rollbackOptimisticUpdate = useCallback((entityId: string) => {
+    removeOptimisticUpdate(entityId);
+    // Refresh to get server state
+    refreshCustomers();
+  }, []);
+
+  // Refresh customers from API
   const refreshCustomers = useCallback(async () => {
     if (!tenantId) return;
     
+    setLoading(true);
+    
     try {
-      const all = await getAll<Customer>(tenantId, "customers");
+      // API call - backend handles all business logic
+      const data = await getAll<Customer>(tenantId, "customers");
       
-      // Sort by tier, ACV, and health status
-      all.sort((a, b) => {
-        // Enterprise tier first
-        const tierOrder = { enterprise: 4, premium: 3, standard: 2, starter: 1 };
-        const aTier = tierOrder[a.tier as keyof typeof tierOrder] || 0;
-        const bTier = tierOrder[b.tier as keyof typeof tierOrder] || 0;
-        if (aTier !== bTier) return bTier - aTier;
-        
-        // Higher ACV first
-        const aACV = a.annual_contract_value || 0;
-        const bACV = b.annual_contract_value || 0;
-        if (aACV !== bACV) return bACV - aACV;
-        
-        // Health status priority (red/at-risk first for attention)
-        const healthOrder = { red: 5, orange: 4, yellow: 3, green: 2, gray: 1 };
-        const aHealth = healthOrder[a.health_status] || 0;
-        const bHealth = healthOrder[b.health_status] || 0;
-        if (aHealth !== bHealth) return bHealth - aHealth;
-        
-        // Finally by name
-        return a.name.localeCompare(b.name);
+      setCustomers({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false
       });
-      
-      setCustomers(all);
     } catch (error) {
       console.error("Failed to refresh customers:", error);
+      setError(error instanceof Error ? error.message : "Failed to load customers");
     }
-  }, [tenantId]);
+  }, [tenantId, setLoading, setError]);
 
+  // Get single customer
   const getCustomer = useCallback(async (id: string) => {
     if (!tenantId) return undefined;
-    return getById<Customer>(tenantId, "customers", id);
-  }, [tenantId]);
+    
+    // Check local cache first
+    const cached = customers.data.find(c => c.id === id);
+    if (cached && !isCacheStale) {
+      return cached;
+    }
+    
+    try {
+      return await getById<Customer>(tenantId, "customers", id);
+    } catch (error) {
+      console.error(`Failed to get customer ${id}:`, error);
+      return undefined;
+    }
+  }, [tenantId, customers.data, isCacheStale]);
 
-  const addCustomer = useCallback(async (cust: Customer, userId?: string) => {
+  // Add customer with optimistic updates
+  const addCustomer = useCallback(async (customer: Customer, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    validateCustomer(cust);
+    // Basic UI validation only
+    validateCustomerForUI(customer);
 
     const now = new Date().toISOString();
-    const enriched = ensureMetadata({
-      ...cust,
+    const customerWithMetadata = {
+      ...customer,
+      tenantId,
       created_at: now,
       updated_at: now,
+      tags: customer.tags || [],
+      end_user_ids: customer.end_user_ids || [],
+      business_service_ids: customer.business_service_ids || [],
+      contract_ids: customer.contract_ids || [],
+      contacts: customer.contacts || [],
+      health_status: customer.health_status || "gray" as const,
+      sync_status: "dirty" as const,
+    };
+
+    // Optimistic update for immediate UI feedback
+    addOptimisticUpdate({
+      entityId: customer.id,
+      operation: "create",
+      data: customerWithMetadata,
+      timestamp: now
     });
 
-    const priority = cust.tier === 'enterprise' ? 'high' : 
-                    cust.tier === 'premium' ? 'normal' : 'normal';
+    // Update UI immediately
+    setCustomers(prev => ({
+      ...prev,
+      data: [...prev.data, customerWithMetadata]
+    }));
 
-    await putWithAudit(
-      tenantId,
-      "customers",
-      enriched,
-      userId,
-      {
+    try {
+      // Backend handles ALL business logic and validation
+      await putWithAudit(
+        tenantId,
+        "customers",
+        customerWithMetadata,
+        userId,
+        {
+          action: "create",
+          description: `Created customer: ${customer.name}`,
+          tags: ["customer", "create"],
+        }
+      );
+
+      await enqueueItem({
+        storeName: "customers",
+        entityId: customer.id,
         action: "create",
-        description: `Created customer: ${cust.name}`,
-        tags: ["customer", "create", cust.tier, cust.industry || "unspecified"],
-        metadata: {
-          tier: cust.tier,
-          industry: cust.industry,
-          region: cust.region,
-          annual_contract_value: cust.annual_contract_value,
-          contact_count: cust.contacts.length,
-        },
-      }
-    );
+        payload: customerWithMetadata,
+      });
 
-    await enqueueItem({
-      storeName: "customers",
-      entityId: enriched.id,
-      action: "create",
-      payload: enriched,
-      priority,
-    });
+      removeOptimisticUpdate(customer.id);
+      await refreshCustomers(); // Get authoritative server state
+    } catch (error) {
+      console.error("Failed to add customer:", error);
+      rollbackOptimisticUpdate(customer.id);
+      throw error;
+    }
+  }, [tenantId, validateCustomerForUI, addOptimisticUpdate, enqueueItem, removeOptimisticUpdate, refreshCustomers, rollbackOptimisticUpdate]);
 
-    await refreshCustomers();
-  }, [tenantId, validateCustomer, ensureMetadata, enqueueItem, refreshCustomers]);
-
-  const updateCustomer = useCallback(async (cust: Customer, userId?: string) => {
+  // Update customer with optimistic updates
+  const updateCustomer = useCallback(async (customer: Customer, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    validateCustomer(cust);
+    validateCustomerForUI(customer);
 
-    const enriched = ensureMetadata({
-      ...cust,
+    const updatedCustomer = {
+      ...customer,
       updated_at: new Date().toISOString(),
+      sync_status: "dirty" as const,
+    };
+
+    // Optimistic update
+    addOptimisticUpdate({
+      entityId: customer.id,
+      operation: "update",
+      data: updatedCustomer,
+      timestamp: new Date().toISOString()
     });
 
-    await putWithAudit(
-      tenantId,
-      "customers",
-      enriched,
-      userId,
-      {
+    setCustomers(prev => ({
+      ...prev,
+      data: prev.data.map(c => c.id === customer.id ? updatedCustomer : c)
+    }));
+
+    try {
+      await putWithAudit(
+        tenantId,
+        "customers",
+        updatedCustomer,
+        userId,
+        {
+          action: "update",
+          description: `Updated customer: ${customer.name}`,
+          tags: ["customer", "update"],
+        }
+      );
+
+      await enqueueItem({
+        storeName: "customers",
+        entityId: customer.id,
         action: "update",
-        description: `Updated customer: ${cust.name}`,
-        tags: ["customer", "update", cust.tier],
-        metadata: {
-          tier: cust.tier,
-          health_score: cust.health_score,
-          churn_risk: cust.churn_risk,
-        },
-      }
-    );
+        payload: updatedCustomer,
+      });
 
-    await enqueueItem({
-      storeName: "customers",
-      entityId: enriched.id,
-      action: "update",
-      payload: enriched,
-    });
+      removeOptimisticUpdate(customer.id);
+      await refreshCustomers();
+    } catch (error) {
+      console.error("Failed to update customer:", error);
+      rollbackOptimisticUpdate(customer.id);
+      throw error;
+    }
+  }, [tenantId, validateCustomerForUI, addOptimisticUpdate, enqueueItem, removeOptimisticUpdate, refreshCustomers, rollbackOptimisticUpdate]);
 
-    await refreshCustomers();
-  }, [tenantId, validateCustomer, ensureMetadata, enqueueItem, refreshCustomers]);
-
+  // Delete customer
   const deleteCustomer = useCallback(async (id: string, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    const customer = await getCustomer(id);
+    const customer = customers.data.find(c => c.id === id);
     if (!customer) throw new Error(`Customer ${id} not found`);
 
-    await removeWithAudit(
-      tenantId,
-      "customers",
-      id,
-      userId,
-      {
-        action: "delete",
-        description: `Deleted customer: ${customer.name}`,
-        tags: ["customer", "delete", customer.tier],
-        metadata: {
-          tier: customer.tier,
-          annual_contract_value: customer.annual_contract_value,
-        },
-      }
-    );
-
-    await enqueueItem({
-      storeName: "customers",
+    // Optimistic update
+    addOptimisticUpdate({
       entityId: id,
-      action: "delete",
-      payload: null,
+      operation: "delete",
+      data: null,
+      timestamp: new Date().toISOString()
     });
 
-    await refreshCustomers();
-  }, [tenantId, getCustomer, enqueueItem, refreshCustomers]);
+    setCustomers(prev => ({
+      ...prev,
+      data: prev.data.filter(c => c.id !== id)
+    }));
 
-  // Customer-specific operations
-  const updateCustomerHealth = useCallback(async (customerId: string, healthData: Partial<Customer>, userId?: string) => {
-    const customer = await getCustomer(customerId);
-    if (!customer) throw new Error(`Customer ${customerId} not found`);
+    try {
+      await removeWithAudit(
+        tenantId,
+        "customers",
+        id,
+        userId,
+        {
+          action: "delete",
+          description: `Deleted customer: ${customer.name}`,
+          tags: ["customer", "delete"],
+        }
+      );
 
-    const updated = { ...customer, ...healthData };
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
+      await enqueueItem({
+        storeName: "customers",
+        entityId: id,
+        action: "delete",
+        payload: null,
+      });
+
+      removeOptimisticUpdate(id);
+    } catch (error) {
+      console.error("Failed to delete customer:", error);
+      rollbackOptimisticUpdate(id);
+      throw error;
+    }
+  }, [tenantId, customers.data, addOptimisticUpdate, enqueueItem, removeOptimisticUpdate, rollbackOptimisticUpdate]);
+
+  // Customer-specific operations (API wrappers)
+  const updateCustomerHealth = useCallback(async (customerId: string, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      // Backend calculates health metrics
+      const response = await fetch(`/api/customers/${customerId}/health`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${userId}` }
+      });
+      
+      if (!response.ok) throw new Error('Failed to update customer health');
+      
+      await refreshCustomers(); // Get updated data
+    } catch (error) {
+      console.error("Failed to update customer health:", error);
+      throw error;
+    }
+  }, [tenantId, refreshCustomers]);
 
   const addCustomerContact = useCallback(async (customerId: string, contact: CustomerContact, userId?: string) => {
-    const customer = await getCustomer(customerId);
+    const customer = customers.data.find(c => c.id === customerId);
     if (!customer) throw new Error(`Customer ${customerId} not found`);
 
-    // Generate ID for new contact
-    const newContact = { ...contact, id: contact.id || crypto.randomUUID() };
-    const updatedContacts = [...customer.contacts, newContact];
-    const updated = { ...customer, contacts: updatedContacts };
+    const updatedCustomer = {
+      ...customer,
+      contacts: [...customer.contacts, { ...contact, id: contact.id || crypto.randomUUID() }]
+    };
 
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
+    await updateCustomer(updatedCustomer, userId);
+  }, [customers.data, updateCustomer]);
 
   const updateCustomerContact = useCallback(async (customerId: string, contactId: string, updates: Partial<CustomerContact>, userId?: string) => {
-    const customer = await getCustomer(customerId);
+    const customer = customers.data.find(c => c.id === customerId);
     if (!customer) throw new Error(`Customer ${customerId} not found`);
 
-    const updatedContacts = customer.contacts.map(contact =>
-      contact.id === contactId ? { ...contact, ...updates } : contact
-    );
-    const updated = { ...customer, contacts: updatedContacts };
+    const updatedCustomer = {
+      ...customer,
+      contacts: customer.contacts.map(contact =>
+        contact.id === contactId ? { ...contact, ...updates } : contact
+      )
+    };
 
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
+    await updateCustomer(updatedCustomer, userId);
+  }, [customers.data, updateCustomer]);
 
   const removeCustomerContact = useCallback(async (customerId: string, contactId: string, userId?: string) => {
-    const customer = await getCustomer(customerId);
+    const customer = customers.data.find(c => c.id === customerId);
     if (!customer) throw new Error(`Customer ${customerId} not found`);
 
-    const updatedContacts = customer.contacts.filter(contact => contact.id !== contactId);
-    const updated = { ...customer, contacts: updatedContacts };
+    const updatedCustomer = {
+      ...customer,
+      contacts: customer.contacts.filter(contact => contact.id !== contactId)
+    };
 
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
-
-  const updateCustomerSLA = useCallback(async (customerId: string, slaData: CustomerSLA, userId?: string) => {
-    const customer = await getCustomer(customerId);
-    if (!customer) throw new Error(`Customer ${customerId} not found`);
-
-    const updated = { ...customer, sla_details: slaData };
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
-
-  const calculateCustomerHealth = useCallback(async (customerId: string) => {
-    const customer = await getCustomer(customerId);
-    if (!customer) throw new Error(`Customer ${customerId} not found`);
-
-    // Calculate health score based on various factors
-    let score = customer.health_score || 70; // Default baseline
-    const factors: string[] = [];
-
-    // Satisfaction score factor
-    if (customer.satisfaction_score !== undefined) {
-      if (customer.satisfaction_score < 6) {
-        score -= (6 - customer.satisfaction_score) * 8;
-        factors.push(`Low satisfaction: ${customer.satisfaction_score}/10`);
-      } else if (customer.satisfaction_score >= 8) {
-        score += (customer.satisfaction_score - 8) * 5;
-        factors.push(`High satisfaction: ${customer.satisfaction_score}/10`);
-      }
-    }
-
-    // SLA compliance factor
-    if (customer.current_sla_compliance !== undefined) {
-      if (customer.current_sla_compliance < 95) {
-        score -= (95 - customer.current_sla_compliance) * 0.5;
-        factors.push(`SLA compliance below target: ${customer.current_sla_compliance}%`);
-      }
-    }
-
-    // Support ticket volume factor
-    if (customer.ticket_count_30d !== undefined && customer.ticket_count_30d > 10) {
-      score -= Math.min(15, (customer.ticket_count_30d - 10) * 1.5);
-      factors.push(`High support volume: ${customer.ticket_count_30d} tickets in 30 days`);
-    }
-
-    // Churn risk factor
-    if (customer.churn_risk) {
-      const churnPenalty = { low: 0, medium: -10, high: -20, critical: -30 };
-      score += churnPenalty[customer.churn_risk];
-      if (customer.churn_risk !== 'low') {
-        factors.push(`Churn risk: ${customer.churn_risk}`);
-      }
-    }
-
-    // Usage trend factor
-    if (customer.product_usage_trend === 'decreasing') {
-      score -= 15;
-      factors.push('Decreasing product usage');
-    } else if (customer.product_usage_trend === 'increasing') {
-      score += 10;
-      factors.push('Increasing product usage');
-    }
-
-    // Determine status based on score
-    let status: string;
-    if (score >= 80) status = 'green';
-    else if (score >= 65) status = 'yellow';
-    else if (score >= 50) status = 'orange';
-    else status = 'red';
-
-    return { status, score: Math.max(0, Math.min(100, score)), factors };
-  }, [getCustomer]);
+    await updateCustomer(updatedCustomer, userId);
+  }, [customers.data, updateCustomer]);
 
   const recordCustomerInteraction = useCallback(async (customerId: string, interaction: { type: string; notes: string }, userId?: string) => {
-    const customer = await getCustomer(customerId);
-    if (!customer) throw new Error(`Customer ${customerId} not found`);
-
-    const interactionRecord = {
-      type: interaction.type,
-      notes: interaction.notes,
-      timestamp: new Date().toISOString(),
-      user_id: userId,
-    };
-
-    const updated = {
-      ...customer,
-      custom_fields: {
-        ...customer.custom_fields,
-        interactions: [
-          ...(customer.custom_fields?.interactions || []),
-          interactionRecord
-        ].slice(-50) // Keep only last 50 interactions
-      }
-    };
-
-    await updateCustomer(updated, userId);
-  }, [getCustomer, updateCustomer]);
-
-  // Filtering functions
-  const getCustomersByTier = useCallback((tier: string) => {
-    return customers.filter(c => c.tier === tier);
-  }, [customers]);
-
-  const getCustomersByRegion = useCallback((region: string) => {
-    return customers.filter(c => c.region === region);
-  }, [customers]);
-
-  const getCustomersByIndustry = useCallback((industry: string) => {
-    return customers.filter(c => c.industry === industry);
-  }, [customers]);
-
-  const getHighValueCustomers = useCallback((akvThreshold: number = 100000) => {
-    return customers.filter(c => 
-      (c.annual_contract_value && c.annual_contract_value >= akvThreshold) ||
-      c.tier === 'enterprise'
-    );
-  }, [customers]);
-
-  const getAtRiskCustomers = useCallback((riskLevel: Customer['churn_risk'] = 'medium') => {
-    const riskLevels = { low: 1, medium: 2, high: 3, critical: 4 };
-    const threshold = riskLevels[riskLevel];
+    if (!tenantId) throw new Error("No tenant selected");
     
-    return customers.filter(c => {
-      const customerRisk = riskLevels[c.churn_risk || 'low'];
-      return customerRisk >= threshold ||
-             c.health_status === 'red' ||
-             (c.satisfaction_score && c.satisfaction_score < 6) ||
-             (c.renewal_probability && c.renewal_probability < 70);
-    });
-  }, [customers]);
+    try {
+      // Backend handles interaction recording logic
+      const response = await fetch(`/api/customers/${customerId}/interactions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userId}`
+        },
+        body: JSON.stringify(interaction)
+      });
+      
+      if (!response.ok) throw new Error('Failed to record interaction');
+      
+      await refreshCustomers(); // Get updated data
+    } catch (error) {
+      console.error("Failed to record customer interaction:", error);
+      throw error;
+    }
+  }, [tenantId, refreshCustomers]);
 
-  const getCustomersWithSLABreaches = useCallback(() => {
-    return customers.filter(c => 
-      (c.sla_breach_count_30d && c.sla_breach_count_30d > 0) ||
-      (c.current_sla_compliance && c.current_sla_compliance < 95)
-    );
-  }, [customers]);
+  // Client-side UI helpers for immediate responsiveness
+  const getFilteredCustomers = useCallback((filters: CustomerUIFilters) => {
+    let filtered = customers.data;
 
-  const getCustomersDueForRenewal = useCallback((daysAhead: number = 90) => {
-    const now = new Date();
-    const futureDate = new Date(now.getTime() + (daysAhead * 24 * 60 * 60 * 1000));
-    
-    return customers.filter(c => {
-      if (!c.renewal_date) return false;
-      const renewalDate = new Date(c.renewal_date);
-      return renewalDate >= now && renewalDate <= futureDate;
-    });
-  }, [customers]);
+    if (filters.tier) {
+      filtered = filtered.filter(c => c.tier === filters.tier);
+    }
+    if (filters.region) {
+      filtered = filtered.filter(c => c.region === filters.region);
+    }
+    if (filters.industry) {
+      filtered = filtered.filter(c => c.industry === filters.industry);
+    }
+    if (filters.healthStatus) {
+      filtered = filtered.filter(c => c.health_status === filters.healthStatus);
+    }
+    if (filters.churnRisk) {
+      filtered = filtered.filter(c => c.churn_risk === filters.churnRisk);
+    }
+    if (filters.hasContacts !== undefined) {
+      filtered = filtered.filter(c => 
+        filters.hasContacts ? c.contacts.length > 0 : c.contacts.length === 0
+      );
+    }
+    if (filters.hasSLABreach) {
+      filtered = filtered.filter(c => 
+        c.sla_breach_count_30d && c.sla_breach_count_30d > 0
+      );
+    }
+    if (filters.searchQuery) {
+      const query = filters.searchQuery.toLowerCase();
+      filtered = filtered.filter(c =>
+        c.name.toLowerCase().includes(query) ||
+        c.description?.toLowerCase().includes(query) ||
+        c.contacts.some(contact => 
+          contact.name.toLowerCase().includes(query) ||
+          contact.email?.toLowerCase().includes(query)
+        )
+      );
+    }
 
-  const getInactiveCustomers = useCallback((daysThreshold: number = 30) => {
-    const cutoffDate = new Date(Date.now() - (daysThreshold * 24 * 60 * 60 * 1000));
-    
-    return customers.filter(c => {
-      if (!c.last_login_date) return true;
-      return new Date(c.last_login_date) < cutoffDate;
-    });
-  }, [customers]);
+    return filtered;
+  }, [customers.data]);
 
   const searchCustomers = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return customers.filter(c => 
-      c.name.toLowerCase().includes(lowerQuery) ||
-      c.description?.toLowerCase().includes(lowerQuery) ||
-      c.industry?.toLowerCase().includes(lowerQuery) ||
-      c.tier.toLowerCase().includes(lowerQuery) ||
-      c.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-      c.contacts.some(contact => 
-        contact.name.toLowerCase().includes(lowerQuery) ||
-        contact.email?.toLowerCase().includes(lowerQuery)
-      )
-    );
-  }, [customers]);
+    return getFilteredCustomers({ searchQuery: query });
+  }, [getFilteredCustomers]);
 
-  // Analytics functions
-  const getCustomerRevenueStats = useCallback(() => {
-    const customersWithACV = customers.filter(c => c.annual_contract_value && c.annual_contract_value > 0);
-    const customersWithMRR = customers.filter(c => c.monthly_recurring_revenue && c.monthly_recurring_revenue > 0);
-
-    const totalACV = customersWithACV.reduce((sum, c) => sum + (c.annual_contract_value || 0), 0);
-    const totalMRR = customersWithMRR.reduce((sum, c) => sum + (c.monthly_recurring_revenue || 0), 0);
-    
-    const averageACV = customersWithACV.length > 0 ? totalACV / customersWithACV.length : 0;
-    const averageMRR = customersWithMRR.length > 0 ? totalMRR / customersWithMRR.length : 0;
-
-    const revenueByTier = customers.reduce((acc, c) => {
-      if (c.annual_contract_value) {
-        acc[c.tier] = (acc[c.tier] || 0) + c.annual_contract_value;
+  const sortCustomers = useCallback((customersList: Customer[], sortBy: string, sortOrder: 'asc' | 'desc') => {
+    return [...customersList].sort((a, b) => {
+      let aVal: any = a[sortBy as keyof Customer];
+      let bVal: any = b[sortBy as keyof Customer];
+      
+      // Handle undefined values
+      if (aVal === undefined) aVal = '';
+      if (bVal === undefined) bVal = '';
+      
+      // Handle different types
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortOrder === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
       }
-      return acc;
-    }, {} as Record<string, number>);
-
-    const revenueByRegion = customers.reduce((acc, c) => {
-      if (c.annual_contract_value && c.region) {
-        acc[c.region] = (acc[c.region] || 0) + c.annual_contract_value;
+      
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
       }
-      return acc;
-    }, {} as Record<string, number>);
+      
+      // Default string comparison
+      const aStr = String(aVal);
+      const bStr = String(bVal);
+      return sortOrder === 'asc' 
+        ? aStr.localeCompare(bStr)
+        : bStr.localeCompare(aStr);
+    });
+  }, []);
 
-    // Simple growth calculation (would typically be historical)
-    const revenueGrowthRate = 15; // Mock 15% growth
+  // Cache management
+  const clearCache = useCallback(() => {
+    setCustomers({
+      data: [],
+      loading: false,
+      error: null,
+      lastFetch: null,
+      stale: true
+    });
+    setOptimisticUpdates([]);
+  }, []);
 
-    return {
-      totalACV,
-      totalMRR,
-      averageACV,
-      averageMRR,
-      revenueByTier,
-      revenueByRegion,
-      revenueGrowthRate,
-    };
-  }, [customers]);
+  const refreshCache = useCallback(async () => {
+    await refreshCustomers();
+  }, [refreshCustomers]);
 
-  const getCustomerHealthStats = useCallback(() => {
-    const customersWithHealth = customers.filter(c => c.health_score !== undefined);
-    const customersWithSat = customers.filter(c => c.satisfaction_score !== undefined);
-    const customersWithNPS = customers.filter(c => c.net_promoter_score !== undefined);
-
-    const averageHealthScore = customersWithHealth.length > 0
-      ? customersWithHealth.reduce((sum, c) => sum + (c.health_score || 0), 0) / customersWithHealth.length
-      : 0;
-
-    const averageSatisfactionScore = customersWithSat.length > 0
-      ? customersWithSat.reduce((sum, c) => sum + (c.satisfaction_score || 0), 0) / customersWithSat.length
-      : 0;
-
-    const averageNPS = customersWithNPS.length > 0
-      ? customersWithNPS.reduce((sum, c) => sum + (c.net_promoter_score || 0), 0) / customersWithNPS.length
-      : 0;
-
-    const healthyCustomers = customers.filter(c => 
-      c.health_status === 'green' || 
-      (c.health_score && c.health_score >= 75)
-    ).length;
-
-    const atRiskCustomers = customers.filter(c => 
-      c.churn_risk === 'high' || c.churn_risk === 'critical' ||
-      c.health_status === 'red' ||
-      (c.health_score && c.health_score < 50)
-    ).length;
-
-    const customersWithRenewalProb = customers.filter(c => c.renewal_probability !== undefined);
-    const renewalRate = customersWithRenewalProb.length > 0
-      ? customersWithRenewalProb.reduce((sum, c) => sum + (c.renewal_probability || 0), 0) / customersWithRenewalProb.length
-      : 0;
-
-    const churnPrediction = 100 - renewalRate;
-
-    return {
-      averageHealthScore,
-      averageSatisfactionScore,
-      averageNPS,
-      healthyCustomers,
-      atRiskCustomers,
-      churnPrediction,
-      renewalRate,
-    };
-  }, [customers]);
-
-  const getCustomerSupportStats = useCallback(() => {
-    const customersWithResolutionTime = customers.filter(c => c.average_resolution_time_hours !== undefined);
-    const customersWithTickets = customers.filter(c => c.ticket_count_30d !== undefined);
-    const customersWithRating = customers.filter(c => c.satisfaction_rating_avg !== undefined);
-    const customersWithSLA = customers.filter(c => c.current_sla_compliance !== undefined);
-    const customersWithEscalations = customers.filter(c => c.escalation_count_30d !== undefined);
-
-    const averageResolutionTime = customersWithResolutionTime.length > 0
-      ? customersWithResolutionTime.reduce((sum, c) => sum + (c.average_resolution_time_hours || 0), 0) / customersWithResolutionTime.length
-      : 0;
-
-    const totalTickets30d = customersWithTickets.reduce((sum, c) => sum + (c.ticket_count_30d || 0), 0);
-
-    const averageSatisfactionRating = customersWithRating.length > 0
-      ? customersWithRating.reduce((sum, c) => sum + (c.satisfaction_rating_avg || 0), 0) / customersWithRating.length
-      : 0;
-
-    const slaComplianceRate = customersWithSLA.length > 0
-      ? customersWithSLA.reduce((sum, c) => sum + (c.current_sla_compliance || 0), 0) / customersWithSLA.length
-      : 0;
-
-    const totalEscalations = customersWithEscalations.reduce((sum, c) => sum + (c.escalation_count_30d || 0), 0);
-    const escalationRate = totalTickets30d > 0 ? (totalEscalations / totalTickets30d) * 100 : 0;
-
-    return {
-      averageResolutionTime,
-      totalTickets30d,
-      averageSatisfactionRating,
-      slaComplianceRate,
-      escalationRate,
-    };
-  }, [customers]);
-
-  // Initialize when tenant and config are ready
+  // Initialize when tenant is ready
   useEffect(() => {
     if (tenantId && globalConfig) {
       refreshCustomers();
     }
   }, [tenantId, globalConfig, refreshCustomers]);
 
+  // Auto-refresh stale data
+  useEffect(() => {
+    if (isCacheStale && !customers.loading) {
+      refreshCustomers();
+    }
+  }, [isCacheStale, customers.loading, refreshCustomers]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearCache();
+    };
+  }, [clearCache]);
+
+  const contextValue = useMemo(() => ({
+    customers,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    refreshCustomers,
+    getCustomer,
+    updateCustomerHealth,
+    addCustomerContact,
+    updateCustomerContact,
+    removeCustomerContact,
+    recordCustomerInteraction,
+    getFilteredCustomers,
+    searchCustomers,
+    sortCustomers,
+    optimisticUpdates,
+    config,
+    clearCache,
+    refreshCache,
+    isCacheStale,
+  }), [
+    customers,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    refreshCustomers,
+    getCustomer,
+    updateCustomerHealth,
+    addCustomerContact,
+    updateCustomerContact,
+    removeCustomerContact,
+    recordCustomerInteraction,
+    getFilteredCustomers,
+    searchCustomers,
+    sortCustomers,
+    optimisticUpdates,
+    config,
+    clearCache,
+    refreshCache,
+    isCacheStale,
+  ]);
+
   return (
-    <CustomersContext.Provider
-      value={{
-        customers,
-        addCustomer,
-        updateCustomer,
-        deleteCustomer,
-        refreshCustomers,
-        getCustomer,
-        updateCustomerHealth,
-        addCustomerContact,
-        updateCustomerContact,
-        removeCustomerContact,
-        updateCustomerSLA,
-        calculateCustomerHealth,
-        recordCustomerInteraction,
-        getCustomersByTier,
-        getCustomersByRegion,
-        getCustomersByIndustry,
-        getHighValueCustomers,
-        getAtRiskCustomers,
-        getCustomersWithSLABreaches,
-        getCustomersDueForRenewal,
-        getInactiveCustomers,
-        searchCustomers,
-        getCustomerRevenueStats,
-        getCustomerHealthStats,
-        getCustomerSupportStats,
-        config,
-      }}
-    >
+    <CustomersContext.Provider value={contextValue}>
       {children}
     </CustomersContext.Provider>
   );
 };
 
 // ---------------------------------
-// 4. Hooks
+// 4. Optimized Hooks
 // ---------------------------------
 export const useCustomers = () => {
   const ctx = useContext(CustomersContext);
@@ -861,43 +726,68 @@ export const useCustomers = () => {
   return ctx;
 };
 
-export const useCustomerDetails = (id: string) => {
+// Selective subscription hooks for performance
+export const useCustomersData = () => {
   const { customers } = useCustomers();
-  return customers.find((c) => c.id === id) || null;
+  return customers;
 };
 
-// Utility hooks
-export const useHighValueCustomers = () => {
-  const { getHighValueCustomers } = useCustomers();
-  return getHighValueCustomers();
+export const useCustomerById = (id: string) => {
+  const { customers } = useCustomers();
+  return useMemo(() => 
+    customers.data.find(c => c.id === id) || null,
+    [customers.data, id]
+  );
 };
 
-export const useAtRiskCustomers = () => {
-  const { getAtRiskCustomers } = useCustomers();
-  return getAtRiskCustomers();
+export const useCustomersByStatus = (healthStatus: string) => {
+  const { customers } = useCustomers();
+  return useMemo(() => 
+    customers.data.filter(c => c.health_status === healthStatus),
+    [customers.data, healthStatus]
+  );
 };
 
-export const useCustomerRevenueStats = () => {
-  const { getCustomerRevenueStats } = useCustomers();
-  return getCustomerRevenueStats();
+export const useCustomersByTier = (tier: string) => {
+  const { customers } = useCustomers();
+  return useMemo(() => 
+    customers.data.filter(c => c.tier === tier),
+    [customers.data, tier]
+  );
 };
 
-export const useCustomerHealthStats = () => {
-  const { getCustomerHealthStats } = useCustomers();
-  return getCustomerHealthStats();
+export const useCustomersSearch = (query: string) => {
+  const { searchCustomers } = useCustomers();
+  return useMemo(() => 
+    query ? searchCustomers(query) : [],
+    [searchCustomers, query]
+  );
 };
 
-export const useCustomerHealth = (customerId: string) => {
-  const { calculateCustomerHealth } = useCustomers();
-  const [health, setHealth] = useState<{ status: string; score: number; factors: string[] } | null>(null);
+// Performance hooks
+export const useCustomersLoading = () => {
+  const { customers } = useCustomers();
+  return customers.loading;
+};
 
-  useEffect(() => {
-    if (customerId) {
-      calculateCustomerHealth(customerId)
-        .then(setHealth)
-        .catch(console.error);
-    }
-  }, [customerId, calculateCustomerHealth]);
+export const useCustomersError = () => {
+  const { customers } = useCustomers();
+  return customers.error;
+};
 
-  return health;
+export const useCustomersStats = () => {
+  const { customers } = useCustomers();
+  return useMemo(() => ({
+    total: customers.data.length,
+    byTier: customers.data.reduce((acc, c) => {
+      acc[c.tier] = (acc[c.tier] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    byHealth: customers.data.reduce((acc, c) => {
+      acc[c.health_status] = (acc[c.health_status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    loading: customers.loading,
+    lastUpdated: customers.lastFetch,
+  }), [customers]);
 };

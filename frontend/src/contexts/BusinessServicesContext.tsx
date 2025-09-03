@@ -1,13 +1,24 @@
-// src/contexts/BusinessServicesContext.tsx (STANDARDIZED)
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+// src/contexts/BusinessServicesContext.tsx (FRONTEND-FOCUSED REFACTOR)
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend-Only Type Definitions
 // ---------------------------------
+
+// AsyncState interface for UI state management
+export interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch?: string;
+  isStale?: boolean;
+}
+
+// UI-focused custom KPI interface
 export interface CustomKpi {
   name: string;
   target: number;
@@ -17,6 +28,7 @@ export interface CustomKpi {
   measurement_frequency?: "real_time" | "hourly" | "daily" | "weekly" | "monthly";
 }
 
+// UI-focused health check interface
 export interface BusinessServiceHealthCheck {
   endpoint?: string;
   method?: "GET" | "POST" | "HEAD";
@@ -27,11 +39,12 @@ export interface BusinessServiceHealthCheck {
   last_status?: "healthy" | "degraded" | "unhealthy";
 }
 
+// Core business service interface (UI state focused)
 export interface BusinessService {
   id: string;
   name: string;
   description: string;
-  tier?: string;  // config-driven
+  tier?: string;
   created_at: string;
   updated_at: string;
 
@@ -51,19 +64,19 @@ export interface BusinessService {
   cost_center_ids: string[];
   dependency_service_ids: string[];
 
-  // KPIs
+  // KPIs (display data from backend)
   enterprise_kpi_ids: string[];
   custom_kpis: CustomKpi[];
 
-  // SLA & Reliability
+  // SLA & Reliability (display values)
   sla_target_uptime?: number;
   sla_target_response_ms?: number;
   mttr_minutes?: number;
   mtta_minutes?: number;
-  rpo_minutes?: number; // Recovery Point Objective
-  rto_minutes?: number; // Recovery Time Objective
+  rpo_minutes?: number;
+  rto_minutes?: number;
 
-  // Health Monitoring
+  // Health Monitoring (backend-calculated values)
   health_check?: BusinessServiceHealthCheck;
   current_uptime_percentage?: number;
   current_response_time_ms?: number;
@@ -76,17 +89,17 @@ export interface BusinessService {
   data_classification?: "public" | "internal" | "confidential" | "restricted";
   privacy_impact_assessment?: boolean;
 
-  // Business Impact
+  // Business Impact (display values)
   revenue_dependency?: number | null;
-  customer_tier_impact?: string; // config-driven
+  customer_tier_impact?: string;
   criticality_level?: "low" | "medium" | "high" | "critical";
   business_continuity_plan?: boolean;
   disaster_recovery_plan?: boolean;
 
   // Operational
   maintenance_window?: {
-    day_of_week: number; // 0-6 (Sunday = 0)
-    start_time: string; // "02:00"
+    day_of_week: number;
+    start_time: string;
     duration_minutes: number;
     timezone: string;
   };
@@ -94,7 +107,7 @@ export interface BusinessService {
   automated_deployment?: boolean;
   monitoring_enabled?: boolean;
 
-  // Metadata
+  // UI Metadata
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
@@ -103,164 +116,161 @@ export interface BusinessService {
   tenantId?: string;
 }
 
+// UI filtering interface
+export interface BusinessServiceFilters {
+  tier?: string;
+  valueStreamId?: string;
+  healthStatus?: BusinessService['health_status'][];
+  criticalityLevel?: BusinessService['criticality_level'][];
+  searchQuery?: string;
+  tags?: string[];
+  hasRecentIncidents?: boolean;
+  hasSLABreach?: boolean;
+  requiresMaintenance?: boolean;
+}
+
+// UI sorting options
+export interface BusinessServiceSortOptions {
+  field: 'name' | 'created_at' | 'updated_at' | 'criticality_level' | 'health_status' | 'uptime';
+  direction: 'asc' | 'desc';
+}
+
+// Backend API response types
+export interface BusinessServiceHealthData {
+  status: string;
+  score: number;
+  factors: string[];
+}
+
+export interface BusinessServiceAvailabilityTrend {
+  date: string;
+  uptime: number;
+  incidents: number;
+}
+
+export interface BusinessServiceReliabilityStats {
+  averageUptime: number;
+  averageResponseTime: number;
+  averageMTTR: number;
+  averageMTTA: number;
+  servicesWithSLABreach: number;
+  totalIncidents30d: number;
+  criticalServices: number;
+}
+
 // ---------------------------------
-// 2. Context Interface
+// 2. Frontend Context Interface
 // ---------------------------------
 interface BusinessServicesContextType {
-  businessServices: BusinessService[];
-  addBusinessService: (svc: BusinessService, userId?: string) => Promise<void>;
-  updateBusinessService: (svc: BusinessService, userId?: string) => Promise<void>;
+  // Core async state
+  businessServices: AsyncState<BusinessService[]>;
+  
+  // CRUD operations (thin API wrappers)
+  addBusinessService: (svc: Omit<BusinessService, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<BusinessService>;
+  updateBusinessService: (svc: BusinessService, userId?: string) => Promise<BusinessService>;
   deleteBusinessService: (id: string, userId?: string) => Promise<void>;
   refreshBusinessServices: () => Promise<void>;
   getBusinessService: (id: string) => Promise<BusinessService | undefined>;
 
-  // Business service-specific operations
-  updateServiceSLA: (serviceId: string, slaData: Partial<BusinessService>, userId?: string) => Promise<void>;
-  updateServiceKPIs: (serviceId: string, kpis: CustomKpi[], userId?: string) => Promise<void>;
-  addServiceDependency: (serviceId: string, dependencyId: string, userId?: string) => Promise<void>;
-  removeServiceDependency: (serviceId: string, dependencyId: string, userId?: string) => Promise<void>;
-  updateHealthCheck: (serviceId: string, healthCheck: BusinessServiceHealthCheck, userId?: string) => Promise<void>;
-  calculateServiceHealth: (serviceId: string) => Promise<{ status: string; score: number; factors: string[] }>;
+  // Optimistic UI operations
+  optimisticUpdate: (id: string, changes: Partial<BusinessService>) => void;
+  rollbackOptimisticUpdate: (id: string) => void;
 
-  // Filtering and querying
-  getServicesByTier: (tier: string) => BusinessService[];
-  getServicesByValueStream: (valueStreamId: string) => BusinessService[];
-  getCriticalServices: () => BusinessService[];
-  getServicesWithSLABreach: () => BusinessService[];
-  getServicesWithRecentIncidents: (days?: number) => BusinessService[];
-  getServicesRequiringMaintenance: () => BusinessService[];
-  getServicesWithExpiredHealthChecks: () => BusinessService[];
-  searchServices: (query: string) => BusinessService[];
+  // Client-side filtering & search (for immediate UI responsiveness)
+  filteredServices: BusinessService[];
+  applyFilters: (filters: BusinessServiceFilters) => void;
+  applySorting: (sort: BusinessServiceSortOptions) => void;
+  searchServices: (query: string) => void;
+  clearFilters: () => void;
 
-  // Analytics
-  getServiceReliabilityStats: () => {
-    averageUptime: number;
-    averageResponseTime: number;
-    averageMTTR: number;
-    averageMTTA: number;
-    servicesWithSLABreach: number;
-    totalIncidents30d: number;
-    criticalServices: number;
-  };
+  // Current UI state
+  currentFilters: BusinessServiceFilters;
+  currentSort: BusinessServiceSortOptions;
+  
+  // Backend API integration (data fetching only)
+  fetchServiceHealth: (serviceId: string) => Promise<BusinessServiceHealthData>;
+  fetchServiceAvailabilityTrend: (serviceId: string, days?: number) => Promise<BusinessServiceAvailabilityTrend[]>;
+  fetchReliabilityStats: () => Promise<BusinessServiceReliabilityStats>;
 
-  getServiceAvailabilityTrend: (serviceId: string, days?: number) => Promise<Array<{
-    date: string;
-    uptime: number;
-    incidents: number;
-  }>>;
-
-  // Config integration
-  config: {
+  // UI configuration from backend
+  uiConfig: {
     tiers: string[];
-    impact_levels: string[];
-    sla_targets: Record<string, number>;
-    criticality_levels: string[];
-    data_classifications: string[];
+    impactLevels: string[];
+    slaTargets: Record<string, number>;
+    criticalityLevels: string[];
+    dataClassifications: string[];
   };
+
+  // Cache management
+  invalidateCache: (serviceId?: string) => void;
+  refreshCache: () => Promise<void>;
 }
 
 const BusinessServicesContext = createContext<BusinessServicesContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 3. UI State Management Provider
 // ---------------------------------
 export const BusinessServicesProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { config: globalConfig, validateEnum, getSLATarget } = useConfig();
-  const [businessServices, setBusinessServices] = useState<BusinessService[]>([]);
+  const { config: globalConfig } = useConfig();
 
-  // Extract business service-specific config from global config
-  const config = {
-    tiers: globalConfig?.business?.business_services?.tiers || 
-           ['tier1', 'tier2', 'tier3', 'tier4'],
-    impact_levels: globalConfig?.business?.business_services?.impact_levels || 
-                   ['low', 'medium', 'high', 'critical'],
-    sla_targets: globalConfig?.slas?.business_services || {},
-    criticality_levels: ['low', 'medium', 'high', 'critical'],
-    data_classifications: ['public', 'internal', 'confidential', 'restricted'],
-  };
+  // Core async state
+  const [businessServices, setBusinessServices] = useState<AsyncState<BusinessService[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: undefined,
+    isStale: false,
+  });
 
-  const validateBusinessService = useCallback((svc: BusinessService) => {
-    if (!globalConfig) {
-      throw new Error("Configuration not loaded");
+  // Optimistic updates tracking
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, Partial<BusinessService>>>({});
+  const [originalData, setOriginalData] = useState<Record<string, BusinessService>>({});
+
+  // UI state
+  const [currentFilters, setCurrentFilters] = useState<BusinessServiceFilters>({});
+  const [currentSort, setCurrentSort] = useState<BusinessServiceSortOptions>({
+    field: 'name',
+    direction: 'asc',
+  });
+
+  // Cache TTL management (5 minutes default)
+  const CACHE_TTL = 5 * 60 * 1000;
+
+  // Extract UI configuration from backend config
+  const uiConfig = useMemo(() => ({
+    tiers: globalConfig?.business?.business_services?.tiers || ['tier1', 'tier2', 'tier3', 'tier4'],
+    impactLevels: globalConfig?.business?.business_services?.impact_levels || ['low', 'medium', 'high', 'critical'],
+    slaTargets: globalConfig?.slas?.business_services || {},
+    criticalityLevels: ['low', 'medium', 'high', 'critical'],
+    dataClassifications: ['public', 'internal', 'confidential', 'restricted'],
+  }), [globalConfig]);
+
+  // Basic UI validation (no business logic)
+  const validateUIFields = useCallback((svc: Partial<BusinessService>) => {
+    const errors: string[] = [];
+    
+    if (svc.name && svc.name.trim().length < 2) {
+      errors.push("Service name must be at least 2 characters");
+    }
+    
+    if (svc.description && svc.description.trim().length < 10) {
+      errors.push("Description must be at least 10 characters");
+    }
+    
+    if (svc.tier && !uiConfig.tiers.includes(svc.tier)) {
+      errors.push(`Invalid tier: ${svc.tier}`);
     }
 
-    // Validate tier
-    if (svc.tier && !config.tiers.includes(svc.tier)) {
-      throw new Error(`Invalid business service tier: ${svc.tier}. Valid options: ${config.tiers.join(', ')}`);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
     }
+  }, [uiConfig]);
 
-    // Validate customer tier impact
-    if (svc.customer_tier_impact && !config.impact_levels.includes(svc.customer_tier_impact)) {
-      throw new Error(`Invalid customer tier impact: ${svc.customer_tier_impact}. Valid options: ${config.impact_levels.join(', ')}`);
-    }
-
-    // Validate criticality level
-    if (svc.criticality_level && !config.criticality_levels.includes(svc.criticality_level)) {
-      throw new Error(`Invalid criticality level: ${svc.criticality_level}. Valid options: ${config.criticality_levels.join(', ')}`);
-    }
-
-    // Validate data classification
-    if (svc.data_classification && !config.data_classifications.includes(svc.data_classification)) {
-      throw new Error(`Invalid data classification: ${svc.data_classification}. Valid options: ${config.data_classifications.join(', ')}`);
-    }
-
-    // Validate required fields
-    if (!svc.name || svc.name.trim().length < 2) {
-      throw new Error("Business service name must be at least 2 characters long");
-    }
-
-    if (!svc.description || svc.description.trim().length < 10) {
-      throw new Error("Description must be at least 10 characters long");
-    }
-
-    if (!svc.value_stream_id) {
-      throw new Error("Value stream ID is required");
-    }
-
-    // Validate SLA values
-    if (svc.sla_target_uptime !== undefined && (svc.sla_target_uptime < 0 || svc.sla_target_uptime > 100)) {
-      throw new Error("SLA target uptime must be between 0 and 100 percent");
-    }
-
-    if (svc.sla_target_response_ms !== undefined && svc.sla_target_response_ms < 0) {
-      throw new Error("SLA target response time must be a positive number");
-    }
-
-    // Validate recovery objectives
-    if (svc.rpo_minutes !== undefined && svc.rpo_minutes < 0) {
-      throw new Error("RPO must be a positive number");
-    }
-
-    if (svc.rto_minutes !== undefined && svc.rto_minutes < 0) {
-      throw new Error("RTO must be a positive number");
-    }
-
-    // Validate KPIs
-    if (svc.custom_kpis) {
-      svc.custom_kpis.forEach((kpi, index) => {
-        if (!kpi.name || kpi.name.trim().length < 2) {
-          throw new Error(`KPI at index ${index} must have a name of at least 2 characters`);
-        }
-        if (typeof kpi.target !== 'number') {
-          throw new Error(`KPI "${kpi.name}" must have a numeric target value`);
-        }
-      });
-    }
-
-    // Validate health check configuration
-    if (svc.health_check) {
-      if (svc.health_check.endpoint && !svc.health_check.endpoint.startsWith('http')) {
-        throw new Error("Health check endpoint must be a valid HTTP(S) URL");
-      }
-      if (svc.health_check.timeout_ms && svc.health_check.timeout_ms < 100) {
-        throw new Error("Health check timeout must be at least 100ms");
-      }
-    }
-  }, [globalConfig, config]);
-
-  const ensureMetadata = useCallback((svc: BusinessService): BusinessService => {
+  // Ensure UI metadata for consistency
+  const ensureUIMetadata = useCallback((svc: BusinessService): BusinessService => {
     const now = new Date().toISOString();
     return {
       ...svc,
@@ -281,422 +291,539 @@ export const BusinessServicesProvider = ({ children }: { children: ReactNode }) 
     };
   }, [tenantId]);
 
+  // Check if cache is stale
+  const isCacheStale = useCallback(() => {
+    if (!businessServices.lastFetch) return true;
+    const lastFetch = new Date(businessServices.lastFetch);
+    const now = new Date();
+    return (now.getTime() - lastFetch.getTime()) > CACHE_TTL;
+  }, [businessServices.lastFetch]);
+
+  // Refresh business services from API/database
   const refreshBusinessServices = useCallback(async () => {
     if (!tenantId) return;
     
+    setBusinessServices(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      const all = await getAll<BusinessService>(tenantId, "business_services");
+      const services = await getAll<BusinessService>(tenantId, "business_services");
       
-      // Sort by criticality and health status
-      all.sort((a, b) => {
-        // Critical services first
+      // Simple client-side sorting for UI responsiveness
+      services.sort((a, b) => {
         const criticalityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
         const aCriticality = criticalityOrder[a.criticality_level as keyof typeof criticalityOrder] || 0;
         const bCriticality = criticalityOrder[b.criticality_level as keyof typeof criticalityOrder] || 0;
         if (aCriticality !== bCriticality) return bCriticality - aCriticality;
         
-        // Health status priority
         const healthOrder = { red: 5, orange: 4, yellow: 3, green: 2, gray: 1 };
         const aHealth = healthOrder[a.health_status] || 0;
         const bHealth = healthOrder[b.health_status] || 0;
         if (aHealth !== bHealth) return bHealth - aHealth;
         
-        // Finally by name
         return a.name.localeCompare(b.name);
       });
       
-      setBusinessServices(all);
+      setBusinessServices({
+        data: services,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        isStale: false,
+      });
     } catch (error) {
-      console.error("Failed to refresh business services:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh business services';
+      setBusinessServices(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+        isStale: true,
+      }));
     }
   }, [tenantId]);
 
+  // Get single business service
   const getBusinessService = useCallback(async (id: string) => {
     if (!tenantId) return undefined;
+    
+    // Check local cache first
+    const cached = businessServices.data.find(s => s.id === id);
+    if (cached && !isCacheStale()) {
+      return cached;
+    }
+    
+    // Fetch from database
     return getById<BusinessService>(tenantId, "business_services", id);
-  }, [tenantId]);
+  }, [tenantId, businessServices.data, isCacheStale]);
 
-  const addBusinessService = useCallback(async (svc: BusinessService, userId?: string) => {
+  // Add business service (optimistic UI)
+  const addBusinessService = useCallback(async (
+    svc: Omit<BusinessService, 'id' | 'created_at' | 'updated_at'>, 
+    userId?: string
+  ) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    validateBusinessService(svc);
+    validateUIFields(svc);
 
     const now = new Date().toISOString();
-    const enriched = ensureMetadata({
+    const newService = ensureUIMetadata({
       ...svc,
+      id: crypto.randomUUID(),
       created_at: now,
       updated_at: now,
-    });
+    } as BusinessService);
 
-    const priority = svc.criticality_level === 'critical' ? 'critical' : 
-                    svc.criticality_level === 'high' ? 'high' : 'normal';
+    // Optimistic UI update
+    setBusinessServices(prev => ({
+      ...prev,
+      data: [newService, ...prev.data],
+    }));
 
-    await putWithAudit(
-      tenantId,
-      "business_services",
-      enriched,
-      userId,
-      {
+    try {
+      // Backend API call - all business logic handled by backend
+      await putWithAudit(
+        tenantId,
+        "business_services",
+        newService,
+        userId,
+        {
+          action: "create",
+          description: `Created business service: ${svc.name}`,
+          tags: ["business_service", "create", svc.tier || "unspecified"],
+          metadata: {
+            tier: svc.tier,
+            value_stream_id: svc.value_stream_id,
+            criticality_level: svc.criticality_level,
+          },
+        }
+      );
+
+      // Queue for sync
+      const priority = svc.criticality_level === 'critical' ? 'critical' : 
+                      svc.criticality_level === 'high' ? 'high' : 'normal';
+
+      await enqueueItem({
+        storeName: "business_services",
+        entityId: newService.id,
         action: "create",
-        description: `Created business service: ${svc.name}`,
-        tags: ["business_service", "create", svc.tier || "unspecified", svc.criticality_level || "medium"],
-        metadata: {
-          tier: svc.tier,
-          value_stream_id: svc.value_stream_id,
-          criticality_level: svc.criticality_level,
-          sla_target_uptime: svc.sla_target_uptime,
-          customer_count: svc.customer_ids.length,
-        },
-      }
-    );
+        payload: newService,
+        priority,
+      });
 
-    await enqueueItem({
-      storeName: "business_services",
-      entityId: enriched.id,
-      action: "create",
-      payload: enriched,
-      priority,
-    });
+      return newService;
+    } catch (error) {
+      // Rollback optimistic update on error
+      setBusinessServices(prev => ({
+        ...prev,
+        data: prev.data.filter(s => s.id !== newService.id),
+        error: error instanceof Error ? error.message : 'Failed to create business service',
+      }));
+      throw error;
+    }
+  }, [tenantId, validateUIFields, ensureUIMetadata, enqueueItem]);
 
-    await refreshBusinessServices();
-  }, [tenantId, validateBusinessService, ensureMetadata, enqueueItem, refreshBusinessServices]);
-
+  // Update business service (optimistic UI)
   const updateBusinessService = useCallback(async (svc: BusinessService, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    validateBusinessService(svc);
+    validateUIFields(svc);
 
-    const enriched = ensureMetadata({
+    const updatedService = ensureUIMetadata({
       ...svc,
       updated_at: new Date().toISOString(),
     });
 
-    await putWithAudit(
-      tenantId,
-      "business_services",
-      enriched,
-      userId,
-      {
+    // Store original for rollback
+    const original = businessServices.data.find(s => s.id === svc.id);
+    if (original) {
+      setOriginalData(prev => ({ ...prev, [svc.id]: original }));
+    }
+
+    // Optimistic UI update
+    setBusinessServices(prev => ({
+      ...prev,
+      data: prev.data.map(s => s.id === svc.id ? updatedService : s),
+    }));
+
+    try {
+      // Backend API call
+      await putWithAudit(
+        tenantId,
+        "business_services",
+        updatedService,
+        userId,
+        {
+          action: "update",
+          description: `Updated business service: ${svc.name}`,
+          tags: ["business_service", "update"],
+          metadata: {
+            tier: svc.tier,
+            criticality_level: svc.criticality_level,
+          },
+        }
+      );
+
+      // Queue for sync
+      await enqueueItem({
+        storeName: "business_services",
+        entityId: updatedService.id,
         action: "update",
-        description: `Updated business service: ${svc.name}`,
-        tags: ["business_service", "update", svc.tier || "unspecified"],
-        metadata: {
-          tier: svc.tier,
-          criticality_level: svc.criticality_level,
-          sla_target_uptime: svc.sla_target_uptime,
-        },
-      }
-    );
+        payload: updatedService,
+      });
 
-    await enqueueItem({
-      storeName: "business_services",
-      entityId: enriched.id,
-      action: "update",
-      payload: enriched,
-    });
+      // Clear rollback data
+      setOriginalData(prev => {
+        const { [svc.id]: _, ...rest } = prev;
+        return rest;
+      });
 
-    await refreshBusinessServices();
-  }, [tenantId, validateBusinessService, ensureMetadata, enqueueItem, refreshBusinessServices]);
+      return updatedService;
+    } catch (error) {
+      // Rollback optimistic update
+      rollbackOptimisticUpdate(svc.id);
+      throw error;
+    }
+  }, [tenantId, validateUIFields, ensureUIMetadata, enqueueItem, businessServices.data]);
 
+  // Delete business service (optimistic UI)
   const deleteBusinessService = useCallback(async (id: string, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
 
-    const service = await getBusinessService(id);
+    const service = businessServices.data.find(s => s.id === id);
     if (!service) throw new Error(`Business service ${id} not found`);
 
-    await removeWithAudit(
-      tenantId,
-      "business_services",
-      id,
-      userId,
-      {
+    // Store original for rollback
+    setOriginalData(prev => ({ ...prev, [id]: service }));
+
+    // Optimistic UI update
+    setBusinessServices(prev => ({
+      ...prev,
+      data: prev.data.filter(s => s.id !== id),
+    }));
+
+    try {
+      // Backend API call
+      await removeWithAudit(
+        tenantId,
+        "business_services",
+        id,
+        userId,
+        {
+          action: "delete",
+          description: `Deleted business service: ${service.name}`,
+          tags: ["business_service", "delete"],
+          metadata: {
+            tier: service.tier,
+            value_stream_id: service.value_stream_id,
+          },
+        }
+      );
+
+      // Queue for sync
+      await enqueueItem({
+        storeName: "business_services",
+        entityId: id,
         action: "delete",
-        description: `Deleted business service: ${service.name}`,
-        tags: ["business_service", "delete", service.tier || "unspecified"],
-        metadata: {
-          tier: service.tier,
-          value_stream_id: service.value_stream_id,
-          criticality_level: service.criticality_level,
-        },
-      }
-    );
+        payload: null,
+      });
 
-    await enqueueItem({
-      storeName: "business_services",
-      entityId: id,
-      action: "delete",
-      payload: null,
-    });
-
-    await refreshBusinessServices();
-  }, [tenantId, getBusinessService, enqueueItem, refreshBusinessServices]);
-
-  // Business service-specific operations
-  const updateServiceSLA = useCallback(async (serviceId: string, slaData: Partial<BusinessService>, userId?: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const updated = { ...service, ...slaData };
-    await updateBusinessService(updated, userId);
-  }, [getBusinessService, updateBusinessService]);
-
-  const updateServiceKPIs = useCallback(async (serviceId: string, kpis: CustomKpi[], userId?: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const updated = { ...service, custom_kpis: kpis };
-    await updateBusinessService(updated, userId);
-  }, [getBusinessService, updateBusinessService]);
-
-  const addServiceDependency = useCallback(async (serviceId: string, dependencyId: string, userId?: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const updatedDependencies = [...service.dependency_service_ids, dependencyId];
-    const updated = { ...service, dependency_service_ids: updatedDependencies };
-
-    await updateBusinessService(updated, userId);
-  }, [getBusinessService, updateBusinessService]);
-
-  const removeServiceDependency = useCallback(async (serviceId: string, dependencyId: string, userId?: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const updatedDependencies = service.dependency_service_ids.filter(id => id !== dependencyId);
-    const updated = { ...service, dependency_service_ids: updatedDependencies };
-
-    await updateBusinessService(updated, userId);
-  }, [getBusinessService, updateBusinessService]);
-
-  const updateHealthCheck = useCallback(async (serviceId: string, healthCheck: BusinessServiceHealthCheck, userId?: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const updated = { ...service, health_check: healthCheck };
-    await updateBusinessService(updated, userId);
-  }, [getBusinessService, updateBusinessService]);
-
-  const calculateServiceHealth = useCallback(async (serviceId: string) => {
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    // Calculate health score based on various factors
-    let score = 100;
-    const factors: string[] = [];
-
-    // Uptime factor
-    if (service.current_uptime_percentage !== undefined) {
-      if (service.current_uptime_percentage < 99) {
-        score -= (99 - service.current_uptime_percentage) * 2;
-        factors.push(`Low uptime: ${service.current_uptime_percentage}%`);
-      }
+      // Clear rollback data
+      setOriginalData(prev => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+    } catch (error) {
+      // Rollback optimistic update
+      setBusinessServices(prev => ({
+        ...prev,
+        data: [...prev.data, service].sort((a, b) => a.name.localeCompare(b.name)),
+        error: error instanceof Error ? error.message : 'Failed to delete business service',
+      }));
+      throw error;
     }
+  }, [tenantId, businessServices.data, enqueueItem]);
 
-    // Response time factor
-    if (service.current_response_time_ms !== undefined && service.sla_target_response_ms) {
-      if (service.current_response_time_ms > service.sla_target_response_ms) {
-        const ratio = service.current_response_time_ms / service.sla_target_response_ms;
-        score -= Math.min(20, (ratio - 1) * 10);
-        factors.push(`Slow response time: ${service.current_response_time_ms}ms`);
-      }
-    }
-
-    // Recent incidents factor
-    if (service.incident_count_30d && service.incident_count_30d > 0) {
-      score -= Math.min(15, service.incident_count_30d * 3);
-      factors.push(`Recent incidents: ${service.incident_count_30d} in 30 days`);
-    }
-
-    // Health check factor
-    if (service.health_check?.last_status === 'unhealthy') {
-      score -= 25;
-      factors.push('Health check failing');
-    } else if (service.health_check?.last_status === 'degraded') {
-      score -= 10;
-      factors.push('Health check degraded');
-    }
-
-    // Determine status based on score
-    let status: string;
-    if (score >= 95) status = 'green';
-    else if (score >= 85) status = 'yellow';
-    else if (score >= 70) status = 'orange';
-    else status = 'red';
-
-    return { status, score: Math.max(0, score), factors };
-  }, [getBusinessService]);
-
-  // Filtering functions
-  const getServicesByTier = useCallback((tier: string) => {
-    return businessServices.filter(s => s.tier === tier);
-  }, [businessServices]);
-
-  const getServicesByValueStream = useCallback((valueStreamId: string) => {
-    return businessServices.filter(s => s.value_stream_id === valueStreamId);
-  }, [businessServices]);
-
-  const getCriticalServices = useCallback(() => {
-    return businessServices.filter(s => 
-      s.criticality_level === 'critical' || 
-      s.health_status === 'red' ||
-      (s.sla_target_uptime && s.sla_target_uptime >= 99.9)
-    );
-  }, [businessServices]);
-
-  const getServicesWithSLABreach = useCallback(() => {
-    return businessServices.filter(s => 
-      s.health_status === 'red' || 
-      s.health_status === 'orange' ||
-      (s.current_uptime_percentage && s.sla_target_uptime && s.current_uptime_percentage < s.sla_target_uptime) ||
-      (s.current_response_time_ms && s.sla_target_response_ms && s.current_response_time_ms > s.sla_target_response_ms)
-    );
-  }, [businessServices]);
-
-  const getServicesWithRecentIncidents = useCallback((days: number = 30) => {
-    return businessServices.filter(s => {
-      if (s.incident_count_30d && s.incident_count_30d > 0) return true;
-      if (s.last_incident_at) {
-        const incidentDate = new Date(s.last_incident_at);
-        const cutoffDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000));
-        return incidentDate > cutoffDate;
-      }
-      return false;
-    });
-  }, [businessServices]);
-
-  const getServicesRequiringMaintenance = useCallback(() => {
-    return businessServices.filter(s => 
-      s.health_status === 'yellow' || 
-      s.health_status === 'orange' ||
-      (s.health_check?.last_status === 'degraded')
-    );
-  }, [businessServices]);
-
-  const getServicesWithExpiredHealthChecks = useCallback(() => {
-    const now = new Date();
-    return businessServices.filter(s => {
-      if (!s.health_check?.last_check_at || !s.health_check?.interval_minutes) return false;
-      const lastCheck = new Date(s.health_check.last_check_at);
-      const expectedNextCheck = new Date(lastCheck.getTime() + (s.health_check.interval_minutes * 60 * 1000));
-      return now > expectedNextCheck;
-    });
-  }, [businessServices]);
-
-  const searchServices = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return businessServices.filter(s => 
-      s.name.toLowerCase().includes(lowerQuery) ||
-      s.description.toLowerCase().includes(lowerQuery) ||
-      s.tier?.toLowerCase().includes(lowerQuery) ||
-      s.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-      s.custom_kpis.some(kpi => kpi.name.toLowerCase().includes(lowerQuery))
-    );
-  }, [businessServices]);
-
-  // Analytics functions
-  const getServiceReliabilityStats = useCallback(() => {
-    const servicesWithUptime = businessServices.filter(s => s.current_uptime_percentage !== undefined);
-    const servicesWithResponseTime = businessServices.filter(s => s.current_response_time_ms !== undefined);
-    const servicesWithMTTR = businessServices.filter(s => s.mttr_minutes !== undefined);
-    const servicesWithMTTA = businessServices.filter(s => s.mtta_minutes !== undefined);
-
-    const averageUptime = servicesWithUptime.length > 0
-      ? servicesWithUptime.reduce((sum, s) => sum + (s.current_uptime_percentage || 0), 0) / servicesWithUptime.length
-      : 0;
-
-    const averageResponseTime = servicesWithResponseTime.length > 0
-      ? servicesWithResponseTime.reduce((sum, s) => sum + (s.current_response_time_ms || 0), 0) / servicesWithResponseTime.length
-      : 0;
-
-    const averageMTTR = servicesWithMTTR.length > 0
-      ? servicesWithMTTR.reduce((sum, s) => sum + (s.mttr_minutes || 0), 0) / servicesWithMTTR.length
-      : 0;
-
-    const averageMTTA = servicesWithMTTA.length > 0
-      ? servicesWithMTTA.reduce((sum, s) => sum + (s.mtta_minutes || 0), 0) / servicesWithMTTA.length
-      : 0;
-
-    const servicesWithSLABreach = getServicesWithSLABreach().length;
-    const totalIncidents30d = businessServices.reduce((sum, s) => sum + (s.incident_count_30d || 0), 0);
-    const criticalServices = getCriticalServices().length;
-
-    return {
-      averageUptime,
-      averageResponseTime,
-      averageMTTR,
-      averageMTTA,
-      servicesWithSLABreach,
-      totalIncidents30d,
-      criticalServices,
-    };
-  }, [businessServices, getServicesWithSLABreach, getCriticalServices]);
-
-  const getServiceAvailabilityTrend = useCallback(async (serviceId: string, days: number = 30) => {
-    // This would typically fetch from metrics/monitoring store
-    // For now, return mock trend data
-    const service = await getBusinessService(serviceId);
-    if (!service) throw new Error(`Business service ${serviceId} not found`);
-
-    const trend = [];
-    const baseUptime = service.current_uptime_percentage || 99.5;
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
+  // Optimistic update helpers
+  const optimisticUpdate = useCallback((id: string, changes: Partial<BusinessService>) => {
+    const original = businessServices.data.find(s => s.id === id);
+    if (original) {
+      setOriginalData(prev => ({ ...prev, [id]: original }));
+      setOptimisticUpdates(prev => ({ ...prev, [id]: { ...prev[id], ...changes } }));
       
-      // Simulate uptime variation
-      const variation = (Math.random() - 0.5) * 2; // ±1%
-      const uptime = Math.min(100, Math.max(95, baseUptime + variation));
+      setBusinessServices(prev => ({
+        ...prev,
+        data: prev.data.map(s => s.id === id ? { ...s, ...changes } : s),
+      }));
+    }
+  }, [businessServices.data]);
+
+  const rollbackOptimisticUpdate = useCallback((id: string) => {
+    const original = originalData[id];
+    if (original) {
+      setBusinessServices(prev => ({
+        ...prev,
+        data: prev.data.map(s => s.id === id ? original : s),
+      }));
       
-      // Simulate incidents (lower probability for higher uptime)
-      const incidentProbability = (100 - uptime) / 100;
-      const incidents = Math.random() < incidentProbability ? Math.floor(Math.random() * 3) + 1 : 0;
+      setOptimisticUpdates(prev => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
       
-      trend.push({
-        date: date.toISOString().split('T')[0],
-        uptime: Math.round(uptime * 100) / 100,
-        incidents,
+      setOriginalData(prev => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
       });
     }
+  }, [originalData]);
 
-    return trend;
-  }, [getBusinessService]);
+  // Client-side filtering for immediate UI responsiveness
+  const filteredServices = useMemo(() => {
+    let filtered = [...businessServices.data];
 
-  // Initialize when tenant and config are ready
+    // Apply optimistic updates
+    filtered = filtered.map(service => ({
+      ...service,
+      ...optimisticUpdates[service.id],
+    }));
+
+    // Apply filters
+    if (currentFilters.tier) {
+      filtered = filtered.filter(s => s.tier === currentFilters.tier);
+    }
+
+    if (currentFilters.valueStreamId) {
+      filtered = filtered.filter(s => s.value_stream_id === currentFilters.valueStreamId);
+    }
+
+    if (currentFilters.healthStatus?.length) {
+      filtered = filtered.filter(s => currentFilters.healthStatus!.includes(s.health_status));
+    }
+
+    if (currentFilters.criticalityLevel?.length) {
+      filtered = filtered.filter(s => 
+        s.criticality_level && currentFilters.criticalityLevel!.includes(s.criticality_level)
+      );
+    }
+
+    if (currentFilters.searchQuery) {
+      const query = currentFilters.searchQuery.toLowerCase();
+      filtered = filtered.filter(s =>
+        s.name.toLowerCase().includes(query) ||
+        s.description.toLowerCase().includes(query) ||
+        s.tags.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+
+    if (currentFilters.tags?.length) {
+      filtered = filtered.filter(s =>
+        currentFilters.tags!.some(tag => s.tags.includes(tag))
+      );
+    }
+
+    if (currentFilters.hasRecentIncidents) {
+      filtered = filtered.filter(s => s.incident_count_30d && s.incident_count_30d > 0);
+    }
+
+    if (currentFilters.hasSLABreach) {
+      filtered = filtered.filter(s => 
+        s.health_status === 'red' || 
+        s.health_status === 'orange' ||
+        (s.current_uptime_percentage && s.sla_target_uptime && 
+         s.current_uptime_percentage < s.sla_target_uptime)
+      );
+    }
+
+    if (currentFilters.requiresMaintenance) {
+      filtered = filtered.filter(s => 
+        s.health_status === 'yellow' || 
+        s.health_status === 'orange'
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (currentSort.field) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime();
+          bValue = new Date(b.created_at).getTime();
+          break;
+        case 'updated_at':
+          aValue = new Date(a.updated_at).getTime();
+          bValue = new Date(b.updated_at).getTime();
+          break;
+        case 'criticality_level':
+          const criticalityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+          aValue = criticalityOrder[a.criticality_level as keyof typeof criticalityOrder] || 0;
+          bValue = criticalityOrder[b.criticality_level as keyof typeof criticalityOrder] || 0;
+          break;
+        case 'health_status':
+          const healthOrder = { red: 5, orange: 4, yellow: 3, green: 2, gray: 1 };
+          aValue = healthOrder[a.health_status] || 0;
+          bValue = healthOrder[b.health_status] || 0;
+          break;
+        case 'uptime':
+          aValue = a.current_uptime_percentage || 0;
+          bValue = b.current_uptime_percentage || 0;
+          break;
+        default:
+          aValue = a.name;
+          bValue = b.name;
+      }
+
+      if (aValue < bValue) return currentSort.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return currentSort.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [businessServices.data, optimisticUpdates, currentFilters, currentSort]);
+
+  // UI filter and search actions
+  const applyFilters = useCallback((filters: BusinessServiceFilters) => {
+    setCurrentFilters(filters);
+  }, []);
+
+  const applySorting = useCallback((sort: BusinessServiceSortOptions) => {
+    setCurrentSort(sort);
+  }, []);
+
+  const searchServices = useCallback((query: string) => {
+    setCurrentFilters(prev => ({ ...prev, searchQuery: query }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setCurrentFilters({});
+  }, []);
+
+  // Backend API integration (pure data fetching)
+  const fetchServiceHealth = useCallback(async (serviceId: string): Promise<BusinessServiceHealthData> => {
+    // This would call a backend API endpoint
+    // Backend handles all business logic for health calculation
+    const response = await fetch(`/api/business-services/${serviceId}/health`);
+    if (!response.ok) throw new Error('Failed to fetch service health');
+    return response.json();
+  }, []);
+
+  const fetchServiceAvailabilityTrend = useCallback(async (
+    serviceId: string, 
+    days: number = 30
+  ): Promise<BusinessServiceAvailabilityTrend[]> => {
+    // Backend API call for availability trend data
+    const response = await fetch(`/api/business-services/${serviceId}/availability-trend?days=${days}`);
+    if (!response.ok) throw new Error('Failed to fetch availability trend');
+    return response.json();
+  }, []);
+
+  const fetchReliabilityStats = useCallback(async (): Promise<BusinessServiceReliabilityStats> => {
+    // Backend API call for reliability statistics
+    const response = await fetch('/api/business-services/reliability-stats');
+    if (!response.ok) throw new Error('Failed to fetch reliability stats');
+    return response.json();
+  }, []);
+
+  // Cache management
+  const invalidateCache = useCallback((serviceId?: string) => {
+    if (serviceId) {
+      // Invalidate specific service (for selective updates)
+      setBusinessServices(prev => ({
+        ...prev,
+        data: prev.data.map(s => s.id === serviceId ? { ...s, sync_status: 'dirty' } : s),
+        isStale: true,
+      }));
+    } else {
+      // Invalidate all
+      setBusinessServices(prev => ({
+        ...prev,
+        isStale: true,
+        lastFetch: undefined,
+      }));
+    }
+  }, []);
+
+  const refreshCache = useCallback(async () => {
+    await refreshBusinessServices();
+  }, [refreshBusinessServices]);
+
+  // Initialize and auto-refresh
   useEffect(() => {
     if (tenantId && globalConfig) {
       refreshBusinessServices();
     }
   }, [tenantId, globalConfig, refreshBusinessServices]);
 
+  // Auto-refresh stale data
+  useEffect(() => {
+    if (businessServices.isStale && !businessServices.loading) {
+      const timer = setTimeout(() => {
+        refreshBusinessServices();
+      }, 1000); // Brief delay to avoid rapid refreshes
+
+      return () => clearTimeout(timer);
+    }
+  }, [businessServices.isStale, businessServices.loading, refreshBusinessServices]);
+
+  // Cleanup optimistic updates on unmount
+  useEffect(() => {
+    return () => {
+      setOptimisticUpdates({});
+      setOriginalData({});
+    };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    businessServices,
+    addBusinessService,
+    updateBusinessService,
+    deleteBusinessService,
+    refreshBusinessServices,
+    getBusinessService,
+    optimisticUpdate,
+    rollbackOptimisticUpdate,
+    filteredServices,
+    applyFilters,
+    applySorting,
+    searchServices,
+    clearFilters,
+    currentFilters,
+    currentSort,
+    fetchServiceHealth,
+    fetchServiceAvailabilityTrend,
+    fetchReliabilityStats,
+    uiConfig,
+    invalidateCache,
+    refreshCache,
+  }), [
+    businessServices,
+    addBusinessService,
+    updateBusinessService,
+    deleteBusinessService,
+    refreshBusinessServices,
+    getBusinessService,
+    optimisticUpdate,
+    rollbackOptimisticUpdate,
+    filteredServices,
+    applyFilters,
+    applySorting,
+    searchServices,
+    clearFilters,
+    currentFilters,
+    currentSort,
+    fetchServiceHealth,
+    fetchServiceAvailabilityTrend,
+    fetchReliabilityStats,
+    uiConfig,
+    invalidateCache,
+    refreshCache,
+  ]);
+
   return (
-    <BusinessServicesContext.Provider
-      value={{
-        businessServices,
-        addBusinessService,
-        updateBusinessService,
-        deleteBusinessService,
-        refreshBusinessServices,
-        getBusinessService,
-        updateServiceSLA,
-        updateServiceKPIs,
-        addServiceDependency,
-        removeServiceDependency,
-        updateHealthCheck,
-        calculateServiceHealth,
-        getServicesByTier,
-        getServicesByValueStream,
-        getCriticalServices,
-        getServicesWithSLABreach,
-        getServicesWithRecentIncidents,
-        getServicesRequiringMaintenance,
-        getServicesWithExpiredHealthChecks,
-        searchServices,
-        getServiceReliabilityStats,
-        getServiceAvailabilityTrend,
-        config,
-      }}
-    >
+    <BusinessServicesContext.Provider value={contextValue}>
       {children}
     </BusinessServicesContext.Provider>
   );
@@ -711,53 +838,107 @@ export const useBusinessServices = () => {
   return ctx;
 };
 
-export const useBusinessServiceDetails = (id: string) => {
-  const { businessServices } = useBusinessServices();
-  return businessServices.find((s) => s.id === id) || null;
+// Selective subscription hooks for performance
+export const useBusinessServiceById = (id: string) => {
+  const { businessServices, getBusinessService } = useBusinessServices();
+  const [service, setService] = useState<BusinessService | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const cachedService = businessServices.data.find(s => s.id === id);
+    if (cachedService) {
+      setService(cachedService);
+    } else if (!businessServices.loading) {
+      setLoading(true);
+      getBusinessService(id)
+        .then(setService)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
+  }, [id, businessServices.data, businessServices.loading, getBusinessService]);
+
+  return { service, loading };
 };
 
-// Utility hooks
+export const useBusinessServicesByStatus = (status: BusinessService['health_status']) => {
+  const { filteredServices } = useBusinessServices();
+  return useMemo(() => 
+    filteredServices.filter(s => s.health_status === status),
+    [filteredServices, status]
+  );
+};
+
 export const useCriticalBusinessServices = () => {
-  const { getCriticalServices } = useBusinessServices();
-  return getCriticalServices();
+  const { filteredServices } = useBusinessServices();
+  return useMemo(() => 
+    filteredServices.filter(s => 
+      s.criticality_level === 'critical' || 
+      s.health_status === 'red'
+    ),
+    [filteredServices]
+  );
 };
 
-export const useBusinessServicesWithSLABreach = () => {
-  const { getServicesWithSLABreach } = useBusinessServices();
-  return getServicesWithSLABreach();
-};
-
-export const useBusinessServiceReliabilityStats = () => {
-  const { getServiceReliabilityStats } = useBusinessServices();
-  return getServiceReliabilityStats();
+// UI state hooks
+export const useBusinessServiceFilters = () => {
+  const { currentFilters, applyFilters, clearFilters, searchServices } = useBusinessServices();
+  return { currentFilters, applyFilters, clearFilters, searchServices };
 };
 
 export const useBusinessServiceHealth = (serviceId: string) => {
-  const { calculateServiceHealth } = useBusinessServices();
-  const [health, setHealth] = useState<{ status: string; score: number; factors: string[] } | null>(null);
+  const { fetchServiceHealth } = useBusinessServices();
+  const [health, setHealth] = useState<BusinessServiceHealthData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!serviceId) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const data = await fetchServiceHealth(serviceId);
+      setHealth(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch health data');
+    } finally {
+      setLoading(false);
+    }
+  }, [serviceId, fetchServiceHealth]);
 
   useEffect(() => {
-    if (serviceId) {
-      calculateServiceHealth(serviceId)
-        .then(setHealth)
-        .catch(console.error);
-    }
-  }, [serviceId, calculateServiceHealth]);
+    refresh();
+  }, [refresh]);
 
-  return health;
+  return { health, loading, error, refresh };
 };
 
 export const useBusinessServiceAvailability = (serviceId: string, days?: number) => {
-  const { getServiceAvailabilityTrend } = useBusinessServices();
-  const [trend, setTrend] = useState<Array<{ date: string; uptime: number; incidents: number }> | null>(null);
+  const { fetchServiceAvailabilityTrend } = useBusinessServices();
+  const [trend, setTrend] = useState<BusinessServiceAvailabilityTrend[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!serviceId) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const data = await fetchServiceAvailabilityTrend(serviceId, days);
+      setTrend(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch availability data');
+    } finally {
+      setLoading(false);
+    }
+  }, [serviceId, days, fetchServiceAvailabilityTrend]);
 
   useEffect(() => {
-    if (serviceId) {
-      getServiceAvailabilityTrend(serviceId, days)
-        .then(setTrend)
-        .catch(console.error);
-    }
-  }, [serviceId, days, getServiceAvailabilityTrend]);
+    refresh();
+  }, [refresh]);
 
-  return trend;
+  return { trend, loading, error, refresh };
 };

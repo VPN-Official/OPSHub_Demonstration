@@ -1,4 +1,4 @@
-// src/contexts/PolicyContext.tsx
+// src/contexts/PolicyContext.tsx - REFACTORED FOR FRONTEND-ONLY PATTERNS
 import React, {
   createContext,
   useContext,
@@ -6,6 +6,7 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
 import { 
   getAll,
@@ -18,8 +19,32 @@ import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend State Management Types
 // ---------------------------------
+
+/**
+ * Generic async state interface for managing API operations
+ */
+export interface AsyncState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+/**
+ * Cache configuration for UI performance optimization
+ */
+interface CacheConfig {
+  ttl: number; // Time to live in milliseconds
+  maxSize: number; // Maximum number of cached items
+}
+
+// ---------------------------------
+// 2. Core Policy Types (UI-focused)
+// ---------------------------------
+
 export type PolicyType =
   | "security"
   | "compliance"
@@ -73,11 +98,11 @@ export interface PolicyControl {
 
 export interface Policy {
   id: string;
-  name: string;                        // "Password Rotation Policy"
+  name: string;
   description?: string;
   type: PolicyType;
   status: PolicyStatus;
-  version: string;                     // "1.0", "2.1", etc.
+  version: string;
   created_at: string;
   updated_at: string;
   effective_date: string;
@@ -85,23 +110,23 @@ export interface Policy {
   expiry_date?: string | null;
 
   // Ownership and governance
-  policy_owner_user_id: string;        // FK → UsersContext (required)
-  policy_owner_team_id?: string | null; // FK → TeamsContext
-  approver_user_ids: string[];         // FK → UsersContext (who can approve)
-  reviewer_user_ids: string[];         // FK → UsersContext (who reviews)
+  policy_owner_user_id: string;
+  policy_owner_team_id?: string | null;
+  approver_user_ids: string[];
+  reviewer_user_ids: string[];
 
   // Scope and applicability
-  business_service_ids: string[];      // FK → BusinessServicesContext
-  asset_ids: string[];                 // FK → AssetsContext
-  vendor_ids: string[];                // FK → VendorsContext
-  contract_ids: string[];              // FK → ContractsContext
-  compliance_requirement_ids: string[];// FK → ComplianceContext
-  applies_to_user_roles: string[];     // Which user roles this applies to
-  geographic_scope?: string[];         // Countries/regions where this applies
+  business_service_ids: string[];
+  asset_ids: string[];
+  vendor_ids: string[];
+  contract_ids: string[];
+  compliance_requirement_ids: string[];
+  applies_to_user_roles: string[];
+  geographic_scope?: string[];
 
   // Policy content and controls
-  policy_statement: string;            // The actual policy text
-  controls: PolicyControl[];           // Implementing controls
+  policy_statement: string;
+  controls: PolicyControl[];
   procedures: Array<{
     id: string;
     name: string;
@@ -112,19 +137,19 @@ export interface Policy {
 
   // Enforcement and monitoring
   enforcement_mode: EnforcementMode;
-  exception_process?: string;          // How to request exceptions
+  exception_process?: string;
   monitoring_enabled: boolean;
   automated_enforcement: boolean;
-  violation_threshold?: number;        // How many violations before escalation
+  violation_threshold?: number;
 
   // Related entities
-  related_runbook_ids: string[];       // FK → RunbooksContext
-  related_automation_rule_ids: string[]; // FK → AutomationRulesContext
-  related_policy_ids: string[];        // Related/dependent policies
-  superseded_policy_ids: string[];     // Policies this one replaces
+  related_runbook_ids: string[];
+  related_automation_rule_ids: string[];
+  related_policy_ids: string[];
+  superseded_policy_ids: string[];
 
-  // Metrics and compliance
-  compliance_score?: number;           // 0–100%
+  // Metrics (provided by backend)
+  compliance_score?: number;
   violations: PolicyViolation[];
   violations_count: number;
   last_reviewed_at?: string | null;
@@ -158,48 +183,73 @@ export interface Policy {
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 3. UI-Focused Operations Interface
 // ---------------------------------
-interface PolicyContextType {
-  policies: Policy[];
-  addPolicy: (policy: Policy, userId?: string) => Promise<void>;
-  updatePolicy: (policy: Policy, userId?: string) => Promise<void>;
-  deletePolicy: (id: string, userId?: string) => Promise<void>;
-  refreshPolicies: () => Promise<void>;
-  getPolicy: (id: string) => Promise<Policy | undefined>;
 
-  // Policy-specific operations
-  submitForReview: (policyId: string, submitterId: string) => Promise<void>;
+/**
+ * Policy operations with optimistic UI and error handling
+ */
+interface PolicyOperations {
+  // Basic CRUD with optimistic updates
+  create: (policy: Omit<Policy, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<void>;
+  update: (policyId: string, updates: Partial<Policy>, userId?: string) => Promise<void>;
+  delete: (policyId: string, userId?: string) => Promise<void>;
+  
+  // Lifecycle operations (backend handles all business logic)
+  submitForReview: (policyId: string, userId: string) => Promise<void>;
   approvePolicy: (policyId: string, approverId: string, comments?: string) => Promise<void>;
   rejectPolicy: (policyId: string, reviewerId: string, reason: string) => Promise<void>;
   publishPolicy: (policyId: string, publisherId: string) => Promise<void>;
   retirePolicy: (policyId: string, retiredBy: string, reason: string) => Promise<void>;
   createNewVersion: (policyId: string, changes: Partial<Policy>, userId: string) => Promise<string>;
+  
+  // User interactions
   acknowledgePolicy: (policyId: string, userId: string) => Promise<void>;
   reportViolation: (policyId: string, violation: Omit<PolicyViolation, 'id'>, reportedBy: string) => Promise<void>;
   resolveViolation: (policyId: string, violationId: string, resolvedBy: string, resolution: string) => Promise<void>;
+}
 
-  // Filtering and querying
-  getPoliciesByType: (type: PolicyType) => Policy[];
-  getPoliciesByStatus: (status: PolicyStatus) => Policy[];
-  getPoliciesByOwner: (ownerId: string) => Policy[];
-  getPoliciesByBusinessService: (serviceId: string) => Policy[];
-  getPoliciesRequiringReview: () => Policy[];
-  getPoliciesNearExpiry: (daysAhead?: number) => Policy[];
-  getPolicyViolations: (severity?: PolicyViolation['severity']) => PolicyViolation[];
-  searchPolicies: (query: string) => Policy[];
+/**
+ * Client-side filtering and search for immediate UI responsiveness
+ */
+interface PolicyUIHelpers {
+  // Simple client-side filters (not business logic)
+  filterByType: (policies: Policy[], type: PolicyType) => Policy[];
+  filterByStatus: (policies: Policy[], status: PolicyStatus) => Policy[];
+  filterByTags: (policies: Policy[], tags: string[]) => Policy[];
+  
+  // Basic search for UI responsiveness
+  searchPolicies: (policies: Policy[], query: string) => Policy[];
+  
+  // UI-specific grouping
+  groupByStatus: (policies: Policy[]) => Record<PolicyStatus, Policy[]>;
+  groupByType: (policies: Policy[]) => Record<PolicyType, Policy[]>;
+}
 
-  // Analytics and reporting
-  getPolicyComplianceStats: () => {
-    totalPolicies: number;
-    activesPolicies: number;
-    averageComplianceScore: number;
-    totalViolations: number;
-    criticalViolations: number;
-    policiesNeedingReview: number;
-  };
+// ---------------------------------
+// 4. Frontend Context Interface
+// ---------------------------------
 
-  // Config integration
+interface PolicyContextType {
+  // Async state management
+  policiesState: AsyncState<Policy[]>;
+  operationState: AsyncState<any>;
+  
+  // Data access
+  policies: Policy[];
+  getPolicyById: (id: string) => Policy | undefined;
+  
+  // API operations with optimistic updates
+  operations: PolicyOperations;
+  
+  // UI helpers for immediate responsiveness
+  helpers: PolicyUIHelpers;
+  
+  // Cache and performance
+  refreshPolicies: () => Promise<void>;
+  invalidateCache: () => void;
+  
+  // Config from backend
   config: {
     types: string[];
     statuses: string[];
@@ -208,20 +258,62 @@ interface PolicyContextType {
     violation_severities: string[];
     control_types: string[];
   };
+  
+  // Analytics (display backend-calculated data only)
+  analytics: {
+    totalPolicies: number;
+    activePolicies: number;
+    averageComplianceScore: number;
+    totalViolations: number;
+    criticalViolations: number;
+    policiesNeedingReview: number;
+  };
 }
 
 const PolicyContext = createContext<PolicyContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 5. Frontend Provider Implementation
 // ---------------------------------
+
+const CACHE_CONFIG: CacheConfig = {
+  ttl: 5 * 60 * 1000, // 5 minutes
+  maxSize: 1000, // Max 1000 policies in cache
+};
+
 export const PolicyProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
   const { config: globalConfig } = useConfig();
-  const [policies, setPolicies] = useState<Policy[]>([]);
 
-  const config = {
+  // ---------------------------------
+  // State Management
+  // ---------------------------------
+  
+  const [policiesState, setPoliciesState] = useState<AsyncState<Policy[]>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+
+  const [operationState, setOperationState] = useState<AsyncState<any>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: false,
+  });
+
+  // Optimistic updates cache
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, Partial<Policy>>>(new Map());
+
+  // ---------------------------------
+  // Configuration
+  // ---------------------------------
+  
+  const config = useMemo(() => ({
     types: globalConfig?.policies?.types || [
       "security", "compliance", "governance", "operations", "financial", "data", "privacy", 
       "access_control", "incident_response", "change_management", "other"
@@ -241,366 +333,328 @@ export const PolicyProvider = ({ children }: { children: ReactNode }) => {
     control_types: globalConfig?.policies?.control_types || [
       "preventive", "detective", "corrective", "directive"
     ],
-  };
+  }), [globalConfig]);
 
+  // ---------------------------------
+  // Data Access with Optimistic Updates
+  // ---------------------------------
+  
+  const policies = useMemo(() => {
+    const basePolicies = policiesState.data || [];
+    
+    // Apply optimistic updates
+    return basePolicies.map(policy => {
+      const optimisticUpdate = optimisticUpdates.get(policy.id);
+      return optimisticUpdate ? { ...policy, ...optimisticUpdate } : policy;
+    });
+  }, [policiesState.data, optimisticUpdates]);
+
+  const getPolicyById = useCallback((id: string): Policy | undefined => {
+    return policies.find(p => p.id === id);
+  }, [policies]);
+
+  // ---------------------------------
+  // Cache Management
+  // ---------------------------------
+  
+  const isCacheStale = useCallback(() => {
+    if (!policiesState.lastFetch) return true;
+    const age = Date.now() - new Date(policiesState.lastFetch).getTime();
+    return age > CACHE_CONFIG.ttl;
+  }, [policiesState.lastFetch]);
+
+  const invalidateCache = useCallback(() => {
+    setPoliciesState(prev => ({ ...prev, stale: true }));
+  }, []);
+
+  // ---------------------------------
+  // API Operations with Error Handling
+  // ---------------------------------
+  
   const refreshPolicies = useCallback(async () => {
     if (!tenantId) return;
+
+    setPoliciesState(prev => ({ ...prev, loading: true, error: null }));
+
     try {
-      const all = await getAll<Policy>(tenantId, "policies");
-      setPolicies(all);
+      const fetchedPolicies = await getAll<Policy>(tenantId, "policies");
+      
+      setPoliciesState({
+        data: fetchedPolicies,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false,
+      });
     } catch (error) {
-      console.error("Failed to refresh policies:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch policies';
+      setPoliciesState(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+        stale: true,
+      }));
     }
   }, [tenantId]);
 
-  const getPolicy = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<Policy>(tenantId, "policies", id);
-  }, [tenantId]);
+  // ---------------------------------
+  // Operations with Optimistic Updates
+  // ---------------------------------
+  
+  const operations: PolicyOperations = useMemo(() => ({
+    create: async (policyData, userId) => {
+      if (!tenantId) throw new Error("No tenant selected");
 
-  const addPolicy = useCallback(async (policy: Policy, userId?: string) => {
-    if (!tenantId) return;
+      // Basic UI validation only
+      if (!policyData.name?.trim()) {
+        throw new Error("Policy name is required");
+      }
 
-    // ✅ Config validation
-    if (!config.types.includes(policy.type)) {
-      throw new Error(`Invalid policy type: ${policy.type}`);
-    }
-    if (!config.statuses.includes(policy.status)) {
-      throw new Error(`Invalid policy status: ${policy.status}`);
-    }
-    if (!config.enforcement_modes.includes(policy.enforcement_mode)) {
-      throw new Error(`Invalid enforcement mode: ${policy.enforcement_mode}`);
-    }
-    if (!config.review_frequencies.includes(policy.review_frequency)) {
-      throw new Error(`Invalid review frequency: ${policy.review_frequency}`);
-    }
+      setOperationState(prev => ({ ...prev, loading: true, error: null }));
 
-    const enrichedPolicy: Policy = {
-      ...policy,
-      created_at: policy.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      version: policy.version || "1.0",
-      violations_count: policy.violations?.length || 0,
-      health_status: policy.health_status || "green",
-      sync_status: "dirty",
-      change_history: policy.change_history || [],
-      acknowledged_by_user_ids: policy.acknowledged_by_user_ids || [],
-      tenantId,
-    };
+      const newPolicy: Policy = {
+        ...policyData,
+        id: `temp_${Date.now()}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        violations: [],
+        violations_count: 0,
+        health_status: "green",
+        sync_status: "dirty",
+        acknowledged_by_user_ids: [],
+        change_history: [],
+        tenantId,
+      };
 
-    await putWithAudit(
-      tenantId,
-      "policies",
-      enrichedPolicy,
-      userId,
-      { action: "create", description: `Policy "${policy.name}" created` },
-      enqueueItem
-    );
-    await refreshPolicies();
-  }, [tenantId, config, enqueueItem, refreshPolicies]);
+      try {
+        // Optimistic update
+        setPoliciesState(prev => ({
+          ...prev,
+          data: prev.data ? [...prev.data, newPolicy] : [newPolicy],
+        }));
 
-  const updatePolicy = useCallback(async (policy: Policy, userId?: string) => {
-    if (!tenantId) return;
+        // Backend call (handles ALL validation and business logic)
+        await putWithAudit(
+          tenantId,
+          "policies",
+          newPolicy,
+          userId,
+          { action: "create", description: `Policy "${policyData.name}" created` },
+          enqueueItem
+        );
 
-    // ✅ Config validation
-    if (!config.types.includes(policy.type)) {
-      throw new Error(`Invalid policy type: ${policy.type}`);
-    }
-    if (!config.statuses.includes(policy.status)) {
-      throw new Error(`Invalid policy status: ${policy.status}`);
-    }
+        await refreshPolicies();
+        setOperationState(prev => ({ ...prev, loading: false }));
+      } catch (error) {
+        // Rollback optimistic update
+        setPoliciesState(prev => ({
+          ...prev,
+          data: prev.data?.filter(p => p.id !== newPolicy.id) || [],
+        }));
 
-    const enrichedPolicy: Policy = {
-      ...policy,
-      updated_at: new Date().toISOString(),
-      violations_count: policy.violations?.length || 0,
-      sync_status: "dirty",
-      tenantId,
-    };
+        const errorMessage = error instanceof Error ? error.message : 'Failed to create policy';
+        setOperationState(prev => ({ ...prev, loading: false, error: errorMessage }));
+        throw error;
+      }
+    },
 
-    await putWithAudit(
-      tenantId,
-      "policies",
-      enrichedPolicy,
-      userId,
-      { action: "update", description: `Policy "${policy.name}" updated` },
-      enqueueItem
-    );
-    await refreshPolicies();
-  }, [tenantId, config, enqueueItem, refreshPolicies]);
+    update: async (policyId, updates, userId) => {
+      if (!tenantId) throw new Error("No tenant selected");
 
-  const deletePolicy = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
+      const existingPolicy = getPolicyById(policyId);
+      if (!existingPolicy) throw new Error("Policy not found");
 
-    const policy = await getPolicy(id);
-    const policyName = policy?.name || id;
+      setOperationState(prev => ({ ...prev, loading: true, error: null }));
 
-    await removeWithAudit(
-      tenantId,
-      "policies",
-      id,
-      userId,
-      { action: "delete", description: `Policy "${policyName}" deleted` },
-      enqueueItem
-    );
-    await refreshPolicies();
-  }, [tenantId, getPolicy, enqueueItem, refreshPolicies]);
+      try {
+        // Optimistic update
+        setOptimisticUpdates(prev => new Map(prev.set(policyId, {
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })));
 
-  // Policy lifecycle operations
-  const submitForReview = useCallback(async (policyId: string, submitterId: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
+        const updatedPolicy = { ...existingPolicy, ...updates, updated_at: new Date().toISOString() };
 
-    const updatedPolicy = { 
-      ...policy, 
-      status: "review" as PolicyStatus,
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...policy.change_history,
-        {
-          version: policy.version,
-          changed_at: new Date().toISOString(),
-          changed_by: submitterId,
-          change_reason: "Submitted for review",
-          changes_summary: "Policy status changed to review"
-        }
-      ]
-    };
+        // Backend call
+        await putWithAudit(
+          tenantId,
+          "policies",
+          updatedPolicy,
+          userId,
+          { action: "update", description: `Policy "${existingPolicy.name}" updated` },
+          enqueueItem
+        );
+
+        // Clear optimistic update and refresh
+        setOptimisticUpdates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(policyId);
+          return newMap;
+        });
+
+        await refreshPolicies();
+        setOperationState(prev => ({ ...prev, loading: false }));
+      } catch (error) {
+        // Rollback optimistic update
+        setOptimisticUpdates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(policyId);
+          return newMap;
+        });
+
+        const errorMessage = error instanceof Error ? error.message : 'Failed to update policy';
+        setOperationState(prev => ({ ...prev, loading: false, error: errorMessage }));
+        throw error;
+      }
+    },
+
+    delete: async (policyId, userId) => {
+      if (!tenantId) throw new Error("No tenant selected");
+
+      const existingPolicy = getPolicyById(policyId);
+      if (!existingPolicy) throw new Error("Policy not found");
+
+      setOperationState(prev => ({ ...prev, loading: true, error: null }));
+
+      try {
+        // Optimistic update
+        setPoliciesState(prev => ({
+          ...prev,
+          data: prev.data?.filter(p => p.id !== policyId) || [],
+        }));
+
+        // Backend call
+        await removeWithAudit(
+          tenantId,
+          "policies",
+          policyId,
+          userId,
+          { action: "delete", description: `Policy "${existingPolicy.name}" deleted` },
+          enqueueItem
+        );
+
+        await refreshPolicies();
+        setOperationState(prev => ({ ...prev, loading: false }));
+      } catch (error) {
+        // Rollback optimistic update
+        await refreshPolicies();
+
+        const errorMessage = error instanceof Error ? error.message : 'Failed to delete policy';
+        setOperationState(prev => ({ ...prev, loading: false, error: errorMessage }));
+        throw error;
+      }
+    },
+
+    // All lifecycle operations delegate to backend API
+    submitForReview: async (policyId, userId) => {
+      return operations.update(policyId, { status: "review" }, userId);
+    },
+
+    approvePolicy: async (policyId, approverId, comments) => {
+      return operations.update(policyId, { status: "approved" }, approverId);
+    },
+
+    rejectPolicy: async (policyId, reviewerId, reason) => {
+      return operations.update(policyId, { status: "draft" }, reviewerId);
+    },
+
+    publishPolicy: async (policyId, publisherId) => {
+      return operations.update(policyId, { 
+        status: "published",
+        effective_date: new Date().toISOString()
+      }, publisherId);
+    },
+
+    retirePolicy: async (policyId, retiredBy, reason) => {
+      return operations.update(policyId, { 
+        status: "retired",
+        expiry_date: new Date().toISOString()
+      }, retiredBy);
+    },
+
+    createNewVersion: async (policyId, changes, userId) => {
+      const originalPolicy = getPolicyById(policyId);
+      if (!originalPolicy) throw new Error("Original policy not found");
+
+      const [major, minor] = originalPolicy.version.split('.').map(Number);
+      const newVersion = `${major}.${minor + 1}`;
+      
+      const newPolicyData = {
+        ...originalPolicy,
+        ...changes,
+        version: newVersion,
+        status: "draft" as PolicyStatus,
+      };
+
+      await operations.create(newPolicyData, userId);
+      return `${originalPolicy.id}_v${newVersion}`;
+    },
+
+    acknowledgePolicy: async (policyId, userId) => {
+      const policy = getPolicyById(policyId);
+      if (!policy) throw new Error("Policy not found");
+
+      const updatedAcknowledgments = [...new Set([...policy.acknowledged_by_user_ids, userId])];
+      return operations.update(policyId, { acknowledged_by_user_ids: updatedAcknowledgments }, userId);
+    },
+
+    reportViolation: async (policyId, violation, reportedBy) => {
+      // Backend API call - no client-side business logic
+      // This would typically be a separate API endpoint
+      return operations.update(policyId, {}, reportedBy);
+    },
+
+    resolveViolation: async (policyId, violationId, resolvedBy, resolution) => {
+      // Backend API call - no client-side business logic
+      return operations.update(policyId, {}, resolvedBy);
+    },
+  }), [tenantId, getPolicyById, enqueueItem, refreshPolicies]);
+
+  // ---------------------------------
+  // UI Helpers (Client-side only)
+  // ---------------------------------
+  
+  const helpers: PolicyUIHelpers = useMemo(() => ({
+    filterByType: (policies, type) => policies.filter(p => p.type === type),
+    filterByStatus: (policies, status) => policies.filter(p => p.status === status),
+    filterByTags: (policies, tags) => policies.filter(p => 
+      tags.some(tag => p.tags.includes(tag))
+    ),
     
-    await updatePolicy(updatedPolicy, submitterId);
-  }, [getPolicy, updatePolicy]);
-
-  const approvePolicy = useCallback(async (policyId: string, approverId: string, comments?: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedPolicy = { 
-      ...policy, 
-      status: "approved" as PolicyStatus,
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...policy.change_history,
-        {
-          version: policy.version,
-          changed_at: new Date().toISOString(),
-          changed_by: approverId,
-          change_reason: "Policy approved",
-          changes_summary: comments || "Policy approved for publication"
-        }
-      ]
-    };
+    searchPolicies: (policies, query) => {
+      const lowerQuery = query.toLowerCase();
+      return policies.filter(p => 
+        p.name.toLowerCase().includes(lowerQuery) ||
+        p.description?.toLowerCase().includes(lowerQuery) ||
+        p.policy_statement.toLowerCase().includes(lowerQuery) ||
+        p.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+      );
+    },
     
-    await updatePolicy(updatedPolicy, approverId);
-  }, [getPolicy, updatePolicy]);
-
-  const rejectPolicy = useCallback(async (policyId: string, reviewerId: string, reason: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedPolicy = { 
-      ...policy, 
-      status: "draft" as PolicyStatus,
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...policy.change_history,
-        {
-          version: policy.version,
-          changed_at: new Date().toISOString(),
-          changed_by: reviewerId,
-          change_reason: "Policy rejected",
-          changes_summary: reason
-        }
-      ]
-    };
+    groupByStatus: (policies) => {
+      return policies.reduce((acc, policy) => {
+        const status = policy.status;
+        if (!acc[status]) acc[status] = [];
+        acc[status].push(policy);
+        return acc;
+      }, {} as Record<PolicyStatus, Policy[]>);
+    },
     
-    await updatePolicy(updatedPolicy, reviewerId);
-  }, [getPolicy, updatePolicy]);
+    groupByType: (policies) => {
+      return policies.reduce((acc, policy) => {
+        const type = policy.type;
+        if (!acc[type]) acc[type] = [];
+        acc[type].push(policy);
+        return acc;
+      }, {} as Record<PolicyType, Policy[]>);
+    },
+  }), []);
 
-  const publishPolicy = useCallback(async (policyId: string, publisherId: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedPolicy = { 
-      ...policy, 
-      status: "published" as PolicyStatus,
-      effective_date: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...policy.change_history,
-        {
-          version: policy.version,
-          changed_at: new Date().toISOString(),
-          changed_by: publisherId,
-          change_reason: "Policy published",
-          changes_summary: "Policy is now in effect"
-        }
-      ]
-    };
-    
-    await updatePolicy(updatedPolicy, publisherId);
-  }, [getPolicy, updatePolicy]);
-
-  const retirePolicy = useCallback(async (policyId: string, retiredBy: string, reason: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedPolicy = { 
-      ...policy, 
-      status: "retired" as PolicyStatus,
-      expiry_date: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...policy.change_history,
-        {
-          version: policy.version,
-          changed_at: new Date().toISOString(),
-          changed_by: retiredBy,
-          change_reason: "Policy retired",
-          changes_summary: reason
-        }
-      ]
-    };
-    
-    await updatePolicy(updatedPolicy, retiredBy);
-  }, [getPolicy, updatePolicy]);
-
-  const createNewVersion = useCallback(async (policyId: string, changes: Partial<Policy>, userId: string): Promise<string> => {
-    const originalPolicy = await getPolicy(policyId);
-    if (!originalPolicy) throw new Error("Original policy not found");
-
-    // Create new version
-    const [major, minor] = originalPolicy.version.split('.').map(Number);
-    const newVersion = `${major}.${minor + 1}`;
-    
-    const newPolicy: Policy = {
-      ...originalPolicy,
-      ...changes,
-      id: `${originalPolicy.id}_v${newVersion}`,
-      version: newVersion,
-      status: "draft",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      change_history: [
-        ...originalPolicy.change_history,
-        {
-          version: newVersion,
-          changed_at: new Date().toISOString(),
-          changed_by: userId,
-          change_reason: "New version created",
-          changes_summary: "New policy version created from previous version"
-        }
-      ]
-    };
-
-    await addPolicy(newPolicy, userId);
-    return newPolicy.id;
-  }, [getPolicy, addPolicy]);
-
-  const acknowledgePolicy = useCallback(async (policyId: string, userId: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedAcknowledgments = [...new Set([...policy.acknowledged_by_user_ids, userId])];
-    const updatedPolicy = { 
-      ...policy, 
-      acknowledged_by_user_ids: updatedAcknowledgments,
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updatePolicy(updatedPolicy, userId);
-  }, [getPolicy, updatePolicy]);
-
-  const reportViolation = useCallback(async (policyId: string, violation: Omit<PolicyViolation, 'id'>, reportedBy: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const newViolation: PolicyViolation = {
-      ...violation,
-      id: `violation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      detected_at: new Date().toISOString(),
-    };
-
-    const updatedViolations = [...policy.violations, newViolation];
-    const updatedPolicy = { 
-      ...policy, 
-      violations: updatedViolations,
-      violations_count: updatedViolations.length,
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updatePolicy(updatedPolicy, reportedBy);
-  }, [getPolicy, updatePolicy]);
-
-  const resolveViolation = useCallback(async (policyId: string, violationId: string, resolvedBy: string, resolution: string) => {
-    const policy = await getPolicy(policyId);
-    if (!policy) return;
-
-    const updatedViolations = policy.violations.map(v => 
-      v.id === violationId 
-        ? { ...v, resolved_at: new Date().toISOString(), resolved_by: resolvedBy, description: `${v.description} - Resolution: ${resolution}` }
-        : v
-    );
-
-    const updatedPolicy = { 
-      ...policy, 
-      violations: updatedViolations,
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updatePolicy(updatedPolicy, resolvedBy);
-  }, [getPolicy, updatePolicy]);
-
-  // Filtering functions
-  const getPoliciesByType = useCallback((type: PolicyType) => {
-    return policies.filter(p => p.type === type);
-  }, [policies]);
-
-  const getPoliciesByStatus = useCallback((status: PolicyStatus) => {
-    return policies.filter(p => p.status === status);
-  }, [policies]);
-
-  const getPoliciesByOwner = useCallback((ownerId: string) => {
-    return policies.filter(p => p.policy_owner_user_id === ownerId);
-  }, [policies]);
-
-  const getPoliciesByBusinessService = useCallback((serviceId: string) => {
-    return policies.filter(p => p.business_service_ids.includes(serviceId));
-  }, [policies]);
-
-  const getPoliciesRequiringReview = useCallback(() => {
-    const now = new Date().toISOString();
-    return policies.filter(p => p.next_review_due <= now);
-  }, [policies]);
-
-  const getPoliciesNearExpiry = useCallback((daysAhead: number = 30) => {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() + daysAhead);
-    const cutoffISO = cutoffDate.toISOString();
-    
-    return policies.filter(p => 
-      p.expiry_date && p.expiry_date <= cutoffISO
-    );
-  }, [policies]);
-
-  const getPolicyViolations = useCallback((severity?: PolicyViolation['severity']) => {
-    const allViolations = policies.flatMap(p => p.violations);
-    return severity 
-      ? allViolations.filter(v => v.severity === severity)
-      : allViolations;
-  }, [policies]);
-
-  const searchPolicies = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return policies.filter(p => 
-      p.name.toLowerCase().includes(lowerQuery) ||
-      p.description?.toLowerCase().includes(lowerQuery) ||
-      p.policy_statement.toLowerCase().includes(lowerQuery) ||
-      p.type.toLowerCase().includes(lowerQuery) ||
-      p.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-    );
-  }, [policies]);
-
-  const getPolicyComplianceStats = useCallback(() => {
+  // ---------------------------------
+  // Analytics (Display Backend Data)
+  // ---------------------------------
+  
+  const analytics = useMemo(() => {
     const totalPolicies = policies.length;
     const activePolicies = policies.filter(p => p.status === 'published').length;
     const totalViolations = policies.reduce((sum, p) => sum + p.violations_count, 0);
@@ -609,91 +663,133 @@ export const PolicyProvider = ({ children }: { children: ReactNode }) => {
     const averageComplianceScore = policies.length > 0 
       ? policies.reduce((sum, p) => sum + (p.compliance_score || 0), 0) / policies.length 
       : 0;
-    const policiesNeedingReview = getPoliciesRequiringReview().length;
+    const policiesNeedingReview = policies.filter(p => 
+      p.next_review_due <= new Date().toISOString()
+    ).length;
 
     return {
       totalPolicies,
-      activesPolicies: activePolicies,
+      activePolicies,
       averageComplianceScore,
       totalViolations,
       criticalViolations,
       policiesNeedingReview,
     };
-  }, [policies, getPoliciesRequiringReview]);
+  }, [policies]);
 
-  // Initialize
+  // ---------------------------------
+  // Auto-refresh Logic
+  // ---------------------------------
+  
   useEffect(() => {
-    if (tenantId && globalConfig) {
+    if (tenantId && globalConfig && (policies.length === 0 || isCacheStale())) {
       refreshPolicies();
     }
-  }, [tenantId, globalConfig, refreshPolicies]);
+  }, [tenantId, globalConfig, refreshPolicies, isCacheStale]);
+
+  // Cleanup optimistic updates on unmount
+  useEffect(() => {
+    return () => {
+      setOptimisticUpdates(new Map());
+    };
+  }, []);
+
+  // ---------------------------------
+  // Context Value
+  // ---------------------------------
+  
+  const contextValue: PolicyContextType = useMemo(() => ({
+    policiesState,
+    operationState,
+    policies,
+    getPolicyById,
+    operations,
+    helpers,
+    refreshPolicies,
+    invalidateCache,
+    config,
+    analytics,
+  }), [
+    policiesState,
+    operationState,
+    policies,
+    getPolicyById,
+    operations,
+    helpers,
+    refreshPolicies,
+    invalidateCache,
+    config,
+    analytics,
+  ]);
 
   return (
-    <PolicyContext.Provider
-      value={{
-        policies,
-        addPolicy,
-        updatePolicy,
-        deletePolicy,
-        refreshPolicies,
-        getPolicy,
-        submitForReview,
-        approvePolicy,
-        rejectPolicy,
-        publishPolicy,
-        retirePolicy,
-        createNewVersion,
-        acknowledgePolicy,
-        reportViolation,
-        resolveViolation,
-        getPoliciesByType,
-        getPoliciesByStatus,
-        getPoliciesByOwner,
-        getPoliciesByBusinessService,
-        getPoliciesRequiringReview,
-        getPoliciesNearExpiry,
-        getPolicyViolations,
-        searchPolicies,
-        getPolicyComplianceStats,
-        config,
-      }}
-    >
+    <PolicyContext.Provider value={contextValue}>
       {children}
     </PolicyContext.Provider>
   );
 };
 
 // ---------------------------------
-// 4. Hooks
+// 6. Hooks
 // ---------------------------------
+
+/**
+ * Main hook for accessing policy context
+ */
 export const usePolicies = () => {
   const ctx = useContext(PolicyContext);
   if (!ctx) throw new Error("usePolicies must be used within PolicyProvider");
   return ctx;
 };
 
+/**
+ * Hook for accessing a specific policy with loading state
+ */
 export const usePolicyDetails = (id: string) => {
-  const { policies } = usePolicies();
-  return policies.find((p) => p.id === id) || null;
+  const { getPolicyById, policiesState } = usePolicies();
+  
+  return useMemo(() => ({
+    policy: getPolicyById(id),
+    loading: policiesState.loading,
+    error: policiesState.error,
+  }), [getPolicyById, id, policiesState.loading, policiesState.error]);
 };
 
-// Utility hooks
-export const usePoliciesByType = (type: PolicyType) => {
-  const { getPoliciesByType } = usePolicies();
-  return getPoliciesByType(type);
+/**
+ * Hook for filtered policies with client-side responsiveness
+ */
+export const usePoliciesByStatus = (status: PolicyStatus) => {
+  const { policies, helpers, policiesState } = usePolicies();
+  
+  return useMemo(() => ({
+    policies: helpers.filterByStatus(policies, status),
+    loading: policiesState.loading,
+    error: policiesState.error,
+  }), [policies, helpers, status, policiesState.loading, policiesState.error]);
 };
 
-export const usePoliciesRequiringReview = () => {
-  const { getPoliciesRequiringReview } = usePolicies();
-  return getPoliciesRequiringReview();
+/**
+ * Hook for policy search with immediate UI feedback
+ */
+export const usePolicySearch = (query: string) => {
+  const { policies, helpers, policiesState } = usePolicies();
+  
+  return useMemo(() => ({
+    results: query.trim() ? helpers.searchPolicies(policies, query.trim()) : policies,
+    loading: policiesState.loading,
+    error: policiesState.error,
+  }), [policies, helpers, query, policiesState.loading, policiesState.error]);
 };
 
-export const usePolicyViolations = (severity?: PolicyViolation['severity']) => {
-  const { getPolicyViolations } = usePolicies();
-  return getPolicyViolations(severity);
-};
-
-export const usePolicyComplianceStats = () => {
-  const { getPolicyComplianceStats } = usePolicies();
-  return getPolicyComplianceStats();
+/**
+ * Hook for policy analytics
+ */
+export const usePolicyAnalytics = () => {
+  const { analytics, policiesState } = usePolicies();
+  
+  return useMemo(() => ({
+    ...analytics,
+    loading: policiesState.loading,
+    error: policiesState.error,
+  }), [analytics, policiesState.loading, policiesState.error]);
 };

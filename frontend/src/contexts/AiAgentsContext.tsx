@@ -6,13 +6,8 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
-import { 
-  getAll,
-  getById,
-  putWithAudit,
-  removeWithAudit,
-} from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -20,16 +15,20 @@ import { useConfig } from "../providers/ConfigProvider";
 // ---------------------------------
 // 1. Type Definitions
 // ---------------------------------
+
+/**
+ * Core AI Agent entity for UI display
+ */
 export interface AiAgent {
   id: string;
   name: string;
   description?: string;
-  type: string;   // config-driven from ai_agents section
-  status: string; // config-driven from ai_agents section
+  type: string;
+  status: string;
   created_at: string;
   updated_at: string;
 
-  // Relationships
+  // Relationships for UI navigation
   related_incident_ids: string[];
   related_problem_ids: string[];
   related_change_ids: string[];
@@ -38,14 +37,14 @@ export interface AiAgent {
   owner_user_id?: string | null;
   owner_team_id?: string | null;
 
-  // Model Configuration
+  // Model Configuration (display only)
   model_type?: string;
   model_version?: string;
   confidence_threshold: number;
   input_sources: string[];
   model_config?: Record<string, any>;
 
-  // Execution Metrics
+  // Metrics (calculated by backend)
   suggestions_made: number;
   suggestions_accepted: number;
   suggestions_rejected: number;
@@ -54,19 +53,19 @@ export interface AiAgent {
   average_response_time_ms?: number;
   success_rate?: number;
 
-  // Governance & Compliance
+  // Governance flags
   requires_human_approval: boolean;
   compliance_requirement_ids: string[];
   audit_trail_enabled: boolean;
   data_retention_days?: number;
 
-  // AI-specific settings
+  // AI settings (backend managed)
   training_data_sources?: string[];
   retraining_frequency?: string;
   performance_threshold?: number;
   fallback_behavior?: string;
 
-  // Metadata
+  // UI Metadata
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
@@ -75,417 +74,589 @@ export interface AiAgent {
   tenantId?: string;
 }
 
+/**
+ * Async state wrapper for UI operations
+ */
+export interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+/**
+ * UI-focused filter interface for client-side filtering
+ */
+export interface AiAgentUIFilters {
+  type?: string;
+  status?: string;
+  search?: string;
+  ownedByMe?: boolean;
+  requiresApproval?: boolean;
+  healthStatus?: string[];
+}
+
+/**
+ * Optimistic UI operation state
+ */
+interface OptimisticOperation {
+  id: string;
+  type: 'create' | 'update' | 'delete' | 'execute';
+  payload?: any;
+  timestamp: string;
+}
+
+/**
+ * Agent execution result from backend
+ */
+export interface AgentExecutionResult {
+  agentId: string;
+  timestamp: string;
+  result: {
+    confidence: number;
+    prediction: any;
+    explanation: string;
+  };
+  executionTimeMs: number;
+  success: boolean;
+}
+
 // ---------------------------------
 // 2. Context Interface
 // ---------------------------------
 interface AiAgentsContextType {
-  aiAgents: AiAgent[];
-  addAiAgent: (agent: AiAgent, userId?: string) => Promise<void>;
-  updateAiAgent: (agent: AiAgent, userId?: string) => Promise<void>;
-  deleteAiAgent: (id: string, userId?: string) => Promise<void>;
-  refreshAiAgents: () => Promise<void>;
-  getAiAgent: (id: string) => Promise<AiAgent | undefined>;
-
-  // AI-specific operations
-  executeAgent: (agentId: string, inputData: any, userId?: string) => Promise<any>;
-  updateAgentMetrics: (agentId: string, metrics: Partial<AiAgent>) => Promise<void>;
-  getAgentPerformance: (agentId: string) => {
-    successRate: number;
-    avgResponseTime: number;
-    totalExecutions: number;
-  };
-
-  // Filtering
+  // Core async state
+  agents: AsyncState<AiAgent[]>;
+  
+  // CRUD operations (API orchestration only)
+  createAgent: (agent: Omit<AiAgent, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  updateAgent: (id: string, updates: Partial<AiAgent>) => Promise<void>;
+  deleteAgent: (id: string) => Promise<void>;
+  
+  // Data fetching
+  refreshAgents: (force?: boolean) => Promise<void>;
+  getAgentById: (id: string) => AiAgent | null;
+  
+  // Agent execution (API orchestration)
+  executeAgent: (agentId: string, inputData: any) => Promise<AsyncState<AgentExecutionResult>>;
+  
+  // UI-focused filtering and search (client-side only)
+  getFilteredAgents: (filters: AiAgentUIFilters) => AiAgent[];
+  searchAgents: (query: string) => AiAgent[];
+  
+  // Simple client-side categorization for UI
   getAgentsByType: (type: string) => AiAgent[];
   getAgentsByStatus: (status: string) => AiAgent[];
-  getActiveAgents: () => AiAgent[];
-  getAgentsRequiringApproval: () => AiAgent[];
-
-  // Config integration
+  getAgentsByHealth: (health: string) => AiAgent[];
+  
+  // UI state helpers
+  optimisticOperations: OptimisticOperation[];
+  clearError: () => void;
+  isStale: boolean;
+  
+  // Configuration for UI dropdowns (from backend)
   config: {
     types: string[];
     statuses: string[];
     modelTypes: string[];
     inputSources: string[];
+    healthStatuses: string[];
   };
 }
 
 const AiAgentsContext = createContext<AiAgentsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 3. Provider Implementation
 // ---------------------------------
 export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { config: globalConfig, validateEnum } = useConfig();
-  const [aiAgents, setAiAgents] = useState<AiAgent[]>([]);
+  const { config: globalConfig } = useConfig();
 
-  // Extract AI agent-specific config
-  const config = {
+  // Core async state
+  const [agents, setAgents] = useState<AsyncState<AiAgent[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+
+  // UI operation state
+  const [optimisticOperations, setOptimisticOperations] = useState<OptimisticOperation[]>([]);
+
+  // Cache TTL (5 minutes for UI responsiveness)
+  const CACHE_TTL = 5 * 60 * 1000;
+
+  // Extract UI configuration from backend config
+  const config = useMemo(() => ({
     types: globalConfig?.ai_agents?.map(a => a.type).filter((t, i, arr) => arr.indexOf(t) === i) || [],
     statuses: globalConfig?.statuses?.ai_agents || [],
-    modelTypes: ['classification', 'regression', 'clustering', 'neural_network', 'decision_tree', 'random_forest'] as string[],
-    inputSources: ['incidents', 'metrics', 'logs', 'events', 'traces', 'alerts'] as string[],
-  };
+    modelTypes: ['classification', 'regression', 'clustering', 'neural_network', 'decision_tree', 'random_forest'],
+    inputSources: ['incidents', 'metrics', 'logs', 'events', 'traces', 'alerts'],
+    healthStatuses: ['green', 'yellow', 'orange', 'red', 'gray'],
+  }), [globalConfig]);
 
-  const refreshAiAgents = useCallback(async () => {
-    if (!tenantId) return;
-    
-    try {
-      const all = await getAll<AiAgent>(tenantId, "ai_agents");
-      
-      // Sort by performance metrics and last run
-      all.sort((a, b) => {
-        // Active agents first
-        if (a.status === 'active' && b.status !== 'active') return -1;
-        if (b.status === 'active' && a.status !== 'active') return 1;
-        
-        // Then by success rate
-        const aSuccessRate = a.success_rate || 0;
-        const bSuccessRate = b.success_rate || 0;
-        if (aSuccessRate !== bSuccessRate) return bSuccessRate - aSuccessRate;
-        
-        // Finally by last run (most recent first)
-        if (!a.last_run_at && !b.last_run_at) return 0;
-        if (!a.last_run_at) return 1;
-        if (!b.last_run_at) return -1;
-        return new Date(b.last_run_at).getTime() - new Date(a.last_run_at).getTime();
-      });
-      
-      setAiAgents(all);
-    } catch (error) {
-      console.error("Failed to refresh AI agents:", error);
-    }
-  }, [tenantId]);
+  /**
+   * Check if data is stale based on TTL
+   */
+  const isStale = useMemo(() => {
+    if (!agents.lastFetch) return true;
+    return Date.now() - new Date(agents.lastFetch).getTime() > CACHE_TTL;
+  }, [agents.lastFetch]);
 
-  const getAiAgent = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<AiAgent>(tenantId, "ai_agents", id);
-  }, [tenantId]);
-
-  const validateAiAgent = useCallback((agent: AiAgent) => {
-    if (!globalConfig) {
-      throw new Error("Configuration not loaded");
-    }
-
-    // Validate type against config
-    if (!config.types.includes(agent.type)) {
-      throw new Error(`Invalid AI agent type: ${agent.type}. Valid options: ${config.types.join(', ')}`);
-    }
-
-    // Validate status
-    if (!validateEnum('statuses', agent.status)) {
-      throw new Error(`Invalid status: ${agent.status}. Valid options: ${config.statuses.join(', ')}`);
-    }
-
-    // Validate required fields
-    if (!agent.name || agent.name.trim().length < 3) {
-      throw new Error("Name must be at least 3 characters long");
-    }
-
-    if (agent.confidence_threshold < 0 || agent.confidence_threshold > 1) {
-      throw new Error("Confidence threshold must be between 0 and 1");
-    }
-
-    if (!agent.input_sources || agent.input_sources.length === 0) {
-      throw new Error("At least one input source must be specified");
-    }
-
-    // Validate input sources
-    agent.input_sources.forEach(source => {
-      if (!config.inputSources.includes(source)) {
-        throw new Error(`Invalid input source: ${source}. Valid options: ${config.inputSources.join(', ')}`);
-      }
-    });
-
-    // Validate model type if specified
-    if (agent.model_type && !config.modelTypes.includes(agent.model_type)) {
-      throw new Error(`Invalid model type: ${agent.model_type}. Valid options: ${config.modelTypes.join(', ')}`);
-    }
-  }, [globalConfig, validateEnum, config]);
-
-  const ensureMetadata = useCallback((agent: AiAgent): AiAgent => {
-    const now = new Date().toISOString();
-    return {
-      ...agent,
-      tenantId,
-      tags: agent.tags || [],
-      health_status: agent.health_status || "gray",
-      sync_status: agent.sync_status || "dirty",
-      synced_at: agent.synced_at || now,
-      related_incident_ids: agent.related_incident_ids || [],
-      related_problem_ids: agent.related_problem_ids || [],
-      related_change_ids: agent.related_change_ids || [],
-      related_maintenance_ids: agent.related_maintenance_ids || [],
-      related_alert_ids: agent.related_alert_ids || [],
-      compliance_requirement_ids: agent.compliance_requirement_ids || [],
-      suggestions_made: agent.suggestions_made || 0,
-      suggestions_accepted: agent.suggestions_accepted || 0,
-      suggestions_rejected: agent.suggestions_rejected || 0,
-      automations_triggered: agent.automations_triggered || 0,
-      requires_human_approval: agent.requires_human_approval ?? true,
-      audit_trail_enabled: agent.audit_trail_enabled ?? true,
-      confidence_threshold: agent.confidence_threshold || 0.8,
-      input_sources: agent.input_sources || ['incidents'],
+  /**
+   * Add optimistic operation for immediate UI feedback
+   */
+  const addOptimisticOperation = useCallback((operation: Omit<OptimisticOperation, 'timestamp'>) => {
+    const fullOperation = {
+      ...operation,
+      timestamp: new Date().toISOString(),
     };
-  }, [tenantId]);
-
-  const addAiAgent = useCallback(async (agent: AiAgent, userId?: string) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    validateAiAgent(agent);
-
-    const now = new Date().toISOString();
-    const enriched = ensureMetadata({
-      ...agent,
-      created_at: now,
-      updated_at: now,
-    });
-
-    await putWithAudit(
-      tenantId,
-      "ai_agents",
-      enriched,
-      userId,
-      {
-        action: "create",
-        description: `Created AI agent: ${agent.name}`,
-        tags: ["ai_agent", "create", agent.type],
-        metadata: {
-          agent_type: agent.type,
-          confidence_threshold: agent.confidence_threshold,
-          input_sources: agent.input_sources,
-        },
-      }
-    );
-
-    await enqueueItem({
-      storeName: "ai_agents",
-      entityId: enriched.id,
-      action: "create",
-      payload: enriched,
-      priority: 'normal',
-    });
-
-    await refreshAiAgents();
-  }, [tenantId, validateAiAgent, ensureMetadata, enqueueItem, refreshAiAgents]);
-
-  const updateAiAgent = useCallback(async (agent: AiAgent, userId?: string) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    validateAiAgent(agent);
-
-    const enriched = ensureMetadata({
-      ...agent,
-      updated_at: new Date().toISOString(),
-    });
-
-    await putWithAudit(
-      tenantId,
-      "ai_agents",
-      enriched,
-      userId,
-      {
-        action: "update",
-        description: `Updated AI agent: ${agent.name}`,
-        tags: ["ai_agent", "update", agent.status],
-        metadata: {
-          agent_type: agent.type,
-          status_change: agent.status,
-        },
-      }
-    );
-
-    await enqueueItem({
-      storeName: "ai_agents",
-      entityId: enriched.id,
-      action: "update",
-      payload: enriched,
-      priority: 'normal',
-    });
-
-    await refreshAiAgents();
-  }, [tenantId, validateAiAgent, ensureMetadata, enqueueItem, refreshAiAgents]);
-
-  const deleteAiAgent = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    const agent = await getAiAgent(id);
+    setOptimisticOperations(prev => [...prev, fullOperation]);
     
-    await removeWithAudit(
-      tenantId,
-      "ai_agents",
-      id,
-      userId,
-      {
-        action: "delete",
-        description: `Deleted AI agent: ${agent?.name || id}`,
-        tags: ["ai_agent", "delete"],
-        metadata: {
-          agent_type: agent?.type,
-          suggestions_made: agent?.suggestions_made,
-        },
-      }
-    );
+    // Auto-remove after 30 seconds
+    setTimeout(() => {
+      setOptimisticOperations(prev => prev.filter(op => op.id !== fullOperation.id));
+    }, 30000);
+  }, []);
 
-    await enqueueItem({
-      storeName: "ai_agents",
-      entityId: id,
-      action: "delete",
-      payload: null,
-    });
+  /**
+   * Remove optimistic operation (on success/failure)
+   */
+  const removeOptimisticOperation = useCallback((operationId: string) => {
+    setOptimisticOperations(prev => prev.filter(op => op.id !== operationId));
+  }, []);
 
-    await refreshAiAgents();
-  }, [tenantId, getAiAgent, enqueueItem, refreshAiAgents]);
-
-  // AI-specific operations
-  const executeAgent = useCallback(async (agentId: string, inputData: any, userId?: string) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    const agent = await getAiAgent(agentId);
-    if (!agent) throw new Error(`AI agent ${agentId} not found`);
-
-    if (agent.status !== 'active') {
-      throw new Error(`AI agent ${agent.name} is not active`);
-    }
-
-    const executionStart = Date.now();
+  /**
+   * Apply optimistic updates to UI state
+   */
+  const applyOptimisticUpdates = useCallback((baseAgents: AiAgent[]): AiAgent[] => {
+    let result = [...baseAgents];
     
+    optimisticOperations.forEach(op => {
+      switch (op.type) {
+        case 'create':
+          if (op.payload && !result.find(a => a.id === op.payload.id)) {
+            result.unshift({ ...op.payload, sync_status: 'dirty' });
+          }
+          break;
+        case 'update':
+          if (op.payload) {
+            const index = result.findIndex(a => a.id === op.id);
+            if (index >= 0) {
+              result[index] = { ...result[index], ...op.payload, sync_status: 'dirty' };
+            }
+          }
+          break;
+        case 'delete':
+          result = result.filter(a => a.id !== op.id);
+          break;
+      }
+    });
+    
+    return result;
+  }, [optimisticOperations]);
+
+  /**
+   * Fetch agents from backend API
+   */
+  const refreshAgents = useCallback(async (force = false) => {
+    if (!tenantId) return;
+    if (!force && !isStale && agents.data.length > 0) return;
+
+    setAgents(prev => ({ ...prev, loading: true, error: null }));
+
     try {
-      // Simulate AI execution (replace with actual AI service call)
-      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
-      
-      // Mock response based on agent type
-      const mockResponse = {
-        agentId,
-        timestamp: new Date().toISOString(),
-        inputData,
-        result: {
-          confidence: Math.random() * (1 - agent.confidence_threshold) + agent.confidence_threshold,
-          prediction: agent.type === 'incident_classifier' ? 'P2' : 'success',
-          explanation: `AI agent ${agent.name} processed the input successfully`,
-        },
-        executionTimeMs: Date.now() - executionStart,
-      };
-
-      // Update agent metrics
-      await updateAgentMetrics(agentId, {
-        suggestions_made: agent.suggestions_made + 1,
-        last_run_at: new Date().toISOString(),
-        average_response_time_ms: agent.average_response_time_ms 
-          ? (agent.average_response_time_ms + mockResponse.executionTimeMs) / 2
-          : mockResponse.executionTimeMs,
+      // Backend API call - handles all business logic, sorting, filtering
+      const response = await fetch(`/api/tenants/${tenantId}/ai-agents`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
       });
 
-      // Log the execution
-      await putWithAudit(
-        tenantId,
-        "ai_agents",
-        { ...agent, last_run_at: new Date().toISOString() },
-        userId,
-        {
-          action: "execute",
-          description: `AI agent ${agent.name} executed successfully`,
-          tags: ["ai_agent", "execute", "success"],
-          metadata: {
-            execution_time_ms: mockResponse.executionTimeMs,
-            confidence: mockResponse.result.confidence,
-            input_size: JSON.stringify(inputData).length,
-          },
-        }
-      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agents: ${response.status}`);
+      }
 
-      return mockResponse;
+      const data: AiAgent[] = await response.json();
+      
+      setAgents({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false,
+      });
     } catch (error) {
-      // Log the failure
-      await putWithAudit(
-        tenantId,
-        "ai_agents",
-        agent,
-        userId,
-        {
-          action: "execute",
-          description: `AI agent ${agent.name} execution failed: ${error}`,
-          tags: ["ai_agent", "execute", "failure"],
-          metadata: {
-            error_message: error instanceof Error ? error.message : 'Unknown error',
-            execution_time_ms: Date.now() - executionStart,
-          },
-        }
-      );
+      setAgents(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch agents',
+      }));
+    }
+  }, [tenantId, isStale, agents.data.length]);
+
+  /**
+   * Create new agent via backend API
+   */
+  const createAgent = useCallback(async (agentData: Omit<AiAgent, 'id' | 'created_at' | 'updated_at'>) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticAgent: AiAgent = {
+      ...agentData,
+      id: tempId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      // UI defaults only
+      suggestions_made: 0,
+      suggestions_accepted: 0,
+      suggestions_rejected: 0,
+      automations_triggered: 0,
+      requires_human_approval: true,
+      audit_trail_enabled: true,
+      health_status: 'gray',
+      tags: agentData.tags || [],
+      related_incident_ids: agentData.related_incident_ids || [],
+      related_problem_ids: agentData.related_problem_ids || [],
+      related_change_ids: agentData.related_change_ids || [],
+      related_maintenance_ids: agentData.related_maintenance_ids || [],
+      related_alert_ids: agentData.related_alert_ids || [],
+      compliance_requirement_ids: agentData.compliance_requirement_ids || [],
+    };
+
+    // Optimistic UI update
+    addOptimisticOperation({
+      id: tempId,
+      type: 'create',
+      payload: optimisticAgent,
+    });
+
+    try {
+      // Backend handles ALL validation and business logic
+      const response = await fetch(`/api/tenants/${tenantId}/ai-agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(agentData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create agent');
+      }
+
+      const createdAgent: AiAgent = await response.json();
+      
+      // Queue for sync if offline
+      await enqueueItem({
+        storeName: "ai_agents",
+        entityId: createdAgent.id,
+        action: "create",
+        payload: createdAgent,
+        priority: 'normal',
+      });
+
+      // Remove optimistic operation and refresh
+      removeOptimisticOperation(tempId);
+      await refreshAgents(true);
+      
+    } catch (error) {
+      // Rollback optimistic update
+      removeOptimisticOperation(tempId);
+      
+      // Update error state
+      setAgents(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to create agent',
+      }));
       
       throw error;
     }
-  }, [tenantId, getAiAgent]);
+  }, [tenantId, addOptimisticOperation, removeOptimisticOperation, enqueueItem, refreshAgents]);
 
-  const updateAgentMetrics = useCallback(async (agentId: string, metrics: Partial<AiAgent>) => {
-    const agent = await getAiAgent(agentId);
-    if (!agent) return;
+  /**
+   * Update agent via backend API
+   */
+  const updateAgent = useCallback(async (id: string, updates: Partial<AiAgent>) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-    const updated = { ...agent, ...metrics, updated_at: new Date().toISOString() };
-    
-    // Calculate success rate if we have enough data
-    if (updated.suggestions_made > 0) {
-      updated.success_rate = updated.suggestions_accepted / updated.suggestions_made;
+    // Optimistic UI update
+    addOptimisticOperation({
+      id,
+      type: 'update',
+      payload: { ...updates, updated_at: new Date().toISOString() },
+    });
+
+    try {
+      // Backend handles ALL validation and business logic
+      const response = await fetch(`/api/tenants/${tenantId}/ai-agents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update agent');
+      }
+
+      const updatedAgent: AiAgent = await response.json();
+
+      // Queue for sync if offline
+      await enqueueItem({
+        storeName: "ai_agents",
+        entityId: id,
+        action: "update",
+        payload: updatedAgent,
+        priority: 'normal',
+      });
+
+      // Remove optimistic operation and refresh
+      removeOptimisticOperation(id);
+      await refreshAgents(true);
+      
+    } catch (error) {
+      // Rollback optimistic update
+      removeOptimisticOperation(id);
+      
+      setAgents(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to update agent',
+      }));
+      
+      throw error;
     }
+  }, [tenantId, addOptimisticOperation, removeOptimisticOperation, enqueueItem, refreshAgents]);
 
-    await updateAiAgent(updated);
-  }, [getAiAgent, updateAiAgent]);
+  /**
+   * Delete agent via backend API
+   */
+  const deleteAgent = useCallback(async (id: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const getAgentPerformance = useCallback((agentId: string) => {
-    const agent = aiAgents.find(a => a.id === agentId);
-    if (!agent) {
-      return { successRate: 0, avgResponseTime: 0, totalExecutions: 0 };
+    // Optimistic UI update
+    addOptimisticOperation({
+      id,
+      type: 'delete',
+    });
+
+    try {
+      // Backend handles ALL business logic and cascading deletions
+      const response = await fetch(`/api/tenants/${tenantId}/ai-agents/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete agent');
+      }
+
+      // Queue for sync if offline
+      await enqueueItem({
+        storeName: "ai_agents",
+        entityId: id,
+        action: "delete",
+        payload: null,
+      });
+
+      // Remove optimistic operation and refresh
+      removeOptimisticOperation(id);
+      await refreshAgents(true);
+      
+    } catch (error) {
+      // Rollback optimistic update
+      removeOptimisticOperation(id);
+      
+      setAgents(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to delete agent',
+      }));
+      
+      throw error;
     }
+  }, [tenantId, addOptimisticOperation, removeOptimisticOperation, enqueueItem, refreshAgents]);
 
-    return {
-      successRate: agent.success_rate || 0,
-      avgResponseTime: agent.average_response_time_ms || 0,
-      totalExecutions: agent.suggestions_made,
+  /**
+   * Execute agent via backend API
+   */
+  const executeAgent = useCallback(async (agentId: string, inputData: any): Promise<AsyncState<AgentExecutionResult>> => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    const executionState: AsyncState<AgentExecutionResult> = {
+      data: null as any,
+      loading: true,
+      error: null,
+      lastFetch: null,
+      stale: false,
     };
-  }, [aiAgents]);
 
-  // Filtering functions
-  const getAgentsByType = useCallback((type: string) => {
-    return aiAgents.filter(a => a.type === type);
-  }, [aiAgents]);
+    // Optimistic UI feedback
+    addOptimisticOperation({
+      id: `exec-${agentId}-${Date.now()}`,
+      type: 'execute',
+      payload: { agentId, status: 'running' },
+    });
 
-  const getAgentsByStatus = useCallback((status: string) => {
-    return aiAgents.filter(a => a.status === status);
-  }, [aiAgents]);
+    try {
+      // Backend handles ALL execution logic, business rules, calculations
+      const response = await fetch(`/api/tenants/${tenantId}/ai-agents/${agentId}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputData }),
+      });
 
-  const getActiveAgents = useCallback(() => {
-    return aiAgents.filter(a => a.status === 'active');
-  }, [aiAgents]);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Agent execution failed');
+      }
 
-  const getAgentsRequiringApproval = useCallback(() => {
-    return aiAgents.filter(a => a.requires_human_approval === true);
-  }, [aiAgents]);
+      const result: AgentExecutionResult = await response.json();
+      
+      // Refresh agents to get updated metrics (calculated by backend)
+      await refreshAgents(true);
 
-  // Initialize
+      return {
+        data: result,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false,
+      };
+      
+    } catch (error) {
+      return {
+        data: null as any,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Execution failed',
+        lastFetch: new Date().toISOString(),
+        stale: false,
+      };
+    }
+  }, [tenantId, addOptimisticOperation, refreshAgents]);
+
+  /**
+   * Get agent by ID (client-side lookup for UI responsiveness)
+   */
+  const getAgentById = useCallback((id: string): AiAgent | null => {
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    return agentsWithOptimistic.find(agent => agent.id === id) || null;
+  }, [agents.data, applyOptimisticUpdates]);
+
+  /**
+   * Client-side filtering for immediate UI responsiveness
+   * Note: Complex business filtering should be done via backend API
+   */
+  const getFilteredAgents = useCallback((filters: AiAgentUIFilters): AiAgent[] => {
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    
+    return agentsWithOptimistic.filter(agent => {
+      // Simple UI filters only - no business logic
+      if (filters.type && agent.type !== filters.type) return false;
+      if (filters.status && agent.status !== filters.status) return false;
+      if (filters.requiresApproval !== undefined && agent.requires_human_approval !== filters.requiresApproval) return false;
+      if (filters.healthStatus && !filters.healthStatus.includes(agent.health_status)) return false;
+      if (filters.search) {
+        const query = filters.search.toLowerCase();
+        if (!agent.name.toLowerCase().includes(query) && 
+            !agent.description?.toLowerCase().includes(query)) return false;
+      }
+      
+      return true;
+    });
+  }, [agents.data, applyOptimisticUpdates]);
+
+  /**
+   * Simple client-side search for UI responsiveness
+   */
+  const searchAgents = useCallback((query: string): AiAgent[] => {
+    if (!query.trim()) return applyOptimisticUpdates(agents.data);
+    
+    const searchTerm = query.toLowerCase();
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    
+    return agentsWithOptimistic.filter(agent =>
+      agent.name.toLowerCase().includes(searchTerm) ||
+      agent.description?.toLowerCase().includes(searchTerm) ||
+      agent.type.toLowerCase().includes(searchTerm) ||
+      agent.tags.some(tag => tag.toLowerCase().includes(searchTerm))
+    );
+  }, [agents.data, applyOptimisticUpdates]);
+
+  /**
+   * Simple client-side categorization for UI dropdowns/filters
+   */
+  const getAgentsByType = useCallback((type: string): AiAgent[] => {
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    return agentsWithOptimistic.filter(agent => agent.type === type);
+  }, [agents.data, applyOptimisticUpdates]);
+
+  const getAgentsByStatus = useCallback((status: string): AiAgent[] => {
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    return agentsWithOptimistic.filter(agent => agent.status === status);
+  }, [agents.data, applyOptimisticUpdates]);
+
+  const getAgentsByHealth = useCallback((health: string): AiAgent[] => {
+    const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
+    return agentsWithOptimistic.filter(agent => agent.health_status === health);
+  }, [agents.data, applyOptimisticUpdates]);
+
+  /**
+   * Clear error state
+   */
+  const clearError = useCallback(() => {
+    setAgents(prev => ({ ...prev, error: null }));
+  }, []);
+
+  // Apply optimistic updates to agents for display
+  const agentsWithOptimistic = useMemo(() => ({
+    ...agents,
+    data: applyOptimisticUpdates(agents.data),
+  }), [agents, applyOptimisticUpdates]);
+
+  // Initialize and setup auto-refresh
   useEffect(() => {
     if (tenantId && globalConfig) {
-      refreshAiAgents();
+      refreshAgents();
+      
+      // Auto-refresh every 5 minutes if data is stale
+      const interval = setInterval(() => {
+        if (isStale) {
+          refreshAgents();
+        }
+      }, 60000); // Check every minute
+      
+      return () => clearInterval(interval);
     }
-  }, [tenantId, globalConfig, refreshAiAgents]);
+  }, [tenantId, globalConfig, refreshAgents, isStale]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setOptimisticOperations([]);
+    };
+  }, []);
 
   return (
     <AiAgentsContext.Provider
       value={{
-        aiAgents,
-        addAiAgent,
-        updateAiAgent,
-        deleteAiAgent,
-        refreshAiAgents,
-        getAiAgent,
+        agents: agentsWithOptimistic,
+        createAgent,
+        updateAgent,
+        deleteAgent,
+        refreshAgents,
+        getAgentById,
         executeAgent,
-        updateAgentMetrics,
-        getAgentPerformance,
+        getFilteredAgents,
+        searchAgents,
         getAgentsByType,
         getAgentsByStatus,
-        getActiveAgents,
-        getAgentsRequiringApproval,
+        getAgentsByHealth,
+        optimisticOperations,
+        clearError,
+        isStale,
         config,
       }}
     >
@@ -497,29 +668,69 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
 // ---------------------------------
 // 4. Hooks
 // ---------------------------------
+
+/**
+ * Main hook for AI agents context
+ */
 export const useAiAgents = () => {
   const ctx = useContext(AiAgentsContext);
   if (!ctx) throw new Error("useAiAgents must be used within AiAgentsProvider");
   return ctx;
 };
 
-export const useAiAgentDetails = (id: string) => {
-  const { aiAgents } = useAiAgents();
-  return aiAgents.find((a) => a.id === id) || null;
+/**
+ * Hook for getting a specific agent with reactive updates
+ */
+export const useAiAgent = (id: string) => {
+  const { getAgentById } = useAiAgents();
+  return useMemo(() => getAgentById(id), [id, getAgentById]);
 };
 
-// Utility hooks
-export const useActiveAiAgents = () => {
-  const { getActiveAgents } = useAiAgents();
-  return getActiveAgents();
+/**
+ * Hook for filtered agents with memoization
+ */
+export const useFilteredAiAgents = (filters: AiAgentUIFilters) => {
+  const { getFilteredAgents } = useAiAgents();
+  return useMemo(() => getFilteredAgents(filters), [filters, getFilteredAgents]);
 };
 
-export const useAiAgentsByType = (type: string) => {
+/**
+ * Hook for agent search with debouncing
+ */
+export const useAiAgentSearch = (query: string, debounceMs = 300) => {
+  const { searchAgents } = useAiAgents();
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), debounceMs);
+    return () => clearTimeout(timer);
+  }, [query, debounceMs]);
+  
+  return useMemo(() => searchAgents(debouncedQuery), [debouncedQuery, searchAgents]);
+};
+
+/**
+ * Selective subscription hooks for performance
+ */
+export const useAgentsByType = (type: string) => {
   const { getAgentsByType } = useAiAgents();
-  return getAgentsByType(type);
+  return useMemo(() => getAgentsByType(type), [type, getAgentsByType]);
 };
 
-export const useAiAgentPerformance = (agentId: string) => {
-  const { getAgentPerformance } = useAiAgents();
-  return getAgentPerformance(agentId);
+export const useAgentsByStatus = (status: string) => {
+  const { getAgentsByStatus } = useAiAgents();
+  return useMemo(() => getAgentsByStatus(status), [status, getAgentsByStatus]);
+};
+
+export const useActiveAgents = () => {
+  const { getAgentsByStatus } = useAiAgents();
+  return useMemo(() => getAgentsByStatus('active'), [getAgentsByStatus]);
+};
+
+/**
+ * Hook for agents requiring approval
+ */
+export const useAgentsRequiringApproval = () => {
+  const { getFilteredAgents } = useAiAgents();
+  return useMemo(() => getFilteredAgents({ requiresApproval: true }), [getFilteredAgents]);
 };

@@ -1,4 +1,4 @@
-// src/contexts/AuditLogsContext.tsx
+// src/contexts/AuditLogsContext.tsx - ENTERPRISE FRONTEND REFACTORED
 import React, {
   createContext,
   useContext,
@@ -6,16 +6,40 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
 import { 
   getAll,
   getById,
 } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
-import { generateImmutableHash } from "../utils/auditUtils";
+import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend State Management Types
+// ---------------------------------
+
+/**
+ * Generic async state interface for UI state management
+ */
+interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch: number | null;
+  stale: boolean;
+}
+
+/**
+ * Cache configuration for UI performance
+ */
+interface CacheConfig {
+  ttl: number; // Time to live in milliseconds
+  staleWhileRevalidate: boolean;
+}
+
+// ---------------------------------
+// 2. Domain Types (Simplified for Frontend)
 // ---------------------------------
 export type AuditAction =
   | "create"
@@ -46,14 +70,14 @@ export type ComplianceFramework = "SOX" | "PCI-DSS" | "HIPAA" | "GDPR" | "ISO270
 
 export interface AuditLogEntry {
   id: string;
-  entity_type: string; // "incident", "change", "user", "contract", etc.
+  entity_type: string;
   entity_id: string;
   entity_name?: string;
   action: AuditAction;
   description: string;
   timestamp: string;
   
-  // Actor information (immutable once set)
+  // Actor information
   user_id?: string | null;
   user_name?: string;
   team_id?: string | null;
@@ -61,15 +85,15 @@ export interface AuditLogEntry {
   ai_agent_id?: string | null;
   automation_rule_id?: string | null;
   
-  // Session and security context
+  // Session context
   session_id?: string;
   ip_address?: string;
   user_agent?: string;
-  location?: string; // Geolocation if available
+  location?: string;
   device_id?: string;
   device_fingerprint?: string;
   
-  // Change tracking (before/after values)
+  // Change tracking
   field_changes?: Array<{
     field: string;
     old_value?: any;
@@ -77,7 +101,7 @@ export interface AuditLogEntry {
     field_type?: string;
   }>;
   
-  // Business and compliance context
+  // Business context
   business_service_id?: string;
   customer_id?: string;
   cost_center_id?: string;
@@ -86,23 +110,23 @@ export interface AuditLogEntry {
   compliance_frameworks: ComplianceFramework[];
   data_classification?: "public" | "internal" | "confidential" | "restricted";
   
-  // Audit metadata (immutable)
-  hash: string; // Tamper-proof cryptographic hash
-  previous_hash?: string; // Chain of audit entries
-  sequence_number?: number; // Order in the audit chain
+  // Audit metadata
+  hash: string;
+  previous_hash?: string;
+  sequence_number?: number;
   audit_source: "system" | "user" | "api" | "import" | "migration";
   
-  // Retention and legal hold
+  // Legal hold
   retention_period_days?: number;
   legal_hold?: boolean;
   legal_hold_reason?: string;
   
-  // Additional context
-  correlation_id?: string; // Group related audit entries
-  parent_audit_id?: string; // Parent transaction
-  child_audit_ids: string[]; // Child transactions
+  // Context
+  correlation_id?: string;
+  parent_audit_id?: string;
+  child_audit_ids: string[];
   
-  // Compliance flags and violations
+  // Compliance
   compliance_flags?: string[];
   policy_violations?: Array<{
     policy_id: string;
@@ -111,12 +135,15 @@ export interface AuditLogEntry {
     severity: "low" | "medium" | "high" | "critical";
   }>;
   
-  // Metadata (cannot be modified after creation)
+  // Metadata
   tags: string[];
   metadata?: Record<string, any>;
   tenantId: string;
 }
 
+/**
+ * UI-focused search filters (validation handled by backend)
+ */
 export interface AuditSearchFilters {
   entityType?: string;
   entityId?: string;
@@ -134,28 +161,28 @@ export interface AuditSearchFilters {
   textSearch?: string;
 }
 
-export interface AuditStats {
-  totalEntries: number;
-  uniqueUsers: number;
-  riskDistribution: Record<AuditRisk, number>;
-  actionDistribution: Record<string, number>;
-  complianceViolations: number;
-  failedActions: number;
-  suspiciousActivities: number;
-  entriesOnLegalHold: number;
+/**
+ * Optimistic UI operation types
+ */
+interface OptimisticUpdate {
+  id: string;
+  type: 'legal_hold' | 'compliance_export';
+  timestamp: number;
+  originalState?: any;
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 3. Frontend Context Interface
 // ---------------------------------
 interface AuditLogsContextType {
-  auditLogs: AuditLogEntry[];
-  refreshAuditLogs: () => Promise<void>;
+  // Core async state
+  auditLogs: AsyncState<AuditLogEntry[]>;
   
-  // Read-only operations (audit logs are append-only)
+  // API orchestration methods
+  refreshAuditLogs: () => Promise<void>;
   getAuditLog: (id: string) => Promise<AuditLogEntry | undefined>;
   
-  // Filtering and search
+  // Client-side helpers for UI responsiveness  
   getLogsByEntity: (entityType: string, entityId?: string) => AuditLogEntry[];
   getLogsByUser: (userId: string) => AuditLogEntry[];
   getLogsByAction: (action: AuditAction) => AuditLogEntry[];
@@ -165,145 +192,206 @@ interface AuditLogsContextType {
   getLogsByTags: (tags: string[]) => AuditLogEntry[];
   getLogsWithViolations: () => AuditLogEntry[];
   getLogsOnLegalHold: () => AuditLogEntry[];
-  getSuspiciousActivities: () => AuditLogEntry[];
-  getFailedActions: () => AuditLogEntry[];
   
-  // Advanced search
+  // Simple client-side search for immediate UI feedback
   searchLogs: (query: string) => AuditLogEntry[];
   filterLogs: (filters: AuditSearchFilters) => AuditLogEntry[];
   
-  // Analytics and reporting
-  getAuditStats: (timeframe?: "day" | "week" | "month" | "year") => AuditStats;
-  getComplianceReport: (framework: ComplianceFramework, dateRange: { start: string; end: string }) => {
-    totalEntries: number;
-    violations: number;
-    riskBreakdown: Record<AuditRisk, number>;
-    topViolations: Array<{ type: string; count: number }>;
-    timeline: Array<{ date: string; entries: number; violations: number }>;
-  };
-  
-  // Integrity verification
-  verifyAuditChain: () => Promise<{ valid: boolean; brokenAt?: number; errors: string[] }>;
-  validateEntry: (entry: AuditLogEntry) => Promise<{ valid: boolean; error?: string }>;
-  
-  // Legal and compliance
+  // API calls with optimistic UI patterns
   setLegalHold: (entryIds: string[], reason: string) => Promise<void>;
   removeLegalHold: (entryIds: string[]) => Promise<void>;
   exportForCompliance: (filters: AuditSearchFilters, format: "json" | "csv" | "pdf") => Promise<Blob>;
+  
+  // UI state
+  optimisticUpdates: OptimisticUpdate[];
+  isPerformingBulkOperation: boolean;
+  
+  // Cache control
+  invalidateCache: () => void;
+  
+  // Config from backend
+  config: {
+    actions: AuditAction[];
+    risk_levels: AuditRisk[];
+    compliance_frameworks: ComplianceFramework[];
+    retention_periods: number[];
+    export_formats: string[];
+  };
 }
 
 const AuditLogsContext = createContext<AuditLogsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 4. Cache Configuration
+// ---------------------------------
+const CACHE_CONFIG: CacheConfig = {
+  ttl: 5 * 60 * 1000, // 5 minutes
+  staleWhileRevalidate: true,
+};
+
+// ---------------------------------
+// 5. Provider Implementation
 // ---------------------------------
 export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const { config: appConfig } = useConfig();
+  
+  // Core async state
+  const [auditLogs, setAuditLogs] = useState<AsyncState<AuditLogEntry[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+  
+  // UI state
+  const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
+  const [isPerformingBulkOperation, setIsPerformingBulkOperation] = useState(false);
+  
+  // Config from backend
+  const config = useMemo(() => ({
+    actions: appConfig?.audit?.actions || [],
+    risk_levels: appConfig?.audit?.risk_levels || [],
+    compliance_frameworks: appConfig?.audit?.compliance_frameworks || [],
+    retention_periods: appConfig?.audit?.retention_periods || [],
+    export_formats: appConfig?.audit?.export_formats || ['json', 'csv'],
+  }), [appConfig]);
 
-  const refreshAuditLogs = useCallback(async () => {
+  /**
+   * Check if data is stale based on TTL
+   */
+  const isStale = useCallback((lastFetch: number | null): boolean => {
+    if (!lastFetch) return true;
+    return Date.now() - lastFetch > CACHE_CONFIG.ttl;
+  }, []);
+
+  /**
+   * API orchestration - refresh audit logs
+   */
+  const refreshAuditLogs = useCallback(async (force = false) => {
     if (!tenantId) return;
+    
+    // Check cache freshness unless forced
+    if (!force && !isStale(auditLogs.lastFetch)) {
+      return;
+    }
+    
+    setAuditLogs(prev => ({
+      ...prev,
+      loading: true,
+      error: null,
+    }));
     
     try {
       const all = await getAll<AuditLogEntry>(tenantId, "audit_logs");
       
-      // Sort by sequence number and timestamp (newest first)
-      all.sort((a, b) => {
-        if (a.sequence_number !== undefined && b.sequence_number !== undefined) {
-          return b.sequence_number - a.sequence_number;
-        }
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
+      // Simple client-side sorting for UI (backend should handle complex sorting)
+      const sorted = all.sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
       
-      setAuditLogs(all);
+      setAuditLogs({
+        data: sorted,
+        loading: false,
+        error: null,
+        lastFetch: Date.now(),
+        stale: false,
+      });
     } catch (error) {
-      console.error("Failed to refresh audit logs:", error);
+      setAuditLogs(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to refresh audit logs',
+      }));
     }
-  }, [tenantId]);
+  }, [tenantId, auditLogs.lastFetch, isStale]);
 
+  /**
+   * API orchestration - get single audit log
+   */
   const getAuditLog = useCallback(async (id: string) => {
     if (!tenantId) return undefined;
-    return getById<AuditLogEntry>(tenantId, "audit_logs", id);
-  }, [tenantId]);
+    
+    // First check local cache
+    const cached = auditLogs.data.find(log => log.id === id);
+    if (cached && !auditLogs.stale) {
+      return cached;
+    }
+    
+    // Fetch from API if not in cache or stale
+    try {
+      return await getById<AuditLogEntry>(tenantId, "audit_logs", id);
+    } catch (error) {
+      console.error('Failed to fetch audit log:', error);
+      return undefined;
+    }
+  }, [tenantId, auditLogs.data, auditLogs.stale]);
 
-  // Filtering functions
+  // ---------------------------------
+  // 6. Client-side Helpers (UI Performance Only)
+  // ---------------------------------
+  
   const getLogsByEntity = useCallback((entityType: string, entityId?: string) => {
-    return auditLogs.filter(log => 
+    return auditLogs.data.filter(log => 
       log.entity_type === entityType && 
       (!entityId || log.entity_id === entityId)
     );
-  }, [auditLogs]);
+  }, [auditLogs.data]);
 
   const getLogsByUser = useCallback((userId: string) => {
-    return auditLogs.filter(log => log.user_id === userId);
-  }, [auditLogs]);
+    return auditLogs.data.filter(log => log.user_id === userId);
+  }, [auditLogs.data]);
 
   const getLogsByAction = useCallback((action: AuditAction) => {
-    return auditLogs.filter(log => log.action === action);
-  }, [auditLogs]);
+    return auditLogs.data.filter(log => log.action === action);
+  }, [auditLogs.data]);
 
   const getLogsByRisk = useCallback((riskLevel: AuditRisk) => {
-    return auditLogs.filter(log => log.risk_level === riskLevel);
-  }, [auditLogs]);
+    return auditLogs.data.filter(log => log.risk_level === riskLevel);
+  }, [auditLogs.data]);
 
   const getLogsByCompliance = useCallback((framework: ComplianceFramework) => {
-    return auditLogs.filter(log => log.compliance_frameworks.includes(framework));
-  }, [auditLogs]);
+    return auditLogs.data.filter(log => 
+      log.compliance_frameworks.includes(framework)
+    );
+  }, [auditLogs.data]);
 
   const getLogsByDateRange = useCallback((startDate: string, endDate: string) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     
-    return auditLogs.filter(log => {
+    return auditLogs.data.filter(log => {
       const logDate = new Date(log.timestamp);
       return logDate >= start && logDate <= end;
     });
-  }, [auditLogs]);
+  }, [auditLogs.data]);
 
   const getLogsByTags = useCallback((tags: string[]) => {
-    return auditLogs.filter(log => 
+    return auditLogs.data.filter(log => 
       tags.some(tag => log.tags.includes(tag))
     );
-  }, [auditLogs]);
+  }, [auditLogs.data]);
 
   const getLogsWithViolations = useCallback(() => {
-    return auditLogs.filter(log => 
+    return auditLogs.data.filter(log => 
       log.policy_violations && log.policy_violations.length > 0
     );
-  }, [auditLogs]);
+  }, [auditLogs.data]);
 
   const getLogsOnLegalHold = useCallback(() => {
-    return auditLogs.filter(log => log.legal_hold === true);
-  }, [auditLogs]);
+    return auditLogs.data.filter(log => log.legal_hold === true);
+  }, [auditLogs.data]);
 
-  const getSuspiciousActivities = useCallback(() => {
-    return auditLogs.filter(log => {
-      // Define suspicious activity criteria
-      const suspiciousIndicators = [
-        log.risk_level === 'critical',
-        log.action === 'delete' && log.risk_level === 'high',
-        log.policy_violations && log.policy_violations.length > 0,
-        log.compliance_flags && log.compliance_flags.includes('suspicious'),
-        // Multiple failed attempts from same IP
-        // Unusual timing patterns
-        // Access to restricted data
-      ];
-      
-      return suspiciousIndicators.some(Boolean);
-    });
-  }, [auditLogs]);
-
-  const getFailedActions = useCallback(() => {
-    return auditLogs.filter(log => 
-      log.tags.includes('failed') || 
-      log.tags.includes('error') ||
-      log.compliance_flags?.includes('failed')
-    );
-  }, [auditLogs]);
-
+  /**
+   * Simple client-side search for immediate UI feedback
+   * Complex search logic handled by backend APIs
+   */
   const searchLogs = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return auditLogs.filter(log => 
+    const lowerQuery = query.toLowerCase().trim();
+    if (!lowerQuery) return auditLogs.data;
+    
+    return auditLogs.data.filter(log => 
       log.description.toLowerCase().includes(lowerQuery) ||
       log.entity_type.toLowerCase().includes(lowerQuery) ||
       log.entity_id.toLowerCase().includes(lowerQuery) ||
@@ -313,275 +401,235 @@ export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
       log.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
       (log.ip_address && log.ip_address.includes(query))
     );
-  }, [auditLogs]);
+  }, [auditLogs.data]);
 
+  /**
+   * Simple client-side filtering for UI responsiveness
+   * Complex business filtering handled by backend
+   */
   const filterLogs = useCallback((filters: AuditSearchFilters) => {
-    return auditLogs.filter(log => {
-      if (filters.entityType && log.entity_type !== filters.entityType) return false;
-      if (filters.entityId && log.entity_id !== filters.entityId) return false;
-      if (filters.userId && log.user_id !== filters.userId) return false;
-      if (filters.action && log.action !== filters.action) return false;
-      if (filters.riskLevel && log.risk_level !== filters.riskLevel) return false;
-      if (filters.complianceFramework && !log.compliance_frameworks.includes(filters.complianceFramework)) return false;
-      if (filters.ipAddress && log.ip_address !== filters.ipAddress) return false;
-      if (filters.businessServiceId && log.business_service_id !== filters.businessServiceId) return false;
-      if (filters.customerId && log.customer_id !== filters.customerId) return false;
-      if (filters.hasViolations !== undefined && !!(log.policy_violations?.length) !== filters.hasViolations) return false;
-      if (filters.legalHold !== undefined && log.legal_hold !== filters.legalHold) return false;
-      
-      if (filters.startDate || filters.endDate) {
-        const logDate = new Date(log.timestamp);
-        if (filters.startDate && logDate < new Date(filters.startDate)) return false;
-        if (filters.endDate && logDate > new Date(filters.endDate)) return false;
-      }
-      
-      if (filters.textSearch) {
-        const searchResult = searchLogs(filters.textSearch);
-        return searchResult.some(result => result.id === log.id);
-      }
-      
-      return true;
-    });
-  }, [auditLogs, searchLogs]);
-
-  const getAuditStats = useCallback((timeframe: "day" | "week" | "month" | "year" = "week") => {
-    const now = new Date();
-    let startDate: Date;
+    let filtered = auditLogs.data;
     
-    switch (timeframe) {
-      case "day":
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case "week":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case "month":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case "year":
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        break;
+    if (filters.entityType) {
+      filtered = filtered.filter(log => log.entity_type === filters.entityType);
     }
-    
-    const filteredLogs = auditLogs.filter(log => new Date(log.timestamp) >= startDate);
-    const uniqueUsers = new Set(filteredLogs.map(log => log.user_id).filter(Boolean)).size;
-    
-    // Risk distribution
-    const riskDistribution = filteredLogs.reduce((acc, log) => {
-      acc[log.risk_level] = (acc[log.risk_level] || 0) + 1;
-      return acc;
-    }, {} as Record<AuditRisk, number>);
-    
-    // Action distribution
-    const actionDistribution = filteredLogs.reduce((acc, log) => {
-      acc[log.action] = (acc[log.action] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    const complianceViolations = filteredLogs.filter(log => 
-      log.policy_violations && log.policy_violations.length > 0
-    ).length;
-    
-    const failedActions = getFailedActions().filter(log => 
-      new Date(log.timestamp) >= startDate
-    ).length;
-    
-    const suspiciousActivities = getSuspiciousActivities().filter(log => 
-      new Date(log.timestamp) >= startDate
-    ).length;
-    
-    const entriesOnLegalHold = filteredLogs.filter(log => log.legal_hold).length;
-    
-    return {
-      totalEntries: filteredLogs.length,
-      uniqueUsers,
-      riskDistribution,
-      actionDistribution,
-      complianceViolations,
-      failedActions,
-      suspiciousActivities,
-      entriesOnLegalHold,
-    };
-  }, [auditLogs, getFailedActions, getSuspiciousActivities]);
-
-  const getComplianceReport = useCallback((
-    framework: ComplianceFramework, 
-    dateRange: { start: string; end: string }
-  ) => {
-    const relevantLogs = getLogsByCompliance(framework).filter(log => {
-      const logDate = new Date(log.timestamp);
-      return logDate >= new Date(dateRange.start) && logDate <= new Date(dateRange.end);
-    });
-    
-    const violations = relevantLogs.filter(log => 
-      log.policy_violations && log.policy_violations.length > 0
-    ).length;
-    
-    const riskBreakdown = relevantLogs.reduce((acc, log) => {
-      acc[log.risk_level] = (acc[log.risk_level] || 0) + 1;
-      return acc;
-    }, {} as Record<AuditRisk, number>);
-    
-    // Top violation types
-    const violationCounts: Record<string, number> = {};
-    relevantLogs.forEach(log => {
-      log.policy_violations?.forEach(violation => {
-        violationCounts[violation.violation_type] = (violationCounts[violation.violation_type] || 0) + 1;
-      });
-    });
-    
-    const topViolations = Object.entries(violationCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([type, count]) => ({ type, count }));
-    
-    // Timeline (daily breakdown)
-    const timeline: Array<{ date: string; entries: number; violations: number }> = [];
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const dayLogs = relevantLogs.filter(log => log.timestamp.startsWith(dateStr));
-      const dayViolations = dayLogs.filter(log => 
-        log.policy_violations && log.policy_violations.length > 0
-      ).length;
-      
-      timeline.push({
-        date: dateStr,
-        entries: dayLogs.length,
-        violations: dayViolations,
-      });
+    if (filters.entityId) {
+      filtered = filtered.filter(log => log.entity_id === filters.entityId);
     }
-    
-    return {
-      totalEntries: relevantLogs.length,
-      violations,
-      riskBreakdown,
-      topViolations,
-      timeline,
-    };
-  }, [getLogsByCompliance]);
-
-  const verifyAuditChain = useCallback(async (): Promise<{ valid: boolean; brokenAt?: number; errors: string[] }> => {
-    const errors: string[] = [];
-    
-    try {
-      // Sort logs by sequence number
-      const sortedLogs = [...auditLogs].sort((a, b) => 
-        (a.sequence_number || 0) - (b.sequence_number || 0)
+    if (filters.userId) {
+      filtered = filtered.filter(log => log.user_id === filters.userId);
+    }
+    if (filters.action) {
+      filtered = filtered.filter(log => log.action === filters.action);
+    }
+    if (filters.riskLevel) {
+      filtered = filtered.filter(log => log.risk_level === filters.riskLevel);
+    }
+    if (filters.complianceFramework) {
+      filtered = filtered.filter(log => 
+        log.compliance_frameworks.includes(filters.complianceFramework!)
       );
-      
-      let previousHash = '';
-      
-      for (let i = 0; i < sortedLogs.length; i++) {
-        const log = sortedLogs[i];
-        
-        // Verify hash integrity
-        const expectedHash = await generateImmutableHash({
-          entity_type: log.entity_type,
-          entity_id: log.entity_id,
-          action: log.action,
-          timestamp: log.timestamp,
-          user_id: log.user_id,
-          description: log.description,
-          previous_hash: previousHash,
-          sequence_number: log.sequence_number,
-        });
-        
-        if (log.hash !== expectedHash) {
-          errors.push(`Hash mismatch at sequence ${log.sequence_number || i}: expected ${expectedHash}, got ${log.hash}`);
-        }
-        
-        // Verify chain continuity
-        if (i > 0 && log.previous_hash !== previousHash) {
-          errors.push(`Chain break at sequence ${log.sequence_number || i}: previous hash mismatch`);
-          return { valid: false, brokenAt: log.sequence_number || i, errors };
-        }
-        
-        previousHash = log.hash;
-      }
-      
-      return { valid: errors.length === 0, errors };
-    } catch (error) {
-      return { 
-        valid: false, 
-        errors: [`Chain verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`] 
-      };
     }
-  }, [auditLogs]);
+    if (filters.hasViolations !== undefined) {
+      filtered = filtered.filter(log => 
+        !!(log.policy_violations?.length) === filters.hasViolations
+      );
+    }
+    if (filters.legalHold !== undefined) {
+      filtered = filtered.filter(log => log.legal_hold === filters.legalHold);
+    }
+    if (filters.startDate || filters.endDate) {
+      filtered = getLogsByDateRange(
+        filters.startDate || '1970-01-01',
+        filters.endDate || '2099-12-31'
+      );
+    }
+    if (filters.textSearch) {
+      filtered = searchLogs(filters.textSearch);
+    }
+    
+    return filtered;
+  }, [auditLogs.data, getLogsByDateRange, searchLogs]);
 
-  const validateEntry = useCallback(async (entry: AuditLogEntry): Promise<{ valid: boolean; error?: string }> => {
+  // ---------------------------------
+  // 7. API Operations with Optimistic UI
+  // ---------------------------------
+
+  /**
+   * Set legal hold with optimistic UI feedback
+   * Backend handles all business logic and validation
+   */
+  const setLegalHold = useCallback(async (entryIds: string[], reason: string) => {
+    const optimisticId = `legal_hold_${Date.now()}`;
+    
+    // Add optimistic update for immediate UI feedback
+    setOptimisticUpdates(prev => [...prev, {
+      id: optimisticId,
+      type: 'legal_hold',
+      timestamp: Date.now(),
+    }]);
+    
+    setIsPerformingBulkOperation(true);
+    
     try {
-      const expectedHash = await generateImmutableHash({
-        entity_type: entry.entity_type,
-        entity_id: entry.entity_id,
-        action: entry.action,
-        timestamp: entry.timestamp,
-        user_id: entry.user_id,
-        description: entry.description,
-        previous_hash: entry.previous_hash,
-        sequence_number: entry.sequence_number,
+      // Backend API call - handles all validation and business rules
+      const response = await fetch(`/api/audit-logs/legal-hold`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryIds, reason, tenantId }),
       });
       
-      if (entry.hash !== expectedHash) {
-        return { valid: false, error: `Hash validation failed: expected ${expectedHash}, got ${entry.hash}` };
+      if (!response.ok) {
+        throw new Error(`Failed to set legal hold: ${response.statusText}`);
       }
       
-      return { valid: true };
+      // Remove optimistic update
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      
+      // Refresh data to get authoritative state from backend
+      await refreshAuditLogs(true);
+      
     } catch (error) {
-      return { 
-        valid: false, 
-        error: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      };
+      // Rollback optimistic update
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      
+      setAuditLogs(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to set legal hold',
+      }));
+      
+      throw error;
+    } finally {
+      setIsPerformingBulkOperation(false);
     }
-  }, []);
+  }, [tenantId, refreshAuditLogs]);
 
-  const setLegalHold = useCallback(async (entryIds: string[], reason: string) => {
-    // Note: This would typically require special permissions and audit trail
-    // For now, we'll just log that a legal hold was requested
-    console.log(`Legal hold requested for ${entryIds.length} audit entries. Reason: ${reason}`);
-    
-    // In a real implementation, this would update the entries in the database
-    // But since audit logs are immutable, this might create new entries indicating the hold
-  }, []);
-
+  /**
+   * Remove legal hold with optimistic UI feedback
+   */
   const removeLegalHold = useCallback(async (entryIds: string[]) => {
-    // Similar to setLegalHold, this would be a controlled operation
-    console.log(`Legal hold removal requested for ${entryIds.length} audit entries`);
-  }, []);
+    const optimisticId = `remove_legal_hold_${Date.now()}`;
+    
+    setOptimisticUpdates(prev => [...prev, {
+      id: optimisticId,
+      type: 'legal_hold',
+      timestamp: Date.now(),
+    }]);
+    
+    setIsPerformingBulkOperation(true);
+    
+    try {
+      const response = await fetch(`/api/audit-logs/legal-hold`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryIds, tenantId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to remove legal hold: ${response.statusText}`);
+      }
+      
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      await refreshAuditLogs(true);
+      
+    } catch (error) {
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      
+      setAuditLogs(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to remove legal hold',
+      }));
+      
+      throw error;
+    } finally {
+      setIsPerformingBulkOperation(false);
+    }
+  }, [tenantId, refreshAuditLogs]);
 
+  /**
+   * Export audit logs - backend handles complex compliance logic
+   */
   const exportForCompliance = useCallback(async (
     filters: AuditSearchFilters, 
     format: "json" | "csv" | "pdf"
   ): Promise<Blob> => {
-    const filteredLogs = filterLogs(filters);
+    const optimisticId = `export_${Date.now()}`;
     
-    if (format === "json") {
-      const jsonData = JSON.stringify(filteredLogs, null, 2);
-      return new Blob([jsonData], { type: "application/json" });
-    } else if (format === "csv") {
-      // Convert to CSV format
-      const headers = ["timestamp", "entity_type", "entity_id", "action", "user_id", "description", "risk_level"];
-      const csvData = [
-        headers.join(","),
-        ...filteredLogs.map(log => headers.map(h => (log as any)[h] || "").join(","))
-      ].join("\n");
-      return new Blob([csvData], { type: "text/csv" });
-    } else {
-      // PDF format would require a PDF library
-      throw new Error("PDF export not implemented");
+    setOptimisticUpdates(prev => [...prev, {
+      id: optimisticId,
+      type: 'compliance_export',
+      timestamp: Date.now(),
+    }]);
+    
+    try {
+      const response = await fetch(`/api/audit-logs/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filters, format, tenantId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      return blob;
+      
+    } catch (error) {
+      setOptimisticUpdates(prev => prev.filter(u => u.id !== optimisticId));
+      throw error;
     }
-  }, [filterLogs]);
+  }, [tenantId]);
 
-  // Initialize
+  /**
+   * Invalidate cache and force refresh
+   */
+  const invalidateCache = useCallback(() => {
+    setAuditLogs(prev => ({ ...prev, stale: true }));
+  }, []);
+
+  // ---------------------------------
+  // 8. Lifecycle Management
+  // ---------------------------------
+  
   useEffect(() => {
     if (tenantId) {
       refreshAuditLogs();
     } else {
-      setAuditLogs([]);
+      setAuditLogs({
+        data: [],
+        loading: false,
+        error: null,
+        lastFetch: null,
+        stale: true,
+      });
     }
   }, [tenantId, refreshAuditLogs]);
+
+  // Cleanup optimistic updates that are too old
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      setOptimisticUpdates(prev => 
+        prev.filter(update => Date.now() - update.timestamp < 30000) // 30 seconds
+      );
+    }, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(cleanup);
+  }, []);
+
+  // Auto-refresh stale data when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && auditLogs.stale && CACHE_CONFIG.staleWhileRevalidate) {
+        refreshAuditLogs();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [auditLogs.stale, refreshAuditLogs]);
 
   return (
     <AuditLogsContext.Provider
@@ -598,17 +646,15 @@ export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
         getLogsByTags,
         getLogsWithViolations,
         getLogsOnLegalHold,
-        getSuspiciousActivities,
-        getFailedActions,
         searchLogs,
         filterLogs,
-        getAuditStats,
-        getComplianceReport,
-        verifyAuditChain,
-        validateEntry,
         setLegalHold,
         removeLegalHold,
         exportForCompliance,
+        optimisticUpdates,
+        isPerformingBulkOperation,
+        invalidateCache,
+        config,
       }}
     >
       {children}
@@ -617,35 +663,54 @@ export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
 };
 
 // ---------------------------------
-// 4. Hooks
+// 9. Specialized Hooks for Selective Subscriptions
 // ---------------------------------
+
 export const useAuditLogs = () => {
   const ctx = useContext(AuditLogsContext);
   if (!ctx) throw new Error("useAuditLogs must be used within AuditLogsProvider");
   return ctx;
 };
 
+/**
+ * Hook for entity-specific audit logs with memoization
+ */
 export const useEntityAuditLogs = (entityType: string, entityId?: string) => {
   const { getLogsByEntity } = useAuditLogs();
-  return getLogsByEntity(entityType, entityId);
+  return useMemo(
+    () => getLogsByEntity(entityType, entityId),
+    [getLogsByEntity, entityType, entityId]
+  );
 };
 
+/**
+ * Hook for user-specific audit logs with memoization
+ */
 export const useUserAuditLogs = (userId: string) => {
   const { getLogsByUser } = useAuditLogs();
-  return getLogsByUser(userId);
+  return useMemo(() => getLogsByUser(userId), [getLogsByUser, userId]);
 };
 
+/**
+ * Hook for compliance-specific audit logs with memoization
+ */
 export const useComplianceAuditLogs = (framework: ComplianceFramework) => {
   const { getLogsByCompliance } = useAuditLogs();
-  return getLogsByCompliance(framework);
+  return useMemo(() => getLogsByCompliance(framework), [getLogsByCompliance, framework]);
 };
 
-export const useSuspiciousActivities = () => {
-  const { getSuspiciousActivities } = useAuditLogs();
-  return getSuspiciousActivities();
+/**
+ * Hook for violations with memoization
+ */
+export const useAuditViolations = () => {
+  const { getLogsWithViolations } = useAuditLogs();
+  return useMemo(() => getLogsWithViolations(), [getLogsWithViolations]);
 };
 
-export const useAuditStats = (timeframe?: "day" | "week" | "month" | "year") => {
-  const { getAuditStats } = useAuditLogs();
-  return getAuditStats(timeframe);
+/**
+ * Hook for legal hold entries with memoization
+ */
+export const useLegalHoldLogs = () => {
+  const { getLogsOnLegalHold } = useAuditLogs();
+  return useMemo(() => getLogsOnLegalHold(), [getLogsOnLegalHold]);
 };

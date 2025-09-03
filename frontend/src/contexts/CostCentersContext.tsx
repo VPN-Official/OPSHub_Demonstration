@@ -1,42 +1,99 @@
-// src/contexts/CostCentersContext.tsx (STANDARDIZED)
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+// src/contexts/CostCentersContext.tsx (ENTERPRISE FRONTEND REFACTOR)
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend State Management Types
 // ---------------------------------
+
+/**
+ * Async state wrapper for handling loading, error, and data states
+ * Used throughout the application for consistent state management
+ */
+export interface AsyncState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+/**
+ * API call status for optimistic updates
+ */
+export interface ApiCallStatus {
+  loading: boolean;
+  error: string | null;
+  optimisticData?: any;
+}
+
+/**
+ * Client-side filtering options for UI responsiveness
+ * Complex business filtering is handled by backend APIs
+ */
+export interface CostCenterFilters {
+  searchQuery?: string;
+  department?: string;
+  region?: string;
+  status?: string;
+  showOverBudget?: boolean;
+  showUnderUtilized?: boolean;
+  ownerType?: 'user' | 'team';
+  ownerId?: string;
+}
+
+/**
+ * UI-specific sort options
+ */
+export interface CostCenterSort {
+  field: 'name' | 'code' | 'annual_budget' | 'spent_ytd' | 'variance' | 'created_at' | 'updated_at';
+  direction: 'asc' | 'desc';
+}
+
+// ---------------------------------
+// 2. Core Entity Types (Simplified for Frontend)
+// ---------------------------------
+
+/**
+ * Simplified budget allocation for UI display
+ * Complex business logic handled by backend
+ */
 export interface BudgetAllocation {
   category: string;
   allocated_amount: number;
   spent_amount?: number;
-  reserved_amount?: number;
   variance_amount?: number;
   variance_percentage?: number;
 }
 
+/**
+ * Simplified cost center approval for UI
+ */
 export interface CostCenterApproval {
   user_id: string;
-  role: "approver" | "reviewer" | "viewer";
+  role: string;
   spending_limit?: number;
-  can_approve_contracts?: boolean;
-  can_approve_capex?: boolean;
-  can_approve_opex?: boolean;
+  permissions?: string[];
 }
 
+/**
+ * Cost Center entity optimized for frontend state management
+ * Removes complex business logic calculations - those come from backend
+ */
 export interface CostCenter {
   id: string;
   code: string;
   name: string;
   description?: string;
-  department?: string;  // config-driven
-  region?: string;      // config-driven
+  department?: string;
+  region?: string;
   created_at: string;
   updated_at: string;
 
-  // Relationships
+  // Relationships (IDs only - populated by backend joins)
   business_service_ids: string[];
   asset_ids: string[];
   contract_ids: string[];
@@ -45,58 +102,32 @@ export interface CostCenter {
   owner_user_id?: string | null;
   owner_team_id?: string | null;
 
-  // Financials
+  // Financial data (calculated by backend)
   annual_budget: number;
-  currency: string;     // config-driven
+  currency: string;
   spent_ytd?: number;
   forecast_spend?: number;
   variance?: number;
   variance_percentage?: number;
   
-  // Budget Planning
+  // Backend-calculated metrics
+  burn_rate?: number;
+  runway_months?: number;
+  utilization_rate?: number;
+  efficiency_score?: number;
+  
+  // Configuration from backend
   budget_allocations: BudgetAllocation[];
-  fiscal_year_start?: string; // "04-01" for April 1st
-  budget_cycle?: "annual" | "quarterly" | "monthly";
-  
-  // Approval Workflows
   approvals: CostCenterApproval[];
-  auto_approval_limit?: number;
-  requires_dual_approval?: boolean;
-  escalation_threshold?: number;
-
-  // Cost Management
-  cost_per_transaction?: number;
-  cost_per_user?: number;
-  utilization_rate?: number; // percentage
-  efficiency_score?: number; // 0-100
   
-  // Forecasting & Analytics
-  burn_rate?: number; // monthly spend rate
-  runway_months?: number; // months until budget exhausted
-  seasonal_variance?: Record<string, number>; // month -> variance percentage
-  cost_trends?: Array<{
-    period: string;
-    amount: number;
-    category: string;
-  }>;
-
-  // Compliance & Governance
+  // Compliance & Governance (backend managed)
   risk_score?: number;
   compliance_requirement_ids: string[];
-  audit_frequency?: "monthly" | "quarterly" | "annually";
+  audit_frequency?: string;
   last_audit_date?: string;
   next_audit_date?: string;
   
-  // Reporting & Analytics
-  kpi_targets?: Array<{
-    name: string;
-    target_value: number;
-    current_value?: number;
-    unit: string;
-    period: "monthly" | "quarterly" | "annually";
-  }>;
-
-  // Metadata
+  // UI Metadata
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
@@ -106,726 +137,776 @@ export interface CostCenter {
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 3. Frontend Context Interface
 // ---------------------------------
 interface CostCentersContextType {
-  costCenters: CostCenter[];
-  addCostCenter: (cc: CostCenter, userId?: string) => Promise<void>;
-  updateCostCenter: (cc: CostCenter, userId?: string) => Promise<void>;
+  // Async state management
+  costCenters: AsyncState<CostCenter[]>;
+  apiCalls: {
+    creating: ApiCallStatus;
+    updating: ApiCallStatus;
+    deleting: ApiCallStatus;
+    bulkOperations: ApiCallStatus;
+  };
+
+  // CRUD operations (thin API wrappers)
+  createCostCenter: (costCenter: Omit<CostCenter, 'id' | 'created_at' | 'updated_at' | 'tenantId'>, userId?: string) => Promise<void>;
+  updateCostCenter: (costCenter: CostCenter, userId?: string) => Promise<void>;
   deleteCostCenter: (id: string, userId?: string) => Promise<void>;
   refreshCostCenters: () => Promise<void>;
   getCostCenter: (id: string) => Promise<CostCenter | undefined>;
 
-  // Cost center-specific operations
+  // API orchestration methods (business logic in backend)
+  recordExpense: (costCenterId: string, expenseData: any, userId?: string) => Promise<void>;
   updateBudgetAllocations: (costCenterId: string, allocations: BudgetAllocation[], userId?: string) => Promise<void>;
-  addApprover: (costCenterId: string, approver: CostCenterApproval, userId?: string) => Promise<void>;
-  removeApprover: (costCenterId: string, userId: string, removedBy?: string) => Promise<void>;
-  updateApproverPermissions: (costCenterId: string, userId: string, permissions: Partial<CostCenterApproval>, updatedBy?: string) => Promise<void>;
-  recordExpense: (costCenterId: string, expense: { amount: number; category: string; description?: string }, userId?: string) => Promise<void>;
-  calculateBurnRate: (costCenterId: string) => Promise<number>;
-  forecastBudgetExhaustion: (costCenterId: string) => Promise<{ runway_months: number; exhaustion_date: string | null }>;
+  manageCostCenterApprovals: (costCenterId: string, approvalChanges: any, userId?: string) => Promise<void>;
+  requestBudgetAnalysis: (costCenterId: string) => Promise<void>;
+  runBudgetForecast: (costCenterId: string, params: any) => Promise<void>;
 
-  // Filtering and querying
-  getCostCentersByDepartment: (department: string) => CostCenter[];
-  getCostCentersByRegion: (region: string) => CostCenter[];
-  getCostCentersByOwner: (ownerId: string, ownerType: 'user' | 'team') => CostCenter[];
-  getOverBudgetCostCenters: (varianceThreshold?: number) => CostCenter[];
-  getUnderUtilizedCostCenters: (utilizationThreshold?: number) => CostCenter[];
-  getCostCentersNearingBudgetLimit: (warningPercentage?: number) => CostCenter[];
-  getCostCentersRequiringAudit: () => CostCenter[];
+  // Client-side helpers for UI responsiveness
+  getFilteredCostCenters: (filters: CostCenterFilters) => CostCenter[];
+  getSortedCostCenters: (sort: CostCenterSort) => CostCenter[];
   searchCostCenters: (query: string) => CostCenter[];
-
-  // Analytics
-  getBudgetAnalytics: () => {
+  
+  // Simple client-side aggregations for immediate UI feedback
+  getBasicStats: () => {
+    total: number;
+    overBudgetCount: number;
+    avgBudget: number;
     totalBudget: number;
     totalSpent: number;
-    totalVariance: number;
-    averageUtilization: number;
-    overBudgetCount: number;
-    underUtilizedCount: number;
-    spendByDepartment: Record<string, number>;
-    spendByRegion: Record<string, number>;
   };
 
-  getCostEfficiencyStats: () => {
-    averageEfficiencyScore: number;
-    averageCostPerTransaction: number;
-    averageCostPerUser: number;
-    topPerformingCostCenters: CostCenter[];
-    underperformingCostCenters: CostCenter[];
-  };
-
-  getSpendingTrends: (timeframe?: "monthly" | "quarterly" | "yearly") => Array<{
-    period: string;
-    totalSpend: number;
-    budgetVariance: number;
-    departmentBreakdown: Record<string, number>;
-  }>;
-
-  // Config integration
+  // UI configuration from backend
   config: {
     departments: string[];
     regions: string[];
     currencies: string[];
     budget_categories: string[];
     approval_roles: string[];
+    risk_thresholds: Record<string, number>;
   };
+
+  // Cache management
+  invalidateCache: () => void;
+  getLastRefresh: () => string | null;
+  isStale: () => boolean;
 }
 
 const CostCentersContext = createContext<CostCentersContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 4. Frontend Provider Implementation
 // ---------------------------------
 export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { config: globalConfig, validateEnum } = useConfig();
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const { config: globalConfig } = useConfig();
+
+  // Async state management
+  const [costCentersState, setCostCentersState] = useState<AsyncState<CostCenter[]>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: false
+  });
+
+  // API call states for optimistic UI
+  const [apiCalls, setApiCalls] = useState({
+    creating: { loading: false, error: null },
+    updating: { loading: false, error: null },
+    deleting: { loading: false, error: null },
+    bulkOperations: { loading: false, error: null }
+  });
 
   // Extract cost center-specific config from global config
-  const config = {
+  const config = useMemo(() => ({
     departments: globalConfig?.business?.cost_centers?.departments || 
                  ['engineering', 'sales', 'marketing', 'operations', 'finance', 'hr', 'legal'],
     regions: globalConfig?.business?.cost_centers?.regions || 
-             ['north_america', 'europe', 'asia_pacific', 'latin_america', 'africa', 'middle_east'],
+             ['north_america', 'europe', 'asia_pacific', 'latin_america'],
     currencies: globalConfig?.business?.cost_centers?.currencies || 
-                ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'],
-    budget_categories: ['personnel', 'infrastructure', 'software', 'marketing', 'travel', 'training', 'operations', 'other'],
-    approval_roles: ['approver', 'reviewer', 'viewer'],
-  };
+                ['USD', 'EUR', 'GBP', 'JPY', 'CAD'],
+    budget_categories: globalConfig?.business?.cost_centers?.budget_categories ||
+                      ['personnel', 'infrastructure', 'software', 'marketing', 'travel', 'training'],
+    approval_roles: globalConfig?.business?.cost_centers?.approval_roles ||
+                   ['approver', 'reviewer', 'viewer'],
+    risk_thresholds: globalConfig?.business?.cost_centers?.risk_thresholds || 
+                    { low: 30, medium: 60, high: 80, critical: 95 }
+  }), [globalConfig]);
 
-  const validateCostCenter = useCallback((cc: CostCenter) => {
-    if (!globalConfig) {
-      throw new Error("Configuration not loaded");
-    }
+  // Cache management
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  
+  const isStale = useCallback(() => {
+    if (!costCentersState.lastFetch) return true;
+    return Date.now() - new Date(costCentersState.lastFetch).getTime() > CACHE_TTL_MS;
+  }, [costCentersState.lastFetch]);
 
-    // Validate department
-    if (cc.department && !config.departments.includes(cc.department)) {
-      throw new Error(`Invalid department: ${cc.department}. Valid options: ${config.departments.join(', ')}`);
-    }
+  const getLastRefresh = useCallback(() => {
+    return costCentersState.lastFetch;
+  }, [costCentersState.lastFetch]);
 
-    // Validate region
-    if (cc.region && !config.regions.includes(cc.region)) {
-      throw new Error(`Invalid region: ${cc.region}. Valid options: ${config.regions.join(', ')}`);
-    }
+  const invalidateCache = useCallback(() => {
+    setCostCentersState(prev => ({ ...prev, stale: true }));
+  }, []);
 
-    // Validate currency
-    if (!config.currencies.includes(cc.currency)) {
-      throw new Error(`Invalid currency: ${cc.currency}. Valid options: ${config.currencies.join(', ')}`);
-    }
+  // Set API call status helper
+  const setApiCallStatus = useCallback((operation: keyof typeof apiCalls, status: Partial<ApiCallStatus>) => {
+    setApiCalls(prev => ({
+      ...prev,
+      [operation]: { ...prev[operation], ...status }
+    }));
+  }, []);
 
-    // Validate required fields
-    if (!cc.code || cc.code.trim().length < 2) {
-      throw new Error("Cost center code must be at least 2 characters long");
-    }
-
-    if (!cc.name || cc.name.trim().length < 2) {
-      throw new Error("Cost center name must be at least 2 characters long");
-    }
-
-    if (cc.annual_budget <= 0) {
-      throw new Error("Annual budget must be a positive number");
-    }
-
-    // Validate budget allocations
-    if (cc.budget_allocations) {
-      cc.budget_allocations.forEach((allocation, index) => {
-        if (!allocation.category || allocation.category.trim().length < 2) {
-          throw new Error(`Budget allocation at index ${index} must have a category`);
-        }
-        if (!config.budget_categories.includes(allocation.category)) {
-          throw new Error(`Invalid budget category "${allocation.category}". Valid options: ${config.budget_categories.join(', ')}`);
-        }
-        if (allocation.allocated_amount <= 0) {
-          throw new Error(`Budget allocation at index ${index} must have a positive allocated amount`);
-        }
-      });
-
-      // Check that total allocations don't exceed annual budget
-      const totalAllocated = cc.budget_allocations.reduce((sum, alloc) => sum + alloc.allocated_amount, 0);
-      if (totalAllocated > cc.annual_budget * 1.1) { // Allow 10% tolerance
-        throw new Error(`Total budget allocations (${totalAllocated}) exceed annual budget (${cc.annual_budget}) by more than 10%`);
-      }
-    }
-
-    // Validate approvals
-    if (cc.approvals) {
-      cc.approvals.forEach((approval, index) => {
-        if (!approval.user_id) {
-          throw new Error(`Approval at index ${index} must have a user_id`);
-        }
-        if (!config.approval_roles.includes(approval.role)) {
-          throw new Error(`Invalid approval role "${approval.role}". Valid options: ${config.approval_roles.join(', ')}`);
-        }
-        if (approval.spending_limit !== undefined && approval.spending_limit < 0) {
-          throw new Error(`Spending limit at index ${index} must be a positive number`);
-        }
-      });
-    }
-
-    // Validate financial values
-    if (cc.spent_ytd !== undefined && cc.spent_ytd < 0) {
-      throw new Error("Spent YTD must be a positive number");
-    }
-
-    if (cc.forecast_spend !== undefined && cc.forecast_spend < 0) {
-      throw new Error("Forecast spend must be a positive number");
-    }
-
-    if (cc.utilization_rate !== undefined && (cc.utilization_rate < 0 || cc.utilization_rate > 100)) {
-      throw new Error("Utilization rate must be between 0 and 100 percent");
-    }
-
-    if (cc.efficiency_score !== undefined && (cc.efficiency_score < 0 || cc.efficiency_score > 100)) {
-      throw new Error("Efficiency score must be between 0 and 100");
-    }
-  }, [globalConfig, config]);
-
-  const ensureMetadata = useCallback((cc: CostCenter): CostCenter => {
-    const now = new Date().toISOString();
+  // Basic client-side validation (UI only)
+  const validateCostCenterUI = useCallback((costCenter: Partial<CostCenter>) => {
+    const errors: string[] = [];
     
-    // Calculate variance if spent_ytd is provided
-    let variance = cc.variance;
-    let variance_percentage = cc.variance_percentage;
-    if (cc.spent_ytd !== undefined && variance === undefined) {
-      variance = cc.annual_budget - cc.spent_ytd;
-      variance_percentage = (variance / cc.annual_budget) * 100;
+    if (!costCenter.name?.trim()) {
+      errors.push("Cost center name is required");
     }
+    
+    if (!costCenter.code?.trim()) {
+      errors.push("Cost center code is required");
+    }
+    
+    if (!costCenter.annual_budget || costCenter.annual_budget <= 0) {
+      errors.push("Annual budget must be greater than 0");
+    }
+    
+    if (costCenter.currency && !config.currencies.includes(costCenter.currency)) {
+      errors.push(`Invalid currency. Valid options: ${config.currencies.join(', ')}`);
+    }
+    
+    return errors;
+  }, [config]);
 
-    return {
-      ...cc,
-      tenantId,
-      tags: cc.tags || [],
-      health_status: cc.health_status || "gray",
-      sync_status: cc.sync_status || "dirty",
-      synced_at: cc.synced_at || now,
-      business_service_ids: cc.business_service_ids || [],
-      asset_ids: cc.asset_ids || [],
-      contract_ids: cc.contract_ids || [],
-      value_stream_ids: cc.value_stream_ids || [],
-      vendor_ids: cc.vendor_ids || [],
-      compliance_requirement_ids: cc.compliance_requirement_ids || [],
-      budget_allocations: cc.budget_allocations || [],
-      approvals: cc.approvals || [],
-      cost_trends: cc.cost_trends || [],
-      kpi_targets: cc.kpi_targets || [],
-      seasonal_variance: cc.seasonal_variance || {},
-      variance,
-      variance_percentage,
-      budget_cycle: cc.budget_cycle || "annual",
-      audit_frequency: cc.audit_frequency || "quarterly",
-    };
-  }, [tenantId]);
-
+  // ---------------------------------
+  // 5. Data Fetching & State Management
+  // ---------------------------------
+  
   const refreshCostCenters = useCallback(async () => {
     if (!tenantId) return;
     
+    setCostCentersState(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      const all = await getAll<CostCenter>(tenantId, "cost_centers");
+      const costCenters = await getAll<CostCenter>(tenantId, "cost_centers");
       
-      // Sort by budget size and variance (concerning ones first)
-      all.sort((a, b) => {
-        // Red/Orange health status first for attention
+      // Simple UI-focused sorting (not business logic)
+      costCenters.sort((a, b) => {
+        // Priority: health status, then budget size
         const healthOrder = { red: 5, orange: 4, yellow: 3, green: 2, gray: 1 };
         const aHealth = healthOrder[a.health_status] || 0;
         const bHealth = healthOrder[b.health_status] || 0;
         if (aHealth !== bHealth) return bHealth - aHealth;
-        
-        // Higher budget first
-        const aBudget = a.annual_budget || 0;
-        const bBudget = b.annual_budget || 0;
-        if (aBudget !== bBudget) return bBudget - aBudget;
-        
-        // Finally by name
-        return a.name.localeCompare(b.name);
+        return (b.annual_budget || 0) - (a.annual_budget || 0);
       });
       
-      setCostCenters(all);
+      setCostCentersState({
+        data: costCenters,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false
+      });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load cost centers';
+      setCostCentersState(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage
+      }));
       console.error("Failed to refresh cost centers:", error);
     }
   }, [tenantId]);
 
   const getCostCenter = useCallback(async (id: string) => {
     if (!tenantId) return undefined;
+    
+    // Check cache first for performance
+    const cached = costCentersState.data?.find(cc => cc.id === id);
+    if (cached && !isStale()) {
+      return cached;
+    }
+    
+    // Fallback to database
     return getById<CostCenter>(tenantId, "cost_centers", id);
-  }, [tenantId]);
+  }, [tenantId, costCentersState.data, isStale]);
 
-  const addCostCenter = useCallback(async (cc: CostCenter, userId?: string) => {
+  // ---------------------------------
+  // 6. CRUD Operations (API Orchestration)
+  // ---------------------------------
+  
+  const createCostCenter = useCallback(async (
+    costCenterData: Omit<CostCenter, 'id' | 'created_at' | 'updated_at' | 'tenantId'>, 
+    userId?: string
+  ) => {
     if (!tenantId) throw new Error("No tenant selected");
-
-    validateCostCenter(cc);
-
+    
+    // UI validation only
+    const validationErrors = validateCostCenterUI(costCenterData);
+    if (validationErrors.length > 0) {
+      throw new Error(validationErrors.join('; '));
+    }
+    
+    setApiCallStatus('creating', { loading: true, error: null });
+    
     const now = new Date().toISOString();
-    const enriched = ensureMetadata({
-      ...cc,
+    const newCostCenter: CostCenter = {
+      id: crypto.randomUUID(),
+      ...costCenterData,
       created_at: now,
       updated_at: now,
-    });
-
-    const priority = cc.annual_budget > 1000000 ? 'high' : 'normal'; // High priority for large budgets
-
-    await putWithAudit(
       tenantId,
-      "cost_centers",
-      enriched,
-      userId,
-      {
+      tags: costCenterData.tags || [],
+      health_status: costCenterData.health_status || "gray",
+      sync_status: "dirty",
+      synced_at: now,
+      business_service_ids: costCenterData.business_service_ids || [],
+      asset_ids: costCenterData.asset_ids || [],
+      contract_ids: costCenterData.contract_ids || [],
+      value_stream_ids: costCenterData.value_stream_ids || [],
+      vendor_ids: costCenterData.vendor_ids || [],
+      compliance_requirement_ids: costCenterData.compliance_requirement_ids || [],
+      budget_allocations: costCenterData.budget_allocations || [],
+      approvals: costCenterData.approvals || [],
+    };
+    
+    try {
+      // Optimistic update
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data ? [newCostCenter, ...prev.data] : [newCostCenter]
+      }));
+      
+      setApiCallStatus('creating', { 
+        loading: true, 
+        optimisticData: newCostCenter 
+      });
+      
+      // Save to local DB
+      await putWithAudit(
+        tenantId,
+        "cost_centers",
+        newCostCenter,
+        userId,
+        {
+          action: "create",
+          description: `Created cost center: ${newCostCenter.name}`,
+          tags: ["cost_center", "create", newCostCenter.department || "unspecified"],
+          metadata: {
+            code: newCostCenter.code,
+            annual_budget: newCostCenter.annual_budget,
+            currency: newCostCenter.currency,
+          },
+        }
+      );
+      
+      // Enqueue for sync to backend (where business logic will be applied)
+      await enqueueItem({
+        storeName: "cost_centers",
+        entityId: newCostCenter.id,
         action: "create",
-        description: `Created cost center: ${cc.name}`,
-        tags: ["cost_center", "create", cc.department || "unspecified", cc.currency],
-        metadata: {
-          code: cc.code,
-          department: cc.department,
-          region: cc.region,
-          annual_budget: cc.annual_budget,
-          currency: cc.currency,
-          allocation_count: cc.budget_allocations.length,
-        },
-      }
-    );
+        payload: newCostCenter,
+        priority: newCostCenter.annual_budget > 1000000 ? 'high' : 'normal',
+      });
+      
+      setApiCallStatus('creating', { loading: false, error: null });
+    } catch (error) {
+      // Rollback optimistic update
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.filter(cc => cc.id !== newCostCenter.id) || null
+      }));
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create cost center';
+      setApiCallStatus('creating', { loading: false, error: errorMessage });
+      throw error;
+    }
+  }, [tenantId, validateCostCenterUI, enqueueItem]);
 
-    await enqueueItem({
-      storeName: "cost_centers",
-      entityId: enriched.id,
-      action: "create",
-      payload: enriched,
-      priority,
-    });
-
-    await refreshCostCenters();
-  }, [tenantId, validateCostCenter, ensureMetadata, enqueueItem, refreshCostCenters]);
-
-  const updateCostCenter = useCallback(async (cc: CostCenter, userId?: string) => {
+  const updateCostCenter = useCallback(async (costCenter: CostCenter, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
-
-    validateCostCenter(cc);
-
-    const enriched = ensureMetadata({
-      ...cc,
+    
+    const validationErrors = validateCostCenterUI(costCenter);
+    if (validationErrors.length > 0) {
+      throw new Error(validationErrors.join('; '));
+    }
+    
+    setApiCallStatus('updating', { loading: true, error: null });
+    
+    const updatedCostCenter = {
+      ...costCenter,
       updated_at: new Date().toISOString(),
-    });
-
-    await putWithAudit(
-      tenantId,
-      "cost_centers",
-      enriched,
-      userId,
-      {
+      sync_status: "dirty" as const,
+    };
+    
+    // Store original for rollback
+    const original = costCentersState.data?.find(cc => cc.id === costCenter.id);
+    
+    try {
+      // Optimistic update
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.map(cc => 
+          cc.id === costCenter.id ? updatedCostCenter : cc
+        ) || null
+      }));
+      
+      setApiCallStatus('updating', { 
+        loading: true, 
+        optimisticData: updatedCostCenter 
+      });
+      
+      await putWithAudit(
+        tenantId,
+        "cost_centers",
+        updatedCostCenter,
+        userId,
+        {
+          action: "update",
+          description: `Updated cost center: ${costCenter.name}`,
+          tags: ["cost_center", "update"],
+          metadata: {
+            annual_budget: costCenter.annual_budget,
+            spent_ytd: costCenter.spent_ytd,
+          },
+        }
+      );
+      
+      await enqueueItem({
+        storeName: "cost_centers",
+        entityId: costCenter.id,
         action: "update",
-        description: `Updated cost center: ${cc.name}`,
-        tags: ["cost_center", "update", cc.department || "unspecified"],
-        metadata: {
-          annual_budget: cc.annual_budget,
-          spent_ytd: cc.spent_ytd,
-          variance: cc.variance,
-          utilization_rate: cc.utilization_rate,
-        },
+        payload: updatedCostCenter,
+      });
+      
+      setApiCallStatus('updating', { loading: false, error: null });
+    } catch (error) {
+      // Rollback optimistic update
+      if (original) {
+        setCostCentersState(prev => ({
+          ...prev,
+          data: prev.data?.map(cc => 
+            cc.id === costCenter.id ? original : cc
+          ) || null
+        }));
       }
-    );
-
-    await enqueueItem({
-      storeName: "cost_centers",
-      entityId: enriched.id,
-      action: "update",
-      payload: enriched,
-    });
-
-    await refreshCostCenters();
-  }, [tenantId, validateCostCenter, ensureMetadata, enqueueItem, refreshCostCenters]);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update cost center';
+      setApiCallStatus('updating', { loading: false, error: errorMessage });
+      throw error;
+    }
+  }, [tenantId, validateCostCenterUI, enqueueItem, costCentersState.data]);
 
   const deleteCostCenter = useCallback(async (id: string, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
-
-    const costCenter = await getCostCenter(id);
+    
+    const costCenter = costCentersState.data?.find(cc => cc.id === id);
     if (!costCenter) throw new Error(`Cost center ${id} not found`);
-
-    await removeWithAudit(
-      tenantId,
-      "cost_centers",
-      id,
-      userId,
-      {
-        action: "delete",
-        description: `Deleted cost center: ${costCenter.name}`,
-        tags: ["cost_center", "delete", costCenter.department || "unspecified"],
-        metadata: {
-          code: costCenter.code,
-          annual_budget: costCenter.annual_budget,
-          spent_ytd: costCenter.spent_ytd,
-        },
-      }
-    );
-
-    await enqueueItem({
-      storeName: "cost_centers",
-      entityId: id,
-      action: "delete",
-      payload: null,
-    });
-
-    await refreshCostCenters();
-  }, [tenantId, getCostCenter, enqueueItem, refreshCostCenters]);
-
-  // Cost center-specific operations
-  const updateBudgetAllocations = useCallback(async (costCenterId: string, allocations: BudgetAllocation[], userId?: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    const updated = { ...costCenter, budget_allocations: allocations };
-    await updateCostCenter(updated, userId);
-  }, [getCostCenter, updateCostCenter]);
-
-  const addApprover = useCallback(async (costCenterId: string, approver: CostCenterApproval, userId?: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    // Check if user is already an approver
-    const existingIndex = costCenter.approvals.findIndex(a => a.user_id === approver.user_id);
-    if (existingIndex >= 0) {
-      throw new Error(`User ${approver.user_id} is already an approver`);
-    }
-
-    const updatedApprovals = [...costCenter.approvals, approver];
-    const updated = { ...costCenter, approvals: updatedApprovals };
-
-    await updateCostCenter(updated, userId);
-  }, [getCostCenter, updateCostCenter]);
-
-  const removeApprover = useCallback(async (costCenterId: string, userId: string, removedBy?: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    const updatedApprovals = costCenter.approvals.filter(a => a.user_id !== userId);
-    const updated = { ...costCenter, approvals: updatedApprovals };
-
-    await updateCostCenter(updated, removedBy);
-  }, [getCostCenter, updateCostCenter]);
-
-  const updateApproverPermissions = useCallback(async (costCenterId: string, userId: string, permissions: Partial<CostCenterApproval>, updatedBy?: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    const updatedApprovals = costCenter.approvals.map(a => 
-      a.user_id === userId ? { ...a, ...permissions } : a
-    );
-    const updated = { ...costCenter, approvals: updatedApprovals };
-
-    await updateCostCenter(updated, updatedBy);
-  }, [getCostCenter, updateCostCenter]);
-
-  const recordExpense = useCallback(async (costCenterId: string, expense: { amount: number; category: string; description?: string }, userId?: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    // Update spent_ytd
-    const newSpentYTD = (costCenter.spent_ytd || 0) + expense.amount;
-    const newVariance = costCenter.annual_budget - newSpentYTD;
-    const newVariancePercentage = (newVariance / costCenter.annual_budget) * 100;
-
-    // Update relevant budget allocation
-    const updatedAllocations = costCenter.budget_allocations.map(alloc =>
-      alloc.category === expense.category
-        ? { ...alloc, spent_amount: (alloc.spent_amount || 0) + expense.amount }
-        : alloc
-    );
-
-    // Add to cost trends
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const updatedTrends = [
-      ...costCenter.cost_trends,
-      {
-        period: currentMonth,
-        amount: expense.amount,
-        category: expense.category,
-      }
-    ];
-
-    const updated = {
-      ...costCenter,
-      spent_ytd: newSpentYTD,
-      variance: newVariance,
-      variance_percentage: newVariancePercentage,
-      budget_allocations: updatedAllocations,
-      cost_trends: updatedTrends,
-      custom_fields: {
-        ...costCenter.custom_fields,
-        last_expense: {
-          amount: expense.amount,
-          category: expense.category,
-          description: expense.description,
-          recorded_at: new Date().toISOString(),
-          recorded_by: userId,
-        }
-      }
-    };
-
-    await updateCostCenter(updated, userId);
-  }, [getCostCenter, updateCostCenter]);
-
-  const calculateBurnRate = useCallback(async (costCenterId: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    // Simple calculation based on YTD spend and current month
-    const currentDate = new Date();
-    const monthsElapsed = currentDate.getMonth() + 1; // 1-based
-    const monthlyBurn = monthsElapsed > 0 ? (costCenter.spent_ytd || 0) / monthsElapsed : 0;
-
-    return monthlyBurn;
-  }, [getCostCenter]);
-
-  const forecastBudgetExhaustion = useCallback(async (costCenterId: string) => {
-    const costCenter = await getCostCenter(costCenterId);
-    if (!costCenter) throw new Error(`Cost center ${costCenterId} not found`);
-
-    const burnRate = await calculateBurnRate(costCenterId);
-    const remainingBudget = costCenter.annual_budget - (costCenter.spent_ytd || 0);
-
-    if (burnRate <= 0) {
-      return { runway_months: Infinity, exhaustion_date: null };
-    }
-
-    const runwayMonths = remainingBudget / burnRate;
     
-    let exhaustionDate: string | null = null;
-    if (runwayMonths < 120) { // Only calculate date if within 10 years
-      const currentDate = new Date();
-      const exhaustionDateObj = new Date(currentDate.setMonth(currentDate.getMonth() + runwayMonths));
-      exhaustionDate = exhaustionDateObj.toISOString().split('T')[0];
-    }
-
-    return { runway_months: Math.max(0, runwayMonths), exhaustion_date: exhaustionDate };
-  }, [getCostCenter, calculateBurnRate]);
-
-  // Filtering functions
-  const getCostCentersByDepartment = useCallback((department: string) => {
-    return costCenters.filter(cc => cc.department === department);
-  }, [costCenters]);
-
-  const getCostCentersByRegion = useCallback((region: string) => {
-    return costCenters.filter(cc => cc.region === region);
-  }, [costCenters]);
-
-  const getCostCentersByOwner = useCallback((ownerId: string, ownerType: 'user' | 'team') => {
-    if (ownerType === 'user') {
-      return costCenters.filter(cc => cc.owner_user_id === ownerId);
-    } else {
-      return costCenters.filter(cc => cc.owner_team_id === ownerId);
-    }
-  }, [costCenters]);
-
-  const getOverBudgetCostCenters = useCallback((varianceThreshold: number = 0) => {
-    return costCenters.filter(cc => 
-      (cc.variance !== undefined && cc.variance < varianceThreshold) ||
-      (cc.spent_ytd !== undefined && cc.spent_ytd > cc.annual_budget)
-    );
-  }, [costCenters]);
-
-  const getUnderUtilizedCostCenters = useCallback((utilizationThreshold: number = 70) => {
-    return costCenters.filter(cc => 
-      cc.utilization_rate !== undefined && cc.utilization_rate < utilizationThreshold
-    );
-  }, [costCenters]);
-
-  const getCostCentersNearingBudgetLimit = useCallback((warningPercentage: number = 80) => {
-    return costCenters.filter(cc => {
-      if (!cc.spent_ytd) return false;
-      const utilization = (cc.spent_ytd / cc.annual_budget) * 100;
-      return utilization >= warningPercentage;
-    });
-  }, [costCenters]);
-
-  const getCostCentersRequiringAudit = useCallback(() => {
-    const now = new Date();
-    return costCenters.filter(cc => {
-      if (!cc.next_audit_date) return false;
-      return new Date(cc.next_audit_date) <= now;
-    });
-  }, [costCenters]);
-
-  const searchCostCenters = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return costCenters.filter(cc => 
-      cc.name.toLowerCase().includes(lowerQuery) ||
-      cc.code.toLowerCase().includes(lowerQuery) ||
-      cc.description?.toLowerCase().includes(lowerQuery) ||
-      cc.department?.toLowerCase().includes(lowerQuery) ||
-      cc.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-    );
-  }, [costCenters]);
-
-  // Analytics functions
-  const getBudgetAnalytics = useCallback(() => {
-    const totalBudget = costCenters.reduce((sum, cc) => sum + cc.annual_budget, 0);
-    const totalSpent = costCenters.reduce((sum, cc) => sum + (cc.spent_ytd || 0), 0);
-    const totalVariance = totalBudget - totalSpent;
+    setApiCallStatus('deleting', { loading: true, error: null });
     
-    const centersWithUtilization = costCenters.filter(cc => cc.utilization_rate !== undefined);
-    const averageUtilization = centersWithUtilization.length > 0
-      ? centersWithUtilization.reduce((sum, cc) => sum + (cc.utilization_rate || 0), 0) / centersWithUtilization.length
-      : 0;
-
-    const overBudgetCount = getOverBudgetCostCenters().length;
-    const underUtilizedCount = getUnderUtilizedCostCenters().length;
-
-    const spendByDepartment = costCenters.reduce((acc, cc) => {
-      if (cc.department && cc.spent_ytd) {
-        acc[cc.department] = (acc[cc.department] || 0) + cc.spent_ytd;
-      }
-      return acc;
-    }, {} as Record<string, number>);
-
-    const spendByRegion = costCenters.reduce((acc, cc) => {
-      if (cc.region && cc.spent_ytd) {
-        acc[cc.region] = (acc[cc.region] || 0) + cc.spent_ytd;
-      }
-      return acc;
-    }, {} as Record<string, number>);
-
-    return {
-      totalBudget,
-      totalSpent,
-      totalVariance,
-      averageUtilization,
-      overBudgetCount,
-      underUtilizedCount,
-      spendByDepartment,
-      spendByRegion,
-    };
-  }, [costCenters, getOverBudgetCostCenters, getUnderUtilizedCostCenters]);
-
-  const getCostEfficiencyStats = useCallback(() => {
-    const centersWithEfficiency = costCenters.filter(cc => cc.efficiency_score !== undefined);
-    const centersWithCostPerTransaction = costCenters.filter(cc => cc.cost_per_transaction !== undefined);
-    const centersWithCostPerUser = costCenters.filter(cc => cc.cost_per_user !== undefined);
-
-    const averageEfficiencyScore = centersWithEfficiency.length > 0
-      ? centersWithEfficiency.reduce((sum, cc) => sum + (cc.efficiency_score || 0), 0) / centersWithEfficiency.length
-      : 0;
-
-    const averageCostPerTransaction = centersWithCostPerTransaction.length > 0
-      ? centersWithCostPerTransaction.reduce((sum, cc) => sum + (cc.cost_per_transaction || 0), 0) / centersWithCostPerTransaction.length
-      : 0;
-
-    const averageCostPerUser = centersWithCostPerUser.length > 0
-      ? centersWithCostPerUser.reduce((sum, cc) => sum + (cc.cost_per_user || 0), 0) / centersWithCostPerUser.length
-      : 0;
-
-    const topPerformingCostCenters = costCenters
-      .filter(cc => cc.efficiency_score !== undefined)
-      .sort((a, b) => (b.efficiency_score || 0) - (a.efficiency_score || 0))
-      .slice(0, 5);
-
-    const underperformingCostCenters = costCenters
-      .filter(cc => cc.efficiency_score !== undefined && cc.efficiency_score < 60)
-      .sort((a, b) => (a.efficiency_score || 0) - (b.efficiency_score || 0));
-
-    return {
-      averageEfficiencyScore,
-      averageCostPerTransaction,
-      averageCostPerUser,
-      topPerformingCostCenters,
-      underperformingCostCenters,
-    };
-  }, [costCenters]);
-
-  const getSpendingTrends = useCallback((timeframe: "monthly" | "quarterly" | "yearly" = "monthly") => {
-    // This would typically aggregate from historical data
-    // For now, return mock trend data based on current cost centers
-    const trends = [];
-    const currentDate = new Date();
-    
-    // Generate last 12 periods of data
-    for (let i = 11; i >= 0; i--) {
-      const periodDate = new Date(currentDate);
+    try {
+      // Optimistic update
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.filter(cc => cc.id !== id) || null
+      }));
       
-      if (timeframe === "monthly") {
-        periodDate.setMonth(periodDate.getMonth() - i);
-      } else if (timeframe === "quarterly") {
-        periodDate.setMonth(periodDate.getMonth() - (i * 3));
-      } else {
-        periodDate.setFullYear(periodDate.getFullYear() - i);
-      }
-
-      const period = timeframe === "yearly" 
-        ? periodDate.getFullYear().toString()
-        : periodDate.toISOString().slice(0, 7); // YYYY-MM
-
-      // Mock spending data (would come from historical records)
-      const totalSpend = costCenters.reduce((sum, cc) => {
-        const baseSpend = (cc.spent_ytd || 0) / 12; // Approximate monthly
-        const variation = (Math.random() - 0.5) * 0.2; // ±10% variation
-        return sum + (baseSpend * (1 + variation));
-      }, 0);
-
-      const budgetVariance = costCenters.reduce((sum, cc) => sum + cc.annual_budget, 0) / 12 - totalSpend;
-
-      const departmentBreakdown = costCenters.reduce((acc, cc) => {
-        if (cc.department) {
-          const deptSpend = (cc.spent_ytd || 0) / 12 * (1 + (Math.random() - 0.5) * 0.2);
-          acc[cc.department] = (acc[cc.department] || 0) + deptSpend;
+      await removeWithAudit(
+        tenantId,
+        "cost_centers",
+        id,
+        userId,
+        {
+          action: "delete",
+          description: `Deleted cost center: ${costCenter.name}`,
+          tags: ["cost_center", "delete"],
+          metadata: {
+            code: costCenter.code,
+            annual_budget: costCenter.annual_budget,
+          },
         }
-        return acc;
-      }, {} as Record<string, number>);
-
-      trends.push({
-        period,
-        totalSpend,
-        budgetVariance,
-        departmentBreakdown,
+      );
+      
+      await enqueueItem({
+        storeName: "cost_centers",
+        entityId: id,
+        action: "delete",
+        payload: null,
       });
+      
+      setApiCallStatus('deleting', { loading: false, error: null });
+    } catch (error) {
+      // Rollback optimistic update
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data ? [...prev.data, costCenter] : [costCenter]
+      }));
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete cost center';
+      setApiCallStatus('deleting', { loading: false, error: errorMessage });
+      throw error;
     }
+  }, [tenantId, costCentersState.data, enqueueItem]);
 
-    return trends;
-  }, [costCenters]);
+  // ---------------------------------
+  // 7. Business Operations (API Orchestration - Business Logic in Backend)
+  // ---------------------------------
+  
+  const recordExpense = useCallback(async (
+    costCenterId: string, 
+    expenseData: {
+      amount: number;
+      category: string;
+      description?: string;
+      date?: string;
+      vendor_id?: string;
+      receipt_url?: string;
+    }, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    // Frontend only validates basic structure
+    if (!expenseData.amount || expenseData.amount <= 0) {
+      throw new Error("Expense amount must be greater than 0");
+    }
+    
+    if (!expenseData.category?.trim()) {
+      throw new Error("Expense category is required");
+    }
+    
+    try {
+      // Call backend API endpoint for business logic
+      const response = await fetch(`/api/cost-centers/${costCenterId}/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...expenseData,
+          recorded_by: userId,
+          tenant_id: tenantId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to record expense: ${response.statusText}`);
+      }
+      
+      // Backend returns updated cost center with recalculated metrics
+      const updatedCostCenter = await response.json();
+      
+      // Update local state
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.map(cc => 
+          cc.id === costCenterId ? { ...cc, ...updatedCostCenter } : cc
+        ) || null,
+        stale: false // Fresh data from backend
+      }));
+      
+    } catch (error) {
+      console.error('Failed to record expense:', error);
+      throw error;
+    }
+  }, [tenantId]);
 
-  // Initialize when tenant and config are ready
+  const updateBudgetAllocations = useCallback(async (
+    costCenterId: string, 
+    allocations: BudgetAllocation[], 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      // Call backend API - business validation and calculations done there
+      const response = await fetch(`/api/cost-centers/${costCenterId}/budget-allocations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allocations,
+          updated_by: userId,
+          tenant_id: tenantId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update budget allocations: ${response.statusText}`);
+      }
+      
+      const updatedCostCenter = await response.json();
+      
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.map(cc => 
+          cc.id === costCenterId ? { ...cc, ...updatedCostCenter } : cc
+        ) || null
+      }));
+      
+    } catch (error) {
+      console.error('Failed to update budget allocations:', error);
+      throw error;
+    }
+  }, [tenantId]);
+
+  const manageCostCenterApprovals = useCallback(async (
+    costCenterId: string, 
+    approvalChanges: {
+      add?: CostCenterApproval[];
+      remove?: string[];
+      update?: { user_id: string; changes: Partial<CostCenterApproval> }[];
+    }, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const response = await fetch(`/api/cost-centers/${costCenterId}/approvals`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          changes: approvalChanges,
+          updated_by: userId,
+          tenant_id: tenantId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to manage approvals: ${response.statusText}`);
+      }
+      
+      const updatedCostCenter = await response.json();
+      
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.map(cc => 
+          cc.id === costCenterId ? { ...cc, ...updatedCostCenter } : cc
+        ) || null
+      }));
+      
+    } catch (error) {
+      console.error('Failed to manage cost center approvals:', error);
+      throw error;
+    }
+  }, [tenantId]);
+
+  const requestBudgetAnalysis = useCallback(async (costCenterId: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      // Trigger backend analysis
+      await fetch(`/api/cost-centers/${costCenterId}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId }),
+      });
+      
+      // Analysis results will be returned via separate API or notification
+    } catch (error) {
+      console.error('Failed to request budget analysis:', error);
+      throw error;
+    }
+  }, [tenantId]);
+
+  const runBudgetForecast = useCallback(async (
+    costCenterId: string, 
+    params: {
+      months_ahead?: number;
+      scenario?: 'conservative' | 'optimistic' | 'pessimistic';
+      include_seasonality?: boolean;
+    }
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const response = await fetch(`/api/cost-centers/${costCenterId}/forecast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...params,
+          tenant_id: tenantId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to run forecast: ${response.statusText}`);
+      }
+      
+      const forecastData = await response.json();
+      
+      // Update local state with forecast results
+      setCostCentersState(prev => ({
+        ...prev,
+        data: prev.data?.map(cc => 
+          cc.id === costCenterId 
+            ? { ...cc, forecast_data: forecastData, forecast_updated_at: new Date().toISOString() }
+            : cc
+        ) || null
+      }));
+      
+    } catch (error) {
+      console.error('Failed to run budget forecast:', error);
+      throw error;
+    }
+  }, [tenantId]);
+
+  // ---------------------------------
+  // 8. Client-Side Helpers for UI Responsiveness
+  // ---------------------------------
+  
+  const getFilteredCostCenters = useCallback((filters: CostCenterFilters): CostCenter[] => {
+    if (!costCentersState.data) return [];
+    
+    return costCentersState.data.filter(cc => {
+      // Text search
+      if (filters.searchQuery) {
+        const query = filters.searchQuery.toLowerCase();
+        const searchText = `${cc.name} ${cc.code} ${cc.description || ''} ${cc.tags.join(' ')}`.toLowerCase();
+        if (!searchText.includes(query)) return false;
+      }
+      
+      // Department filter
+      if (filters.department && cc.department !== filters.department) return false;
+      
+      // Region filter
+      if (filters.region && cc.region !== filters.region) return false;
+      
+      // Over budget filter
+      if (filters.showOverBudget && (!cc.variance || cc.variance >= 0)) return false;
+      
+      // Under utilized filter (simple client check)
+      if (filters.showUnderUtilized && (!cc.utilization_rate || cc.utilization_rate >= 70)) return false;
+      
+      // Owner filter
+      if (filters.ownerId && filters.ownerType) {
+        const ownerField = filters.ownerType === 'user' ? 'owner_user_id' : 'owner_team_id';
+        if (cc[ownerField] !== filters.ownerId) return false;
+      }
+      
+      return true;
+    });
+  }, [costCentersState.data]);
+
+  const getSortedCostCenters = useCallback((sort: CostCenterSort): CostCenter[] => {
+    if (!costCentersState.data) return [];
+    
+    const sorted = [...costCentersState.data].sort((a, b) => {
+      let aVal: any = a[sort.field];
+      let bVal: any = b[sort.field];
+      
+      // Handle undefined/null values
+      if (aVal == null) aVal = sort.direction === 'asc' ? -Infinity : Infinity;
+      if (bVal == null) bVal = sort.direction === 'asc' ? -Infinity : Infinity;
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sort.direction === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+      
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      return 0;
+    });
+    
+    return sorted;
+  }, [costCentersState.data]);
+
+  const searchCostCenters = useCallback((query: string): CostCenter[] => {
+    return getFilteredCostCenters({ searchQuery: query });
+  }, [getFilteredCostCenters]);
+
+  // Simple client-side stats for immediate UI feedback
+  const getBasicStats = useCallback(() => {
+    if (!costCentersState.data) {
+      return { total: 0, overBudgetCount: 0, avgBudget: 0, totalBudget: 0, totalSpent: 0 };
+    }
+    
+    const data = costCentersState.data;
+    const total = data.length;
+    const overBudgetCount = data.filter(cc => cc.variance !== undefined && cc.variance < 0).length;
+    const totalBudget = data.reduce((sum, cc) => sum + cc.annual_budget, 0);
+    const totalSpent = data.reduce((sum, cc) => sum + (cc.spent_ytd || 0), 0);
+    const avgBudget = total > 0 ? totalBudget / total : 0;
+    
+    return { total, overBudgetCount, avgBudget, totalBudget, totalSpent };
+  }, [costCentersState.data]);
+
+  // Initialize when tenant changes
   useEffect(() => {
     if (tenantId && globalConfig) {
       refreshCostCenters();
+    } else {
+      setCostCentersState({
+        data: null,
+        loading: false,
+        error: null,
+        lastFetch: null,
+        stale: false
+      });
     }
   }, [tenantId, globalConfig, refreshCostCenters]);
 
+  // Auto-refresh stale data
+  useEffect(() => {
+    if (costCentersState.stale && !costCentersState.loading) {
+      refreshCostCenters();
+    }
+  }, [costCentersState.stale, costCentersState.loading, refreshCostCenters]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clear any pending optimistic updates
+      setApiCalls({
+        creating: { loading: false, error: null },
+        updating: { loading: false, error: null },
+        deleting: { loading: false, error: null },
+        bulkOperations: { loading: false, error: null }
+      });
+    };
+  }, []);
+
+  const contextValue: CostCentersContextType = {
+    costCenters: costCentersState,
+    apiCalls,
+    createCostCenter,
+    updateCostCenter,
+    deleteCostCenter,
+    refreshCostCenters,
+    getCostCenter,
+    recordExpense,
+    updateBudgetAllocations,
+    manageCostCenterApprovals,
+    requestBudgetAnalysis,
+    runBudgetForecast,
+    getFilteredCostCenters,
+    getSortedCostCenters,
+    searchCostCenters,
+    getBasicStats,
+    config,
+    invalidateCache,
+    getLastRefresh,
+    isStale,
+  };
+
   return (
-    <CostCentersContext.Provider
-      value={{
-        costCenters,
-        addCostCenter,
-        updateCostCenter,
-        deleteCostCenter,
-        refreshCostCenters,
-        getCostCenter,
-        updateBudgetAllocations,
-        addApprover,
-        removeApprover,
-        updateApproverPermissions,
-        recordExpense,
-        calculateBurnRate,
-        forecastBudgetExhaustion,
-        getCostCentersByDepartment,
-        getCostCentersByRegion,
-        getCostCentersByOwner,
-        getOverBudgetCostCenters,
-        getUnderUtilizedCostCenters,
-        getCostCentersNearingBudgetLimit,
-        getCostCentersRequiringAudit,
-        searchCostCenters,
-        getBudgetAnalytics,
-        getCostEfficiencyStats,
-        getSpendingTrends,
-        config,
-      }}
-    >
+    <CostCentersContext.Provider value={contextValue}>
       {children}
     </CostCentersContext.Provider>
   );
 };
 
 // ---------------------------------
-// 4. Hooks
+// 9. Hooks
 // ---------------------------------
+
 export const useCostCenters = () => {
   const ctx = useContext(CostCentersContext);
   if (!ctx) throw new Error("useCostCenters must be used within CostCentersProvider");
@@ -834,51 +915,42 @@ export const useCostCenters = () => {
 
 export const useCostCenterDetails = (id: string) => {
   const { costCenters } = useCostCenters();
-  return costCenters.find((cc) => cc.id === id) || null;
+  return useMemo(() => {
+    return costCenters.data?.find((cc) => cc.id === id) || null;
+  }, [costCenters.data, id]);
 };
 
-// Utility hooks
-export const useOverBudgetCostCenters = () => {
-  const { getOverBudgetCostCenters } = useCostCenters();
-  return getOverBudgetCostCenters();
+// Selective subscription hooks for performance
+export const useCostCentersByStatus = (healthStatus: string) => {
+  const { costCenters } = useCostCenters();
+  return useMemo(() => {
+    return costCenters.data?.filter(cc => cc.health_status === healthStatus) || [];
+  }, [costCenters.data, healthStatus]);
 };
 
-export const useCostCenterBudgetAnalytics = () => {
-  const { getBudgetAnalytics } = useCostCenters();
-  return getBudgetAnalytics();
+export const useCostCenterStats = () => {
+  const { getBasicStats } = useCostCenters();
+  return useMemo(() => getBasicStats(), [getBasicStats]);
 };
 
-export const useCostCenterEfficiencyStats = () => {
-  const { getCostEfficiencyStats } = useCostCenters();
-  return getCostEfficiencyStats();
+export const useCostCenterFilters = (initialFilters: CostCenterFilters = {}) => {
+  const { getFilteredCostCenters } = useCostCenters();
+  const [filters, setFilters] = useState<CostCenterFilters>(initialFilters);
+  
+  const filteredCostCenters = useMemo(() => {
+    return getFilteredCostCenters(filters);
+  }, [getFilteredCostCenters, filters]);
+  
+  return { filters, setFilters, filteredCostCenters };
 };
 
-export const useCostCenterBurnRate = (costCenterId: string) => {
-  const { calculateBurnRate } = useCostCenters();
-  const [burnRate, setBurnRate] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (costCenterId) {
-      calculateBurnRate(costCenterId)
-        .then(setBurnRate)
-        .catch(console.error);
-    }
-  }, [costCenterId, calculateBurnRate]);
-
-  return burnRate;
-};
-
-export const useCostCenterForecast = (costCenterId: string) => {
-  const { forecastBudgetExhaustion } = useCostCenters();
-  const [forecast, setForecast] = useState<{ runway_months: number; exhaustion_date: string | null } | null>(null);
-
-  useEffect(() => {
-    if (costCenterId) {
-      forecastBudgetExhaustion(costCenterId)
-        .then(setForecast)
-        .catch(console.error);
-    }
-  }, [costCenterId, forecastBudgetExhaustion]);
-
-  return forecast;
+export const useCostCenterSort = (initialSort: CostCenterSort = { field: 'name', direction: 'asc' }) => {
+  const { getSortedCostCenters } = useCostCenters();
+  const [sort, setSort] = useState<CostCenterSort>(initialSort);
+  
+  const sortedCostCenters = useMemo(() => {
+    return getSortedCostCenters(sort);
+  }, [getSortedCostCenters, sort]);
+  
+  return { sort, setSort, sortedCostCenters };
 };

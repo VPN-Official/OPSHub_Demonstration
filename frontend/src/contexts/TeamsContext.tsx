@@ -6,137 +6,115 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
+  useRef,
 } from "react";
-import { 
-  getAll,
-  getById,
-  putWithAudit,
-  removeWithAudit,
-} from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { teamsApi } from "../api/teamsApi";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend State Types
 // ---------------------------------
-export type TeamType =
-  | "operations"
-  | "sre"
-  | "development"
-  | "support"
-  | "security"
-  | "field_service"
-  | "business"
-  | "other";
-
-export interface TeamMetrics {
-  mttr_minutes?: number;
-  mtta_minutes?: number;
-  workload_score?: number;      // measure of load vs capacity
-  incidents_assigned: number;
-  incidents_resolved: number;
-  success_rate: number;
-  avg_resolution_time: number;
+export interface AsyncState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  lastFetch: Date | null;
+  stale: boolean;
 }
 
-export interface Team {
+export interface OptimisticOperation {
   id: string;
-  name: string;                 // "Payments Ops", "Cloud SRE Team"
-  description?: string;
-  type: TeamType;
-  created_at: string;
-  updated_at: string;
-
-  // Relationships
-  user_ids: string[];           // FK → UsersContext
-  manager_user_id?: string | null; // FK → UsersContext
-  business_service_ids: string[];  // FK → BusinessServicesContext
-  cost_center_id?: string | null;  // FK → CostCentersContext
-
-  // OnCall / Escalation
-  escalation_policies?: string[];  // FK → OnCallContext (future)
-  oncall_schedule_id?: string | null; // FK → OnCallContext
-
-  // Performance Metrics
-  metrics: TeamMetrics;
-
-  // Capacity and workload
-  max_concurrent_incidents?: number;
-  current_workload?: number;
-  capacity_utilization?: number;
-
-  // Skills and capabilities
-  team_skills: Array<{
-    skill_id: string;
-    team_proficiency: "basic" | "intermediate" | "advanced" | "expert";
-    certified_members: number;
-    total_members: number;
-  }>;
-
-  // Location and timezone
-  primary_timezone?: string;
-  office_location?: string;
-  remote_friendly?: boolean;
-
-  // Metadata
-  tags: string[];
-  custom_fields?: Record<string, any>;
-  health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
-  tenantId?: string;
+  type: 'create' | 'update' | 'delete';
+  data: any;
+  timestamp: Date;
 }
 
-export interface TeamDetails extends Team {
-  manager?: any;
-  users?: any[];
-  business_services?: any[];
-  cost_center?: any;
+export interface UIFilters {
+  type?: string[];
+  search?: string;
+  manager?: string;
+  businessService?: string;
+  location?: string;
+  timezone?: string;
+  healthStatus?: string[];
+  hasSkill?: string;
+  availableOnly?: boolean;
+  overloadedOnly?: boolean;
+}
+
+export interface CacheConfig {
+  ttl: number; // milliseconds
+  maxSize: number;
+  enableOptimistic: boolean;
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 2. Re-export Backend Types (no duplication)
+// ---------------------------------
+export type {
+  Team,
+  TeamType,
+  TeamMetrics,
+  TeamDetails
+} from "../types/team"; // Move to shared types
+
+// ---------------------------------
+// 3. Context Interface - UI Focused
 // ---------------------------------
 interface TeamsContextType {
-  teams: Team[];
-  addTeam: (team: Team, userId?: string) => Promise<void>;
-  updateTeam: (team: Team, userId?: string) => Promise<void>;
-  deleteTeam: (id: string, userId?: string) => Promise<void>;
-  refreshTeams: () => Promise<void>;
-  getTeam: (id: string) => Promise<Team | undefined>;
-
-  // Team-specific operations
-  addUserToTeam: (teamId: string, userId: string, addedBy?: string) => Promise<void>;
-  removeUserFromTeam: (teamId: string, userId: string, removedBy?: string) => Promise<void>;
-  updateTeamMetrics: (teamId: string, metrics: Partial<TeamMetrics>, userId?: string) => Promise<void>;
-  assignIncidentToTeam: (teamId: string, incidentId: string, assignedBy?: string) => Promise<void>;
-  updateTeamSkills: (teamId: string, skills: Team['team_skills'], userId?: string) => Promise<void>;
-
-  // Filtering and querying
-  getTeamsByType: (type: TeamType) => Team[];
-  getTeamsByBusinessService: (serviceId: string) => Team[];
-  getTeamsByManager: (managerId: string) => Team[];
-  getAvailableTeams: () => Team[];
-  getOverloadedTeams: (threshold?: number) => Team[];
-  getTeamsWithSkill: (skillId: string, minProficiency?: string) => Team[];
-  getTeamsByLocation: (location: string) => Team[];
-  getTeamsInTimezone: (timezone: string) => Team[];
-
-  // Performance and analytics
-  getTeamPerformanceStats: (teamId: string) => {
-    mttr: number;
-    mtta: number;
-    incidentsThisMonth: number;
-    resolvedThisMonth: number;
-    successRate: number;
-    workloadTrend: 'increasing' | 'stable' | 'decreasing';
+  // Core async state
+  teams: AsyncState<Team[]>;
+  selectedTeam: AsyncState<TeamDetails>;
+  
+  // UI State Management
+  filters: UIFilters;
+  setFilters: (filters: Partial<UIFilters>) => void;
+  clearFilters: () => void;
+  
+  // API Operations (thin wrappers)
+  actions: {
+    fetchTeams: (force?: boolean) => Promise<void>;
+    fetchTeam: (id: string, force?: boolean) => Promise<void>;
+    createTeam: (team: Partial<Team>) => Promise<void>;
+    updateTeam: (id: string, updates: Partial<Team>) => Promise<void>;
+    deleteTeam: (id: string) => Promise<void>;
+    
+    // Team operations (delegated to backend)
+    addUserToTeam: (teamId: string, userId: string) => Promise<void>;
+    removeUserFromTeam: (teamId: string, userId: string) => Promise<void>;
+    updateTeamSkills: (teamId: string, skills: any[]) => Promise<void>;
   };
-
-  // Config integration
+  
+  // Client-side helpers (UI performance only)
+  computed: {
+    filteredTeams: Team[];
+    searchResults: Team[];
+    teamsByType: Map<string, Team[]>;
+    teamOptions: Array<{ value: string; label: string }>;
+  };
+  
+  // Cache management
+  cache: {
+    invalidate: (teamId?: string) => void;
+    refresh: () => Promise<void>;
+    isStale: boolean;
+    lastUpdate: Date | null;
+  };
+  
+  // Optimistic UI state
+  optimistic: {
+    pending: OptimisticOperation[];
+    rollback: (operationId: string) => void;
+    clearAll: () => void;
+  };
+  
+  // Configuration from backend
   config: {
     types: string[];
-    skill_proficiency_levels: string[];
+    skillLevels: string[];
     timezones: string[];
     locations: string[];
   };
@@ -145,314 +123,511 @@ interface TeamsContextType {
 const TeamsContext = createContext<TeamsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 4. Provider Implementation
 // ---------------------------------
 export const TeamsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
   const { config: globalConfig } = useConfig();
-  const [teams, setTeams] = useState<Team[]>([]);
+  const mountedRef = useRef(true);
 
-  const config = {
-    types: globalConfig?.teams?.types || [
-      "operations", "sre", "development", "support", "security", "field_service", "business", "other"
-    ],
-    skill_proficiency_levels: globalConfig?.teams?.skill_proficiency_levels || [
-      "basic", "intermediate", "advanced", "expert"
-    ],
-    timezones: globalConfig?.teams?.timezones || [
-      "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Tokyo"
-    ],
-    locations: globalConfig?.teams?.locations || [
-      "Remote", "New York", "San Francisco", "London", "Tokyo"
-    ],
-  };
+  // Cache configuration
+  const cacheConfig: CacheConfig = useMemo(() => ({
+    ttl: 5 * 60 * 1000, // 5 minutes
+    maxSize: 1000,
+    enableOptimistic: true,
+  }), []);
 
-  const refreshTeams = useCallback(async () => {
-    if (!tenantId) return;
+  // ---------------------------------
+  // Core State
+  // ---------------------------------
+  const [teams, setTeams] = useState<AsyncState<Team[]>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+
+  const [selectedTeam, setSelectedTeam] = useState<AsyncState<TeamDetails>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+
+  const [filters, setFiltersState] = useState<UIFilters>({});
+  const [optimisticOps, setOptimisticOps] = useState<OptimisticOperation[]>([]);
+
+  // ---------------------------------
+  // Configuration (from backend)
+  // ---------------------------------
+  const config = useMemo(() => ({
+    types: globalConfig?.teams?.types || [],
+    skillLevels: globalConfig?.teams?.skillLevels || [],
+    timezones: globalConfig?.teams?.timezones || [],
+    locations: globalConfig?.teams?.locations || [],
+  }), [globalConfig]);
+
+  // ---------------------------------
+  // Optimistic Updates Helper
+  // ---------------------------------
+  const addOptimisticOp = useCallback((op: Omit<OptimisticOperation, 'timestamp'>) => {
+    if (!cacheConfig.enableOptimistic) return;
+    
+    const operation: OptimisticOperation = {
+      ...op,
+      timestamp: new Date(),
+    };
+    
+    setOptimisticOps(prev => [...prev, operation]);
+    
+    // Auto-cleanup after 30 seconds
+    setTimeout(() => {
+      setOptimisticOps(prev => prev.filter(o => o.id !== operation.id));
+    }, 30000);
+  }, [cacheConfig.enableOptimistic]);
+
+  const removeOptimisticOp = useCallback((operationId: string) => {
+    setOptimisticOps(prev => prev.filter(op => op.id !== operationId));
+  }, []);
+
+  // ---------------------------------
+  // API Operations (thin wrappers)
+  // ---------------------------------
+  const fetchTeams = useCallback(async (force = false) => {
+    if (!tenantId || (!force && !teams.stale && teams.data)) return;
+    
+    setTeams(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      const all = await getAll<Team>(tenantId, "teams");
-      setTeams(all);
+      const data = await teamsApi.getAll(tenantId);
+      
+      if (mountedRef.current) {
+        setTeams({
+          data,
+          loading: false,
+          error: null,
+          lastFetch: new Date(),
+          stale: false,
+        });
+      }
     } catch (error) {
-      console.error("Failed to refresh teams:", error);
-    }
-  }, [tenantId]);
-
-  const getTeam = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<Team>(tenantId, "teams", id);
-  }, [tenantId]);
-
-  const addTeam = useCallback(async (team: Team, userId?: string) => {
-    if (!tenantId) return;
-
-    // ✅ Config validation
-    if (!config.types.includes(team.type)) {
-      throw new Error(`Invalid team type: ${team.type}`);
-    }
-
-    const enrichedTeam: Team = {
-      ...team,
-      created_at: team.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      health_status: team.health_status || "green",
-      sync_status: "dirty",
-      metrics: team.metrics || {
-        incidents_assigned: 0,
-        incidents_resolved: 0,
-        success_rate: 0,
-        avg_resolution_time: 0,
-      },
-      tenantId,
-    };
-
-    await putWithAudit(
-      tenantId,
-      "teams",
-      enrichedTeam,
-      userId,
-      { action: "create", description: `Team "${team.name}" created with type "${team.type}"` },
-      enqueueItem
-    );
-    await refreshTeams();
-  }, [tenantId, config, enqueueItem, refreshTeams]);
-
-  const updateTeam = useCallback(async (team: Team, userId?: string) => {
-    if (!tenantId) return;
-
-    // ✅ Config validation
-    if (!config.types.includes(team.type)) {
-      throw new Error(`Invalid team type: ${team.type}`);
-    }
-
-    const enrichedTeam: Team = {
-      ...team,
-      updated_at: new Date().toISOString(),
-      sync_status: "dirty",
-      tenantId,
-    };
-
-    await putWithAudit(
-      tenantId,
-      "teams",
-      enrichedTeam,
-      userId,
-      { action: "update", description: `Team "${team.name}" updated` },
-      enqueueItem
-    );
-    await refreshTeams();
-  }, [tenantId, config, enqueueItem, refreshTeams]);
-
-  const deleteTeam = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
-
-    const team = await getTeam(id);
-    const teamName = team?.name || id;
-
-    await removeWithAudit(
-      tenantId,
-      "teams",
-      id,
-      userId,
-      { action: "delete", description: `Team "${teamName}" deleted` },
-      enqueueItem
-    );
-    await refreshTeams();
-  }, [tenantId, getTeam, enqueueItem, refreshTeams]);
-
-  // Team-specific operations
-  const addUserToTeam = useCallback(async (teamId: string, userId: string, addedBy?: string) => {
-    const team = await getTeam(teamId);
-    if (!team) return;
-
-    const updatedUserIds = [...new Set([...team.user_ids, userId])];
-    const updatedTeam = { 
-      ...team, 
-      user_ids: updatedUserIds, 
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updateTeam(updatedTeam, addedBy);
-  }, [getTeam, updateTeam]);
-
-  const removeUserFromTeam = useCallback(async (teamId: string, userId: string, removedBy?: string) => {
-    const team = await getTeam(teamId);
-    if (!team) return;
-
-    const updatedUserIds = team.user_ids.filter(id => id !== userId);
-    const updatedTeam = { 
-      ...team, 
-      user_ids: updatedUserIds, 
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updateTeam(updatedTeam, removedBy);
-  }, [getTeam, updateTeam]);
-
-  const updateTeamMetrics = useCallback(async (teamId: string, metrics: Partial<TeamMetrics>, userId?: string) => {
-    const team = await getTeam(teamId);
-    if (!team) return;
-
-    const updatedMetrics = { ...team.metrics, ...metrics };
-    const updatedTeam = { 
-      ...team, 
-      metrics: updatedMetrics, 
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updateTeam(updatedTeam, userId);
-  }, [getTeam, updateTeam]);
-
-  const assignIncidentToTeam = useCallback(async (teamId: string, incidentId: string, assignedBy?: string) => {
-    const team = await getTeam(teamId);
-    if (!team) return;
-
-    // Update team metrics
-    const updatedMetrics = { 
-      ...team.metrics, 
-      incidents_assigned: team.metrics.incidents_assigned + 1 
-    };
-    
-    const updatedTeam = { 
-      ...team, 
-      metrics: updatedMetrics, 
-      updated_at: new Date().toISOString() 
-    };
-    
-    await updateTeam(updatedTeam, assignedBy);
-  }, [getTeam, updateTeam]);
-
-  const updateTeamSkills = useCallback(async (teamId: string, skills: Team['team_skills'], userId?: string) => {
-    const team = await getTeam(teamId);
-    if (!team) return;
-
-    // Validate skill proficiency levels
-    for (const skill of skills) {
-      if (!config.skill_proficiency_levels.includes(skill.team_proficiency)) {
-        throw new Error(`Invalid skill proficiency level: ${skill.team_proficiency}`);
+      if (mountedRef.current) {
+        setTeams(prev => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to fetch teams',
+        }));
       }
     }
+  }, [tenantId, teams.stale, teams.data]);
 
-    const updatedTeam = { 
-      ...team, 
-      team_skills: skills, 
-      updated_at: new Date().toISOString() 
-    };
+  const fetchTeam = useCallback(async (id: string, force = false) => {
+    if (!tenantId) return;
     
-    await updateTeam(updatedTeam, userId);
-  }, [getTeam, updateTeam, config]);
-
-  // Filtering functions
-  const getTeamsByType = useCallback((type: TeamType) => {
-    return teams.filter(t => t.type === type);
-  }, [teams]);
-
-  const getTeamsByBusinessService = useCallback((serviceId: string) => {
-    return teams.filter(t => t.business_service_ids.includes(serviceId));
-  }, [teams]);
-
-  const getTeamsByManager = useCallback((managerId: string) => {
-    return teams.filter(t => t.manager_user_id === managerId);
-  }, [teams]);
-
-  const getAvailableTeams = useCallback(() => {
-    return teams.filter(t => 
-      !t.max_concurrent_incidents || 
-      (t.current_workload || 0) < t.max_concurrent_incidents
-    );
-  }, [teams]);
-
-  const getOverloadedTeams = useCallback((threshold: number = 80) => {
-    return teams.filter(t => 
-      (t.capacity_utilization || 0) > threshold
-    );
-  }, [teams]);
-
-  const getTeamsWithSkill = useCallback((skillId: string, minProficiency?: string) => {
-    return teams.filter(t => 
-      t.team_skills.some(skill => {
-        if (skill.skill_id !== skillId) return false;
-        if (!minProficiency) return true;
-        
-        const proficiencyOrder = ["basic", "intermediate", "advanced", "expert"];
-        const teamLevel = proficiencyOrder.indexOf(skill.team_proficiency);
-        const minLevel = proficiencyOrder.indexOf(minProficiency);
-        return teamLevel >= minLevel;
-      })
-    );
-  }, [teams]);
-
-  const getTeamsByLocation = useCallback((location: string) => {
-    return teams.filter(t => t.office_location === location);
-  }, [teams]);
-
-  const getTeamsInTimezone = useCallback((timezone: string) => {
-    return teams.filter(t => t.primary_timezone === timezone);
-  }, [teams]);
-
-  const getTeamPerformanceStats = useCallback((teamId: string) => {
-    const team = teams.find(t => t.id === teamId);
-    if (!team) {
-      return {
-        mttr: 0,
-        mtta: 0,
-        incidentsThisMonth: 0,
-        resolvedThisMonth: 0,
-        successRate: 0,
-        workloadTrend: 'stable' as const,
-      };
+    // Check if we need to fetch
+    if (!force && selectedTeam.data?.id === id && !selectedTeam.stale) return;
+    
+    setSelectedTeam(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      const data = await teamsApi.getById(tenantId, id);
+      
+      if (mountedRef.current) {
+        setSelectedTeam({
+          data,
+          loading: false,
+          error: null,
+          lastFetch: new Date(),
+          stale: false,
+        });
+      }
+    } catch (error) {
+      if (mountedRef.current) {
+        setSelectedTeam(prev => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to fetch team',
+        }));
+      }
     }
+  }, [tenantId, selectedTeam.data?.id, selectedTeam.stale]);
+
+  const createTeam = useCallback(async (team: Partial<Team>) => {
+    if (!tenantId) return;
+    
+    const operationId = `create-${Date.now()}`;
+    const optimisticTeam = { ...team, id: operationId } as Team;
+    
+    // Optimistic update
+    addOptimisticOp({
+      id: operationId,
+      type: 'create',
+      data: optimisticTeam,
+    });
+    
+    try {
+      // Backend handles all validation and business logic
+      const createdTeam = await teamsApi.create(tenantId, team, enqueueItem);
+      
+      // Remove optimistic and refresh
+      removeOptimisticOp(operationId);
+      await fetchTeams(true);
+      
+    } catch (error) {
+      removeOptimisticOp(operationId);
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to create team',
+      }));
+      throw error;
+    }
+  }, [tenantId, addOptimisticOp, removeOptimisticOp, fetchTeams, enqueueItem]);
+
+  const updateTeam = useCallback(async (id: string, updates: Partial<Team>) => {
+    if (!tenantId) return;
+    
+    const operationId = `update-${id}-${Date.now()}`;
+    
+    // Optimistic update
+    addOptimisticOp({
+      id: operationId,
+      type: 'update',
+      data: { id, ...updates },
+    });
+    
+    try {
+      // Backend handles all validation and business logic
+      await teamsApi.update(tenantId, id, updates, enqueueItem);
+      
+      removeOptimisticOp(operationId);
+      await fetchTeams(true);
+      
+      // Refresh selected team if it's the one being updated
+      if (selectedTeam.data?.id === id) {
+        await fetchTeam(id, true);
+      }
+      
+    } catch (error) {
+      removeOptimisticOp(operationId);
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to update team',
+      }));
+      throw error;
+    }
+  }, [tenantId, addOptimisticOp, removeOptimisticOp, fetchTeams, fetchTeam, selectedTeam.data?.id, enqueueItem]);
+
+  const deleteTeam = useCallback(async (id: string) => {
+    if (!tenantId) return;
+    
+    const operationId = `delete-${id}-${Date.now()}`;
+    
+    // Optimistic update
+    addOptimisticOp({
+      id: operationId,
+      type: 'delete',
+      data: { id },
+    });
+    
+    try {
+      // Backend handles all business logic
+      await teamsApi.delete(tenantId, id, enqueueItem);
+      
+      removeOptimisticOp(operationId);
+      await fetchTeams(true);
+      
+      // Clear selected team if it was deleted
+      if (selectedTeam.data?.id === id) {
+        setSelectedTeam({
+          data: null,
+          loading: false,
+          error: null,
+          lastFetch: null,
+          stale: true,
+        });
+      }
+      
+    } catch (error) {
+      removeOptimisticOp(operationId);
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to delete team',
+      }));
+      throw error;
+    }
+  }, [tenantId, addOptimisticOp, removeOptimisticOp, fetchTeams, fetchTeam, selectedTeam.data?.id, enqueueItem]);
+
+  // Team operations (all business logic handled by backend)
+  const addUserToTeam = useCallback(async (teamId: string, userId: string) => {
+    if (!tenantId) return;
+    
+    try {
+      // Backend handles all business logic, validation, and relationship management
+      await teamsApi.addUser(tenantId, teamId, userId, enqueueItem);
+      await fetchTeams(true);
+      
+      if (selectedTeam.data?.id === teamId) {
+        await fetchTeam(teamId, true);
+      }
+    } catch (error) {
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to add user to team',
+      }));
+      throw error;
+    }
+  }, [tenantId, fetchTeams, fetchTeam, selectedTeam.data?.id, enqueueItem]);
+
+  const removeUserFromTeam = useCallback(async (teamId: string, userId: string) => {
+    if (!tenantId) return;
+    
+    try {
+      // Backend handles all business logic
+      await teamsApi.removeUser(tenantId, teamId, userId, enqueueItem);
+      await fetchTeams(true);
+      
+      if (selectedTeam.data?.id === teamId) {
+        await fetchTeam(teamId, true);
+      }
+    } catch (error) {
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to remove user from team',
+      }));
+      throw error;
+    }
+  }, [tenantId, fetchTeams, fetchTeam, selectedTeam.data?.id, enqueueItem]);
+
+  const updateTeamSkills = useCallback(async (teamId: string, skills: any[]) => {
+    if (!tenantId) return;
+    
+    try {
+      // Backend handles validation of skill proficiency levels and business rules
+      await teamsApi.updateSkills(tenantId, teamId, skills, enqueueItem);
+      await fetchTeams(true);
+      
+      if (selectedTeam.data?.id === teamId) {
+        await fetchTeam(teamId, true);
+      }
+    } catch (error) {
+      setTeams(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to update team skills',
+      }));
+      throw error;
+    }
+  }, [tenantId, fetchTeams, fetchTeam, selectedTeam.data?.id, enqueueItem]);
+
+  // ---------------------------------
+  // UI Filters
+  // ---------------------------------
+  const setFilters = useCallback((newFilters: Partial<UIFilters>) => {
+    setFiltersState(prev => ({ ...prev, ...newFilters }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFiltersState({});
+  }, []);
+
+  // ---------------------------------
+  // Client-side computed values (UI performance only)
+  // ---------------------------------
+  const computed = useMemo(() => {
+    const teamsData = teams.data || [];
+    
+    // Apply optimistic operations for immediate UI feedback
+    let processedTeams = [...teamsData];
+    
+    if (cacheConfig.enableOptimistic) {
+      optimisticOps.forEach(op => {
+        switch (op.type) {
+          case 'create':
+            processedTeams.push(op.data);
+            break;
+          case 'update':
+            const updateIndex = processedTeams.findIndex(t => t.id === op.data.id);
+            if (updateIndex !== -1) {
+              processedTeams[updateIndex] = { ...processedTeams[updateIndex], ...op.data };
+            }
+            break;
+          case 'delete':
+            processedTeams = processedTeams.filter(t => t.id !== op.data.id);
+            break;
+        }
+      });
+    }
+
+    // Simple client-side filtering for immediate UI responsiveness
+    const filteredTeams = processedTeams.filter(team => {
+      if (filters.type?.length && !filters.type.includes(team.type)) return false;
+      if (filters.healthStatus?.length && !filters.healthStatus.includes(team.health_status)) return false;
+      if (filters.manager && team.manager_user_id !== filters.manager) return false;
+      if (filters.businessService && !team.business_service_ids.includes(filters.businessService)) return false;
+      if (filters.location && team.office_location !== filters.location) return false;
+      if (filters.timezone && team.primary_timezone !== filters.timezone) return false;
+      if (filters.availableOnly && team.max_concurrent_incidents && 
+          (team.current_workload || 0) >= team.max_concurrent_incidents) return false;
+      if (filters.overloadedOnly && (team.capacity_utilization || 0) <= 80) return false;
+      if (filters.hasSkill && !team.team_skills.some(skill => skill.skill_id === filters.hasSkill)) return false;
+      
+      return true;
+    });
+
+    // Simple search for UI responsiveness (not business search)
+    const searchResults = filters.search 
+      ? filteredTeams.filter(team => 
+          team.name.toLowerCase().includes(filters.search!.toLowerCase()) ||
+          team.description?.toLowerCase().includes(filters.search!.toLowerCase())
+        )
+      : filteredTeams;
+
+    // Group by type for UI organization
+    const teamsByType = new Map<string, Team[]>();
+    filteredTeams.forEach(team => {
+      const existing = teamsByType.get(team.type) || [];
+      teamsByType.set(team.type, [...existing, team]);
+    });
+
+    // Simple options for UI dropdowns
+    const teamOptions = processedTeams.map(team => ({
+      value: team.id,
+      label: team.name,
+    }));
 
     return {
-      mttr: team.metrics.mttr_minutes || 0,
-      mtta: team.metrics.mtta_minutes || 0,
-      incidentsThisMonth: team.metrics.incidents_assigned,
-      resolvedThisMonth: team.metrics.incidents_resolved,
-      successRate: team.metrics.success_rate,
-      workloadTrend: (team.capacity_utilization || 0) > 80 ? 'increasing' as const : 'stable' as const,
+      filteredTeams: searchResults,
+      searchResults,
+      teamsByType,
+      teamOptions,
     };
-  }, [teams]);
+  }, [teams.data, filters, optimisticOps, cacheConfig.enableOptimistic]);
 
-  // Initialize
+  // ---------------------------------
+  // Cache Management
+  // ---------------------------------
+  const cache = useMemo(() => ({
+    invalidate: (teamId?: string) => {
+      if (teamId) {
+        if (selectedTeam.data?.id === teamId) {
+          setSelectedTeam(prev => ({ ...prev, stale: true }));
+        }
+      } else {
+        setTeams(prev => ({ ...prev, stale: true }));
+        setSelectedTeam(prev => ({ ...prev, stale: true }));
+      }
+    },
+    refresh: async () => {
+      await fetchTeams(true);
+    },
+    isStale: teams.stale || (teams.lastFetch && 
+      (Date.now() - teams.lastFetch.getTime()) > cacheConfig.ttl),
+    lastUpdate: teams.lastFetch,
+  }), [teams.stale, teams.lastFetch, selectedTeam.data?.id, fetchTeams, cacheConfig.ttl]);
+
+  // ---------------------------------
+  // Optimistic UI Management
+  // ---------------------------------
+  const optimistic = useMemo(() => ({
+    pending: optimisticOps,
+    rollback: (operationId: string) => {
+      removeOptimisticOp(operationId);
+    },
+    clearAll: () => {
+      setOptimisticOps([]);
+    },
+  }), [optimisticOps, removeOptimisticOp]);
+
+  // ---------------------------------
+  // Effects
+  // ---------------------------------
+  
+  // Initial load
   useEffect(() => {
-    if (tenantId && globalConfig) {
-      refreshTeams();
+    if (tenantId && config.types.length > 0) {
+      fetchTeams();
     }
-  }, [tenantId, globalConfig, refreshTeams]);
+  }, [tenantId, config.types.length, fetchTeams]);
+
+  // Cache invalidation on TTL
+  useEffect(() => {
+    if (!teams.lastFetch || !cacheConfig.ttl) return;
+    
+    const timeToStale = cacheConfig.ttl - (Date.now() - teams.lastFetch.getTime());
+    
+    if (timeToStale <= 0) {
+      setTeams(prev => ({ ...prev, stale: true }));
+      return;
+    }
+    
+    const timeout = setTimeout(() => {
+      setTeams(prev => ({ ...prev, stale: true }));
+    }, timeToStale);
+    
+    return () => clearTimeout(timeout);
+  }, [teams.lastFetch, cacheConfig.ttl]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ---------------------------------
+  // Context Value
+  // ---------------------------------
+  const contextValue: TeamsContextType = useMemo(() => ({
+    teams,
+    selectedTeam,
+    filters,
+    setFilters,
+    clearFilters,
+    actions: {
+      fetchTeams,
+      fetchTeam,
+      createTeam,
+      updateTeam,
+      deleteTeam,
+      addUserToTeam,
+      removeUserFromTeam,
+      updateTeamSkills,
+    },
+    computed,
+    cache,
+    optimistic,
+    config,
+  }), [
+    teams,
+    selectedTeam,
+    filters,
+    setFilters,
+    clearFilters,
+    fetchTeams,
+    fetchTeam,
+    createTeam,
+    updateTeam,
+    deleteTeam,
+    addUserToTeam,
+    removeUserFromTeam,
+    updateTeamSkills,
+    computed,
+    cache,
+    optimistic,
+    config,
+  ]);
 
   return (
-    <TeamsContext.Provider
-      value={{
-        teams,
-        addTeam,
-        updateTeam,
-        deleteTeam,
-        refreshTeams,
-        getTeam,
-        addUserToTeam,
-        removeUserFromTeam,
-        updateTeamMetrics,
-        assignIncidentToTeam,
-        updateTeamSkills,
-        getTeamsByType,
-        getTeamsByBusinessService,
-        getTeamsByManager,
-        getAvailableTeams,
-        getOverloadedTeams,
-        getTeamsWithSkill,
-        getTeamsByLocation,
-        getTeamsInTimezone,
-        getTeamPerformanceStats,
-        config,
-      }}
-    >
+    <TeamsContext.Provider value={contextValue}>
       {children}
     </TeamsContext.Provider>
   );
 };
 
 // ---------------------------------
-// 4. Hooks
+// 5. Hooks - Performance Optimized
 // ---------------------------------
 export const useTeams = () => {
   const ctx = useContext(TeamsContext);
@@ -460,28 +635,70 @@ export const useTeams = () => {
   return ctx;
 };
 
-export const useTeamDetails = (id: string) => {
+// Selective subscription hooks for performance
+export const useTeamsData = () => {
   const { teams } = useTeams();
-  return teams.find((t) => t.id === id) || null;
+  return teams;
 };
 
-// Utility hooks
-export const useTeamsByType = (type: TeamType) => {
-  const { getTeamsByType } = useTeams();
-  return getTeamsByType(type);
+export const useTeamsActions = () => {
+  const { actions } = useTeams();
+  return actions;
 };
 
-export const useAvailableTeams = () => {
-  const { getAvailableTeams } = useTeams();
-  return getAvailableTeams();
+export const useTeamFilters = () => {
+  const { filters, setFilters, clearFilters } = useTeams();
+  return { filters, setFilters, clearFilters };
 };
 
-export const useOverloadedTeams = (threshold?: number) => {
-  const { getOverloadedTeams } = useTeams();
-  return getOverloadedTeams(threshold);
+export const useFilteredTeams = () => {
+  const { computed } = useTeams();
+  return computed.filteredTeams;
 };
 
-export const useTeamPerformance = (teamId: string) => {
-  const { getTeamPerformanceStats } = useTeams();
-  return getTeamPerformanceStats(teamId);
+export const useTeamsByType = () => {
+  const { computed } = useTeams();
+  return computed.teamsByType;
+};
+
+export const useTeamOptions = () => {
+  const { computed } = useTeams();
+  return computed.teamOptions;
+};
+
+export const useSelectedTeam = () => {
+  const { selectedTeam, actions } = useTeams();
+  return {
+    team: selectedTeam,
+    fetchTeam: actions.fetchTeam,
+  };
+};
+
+export const useTeamCache = () => {
+  const { cache } = useTeams();
+  return cache;
+};
+
+export const useOptimisticTeams = () => {
+  const { optimistic } = useTeams();
+  return optimistic;
+};
+
+// Utility hook for team details with automatic loading
+export const useTeamDetails = (id: string | null) => {
+  const { selectedTeam, actions } = useTeams();
+  
+  useEffect(() => {
+    if (id && (!selectedTeam.data || selectedTeam.data.id !== id || selectedTeam.stale)) {
+      actions.fetchTeam(id);
+    }
+  }, [id, selectedTeam.data, selectedTeam.stale, actions]);
+  
+  return selectedTeam.data?.id === id ? selectedTeam : {
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  };
 };

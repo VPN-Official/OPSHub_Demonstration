@@ -6,6 +6,7 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
 import { 
   getAll,
@@ -18,7 +19,18 @@ import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend AsyncState Pattern
+// ---------------------------------
+interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  isStale: boolean;
+}
+
+// ---------------------------------
+// 2. Simplified Frontend Types (UI-focused)
 // ---------------------------------
 export type MetricType = 
   | "gauge" 
@@ -35,14 +47,6 @@ export type MetricCategory =
   | "security" 
   | "compliance" 
   | "custom";
-
-export type AggregationType = 
-  | "sum" 
-  | "average" 
-  | "min" 
-  | "max" 
-  | "count" 
-  | "percentile";
 
 export interface MetricThreshold {
   id: string;
@@ -74,7 +78,7 @@ export interface SystemMetric {
   created_at: string;
   updated_at: string;
 
-  // Data source and collection
+  // Source configuration (backend provides)
   source_system: string;
   collection_method: "push" | "pull" | "batch" | "streaming";
   collection_interval_seconds?: number;
@@ -86,39 +90,32 @@ export interface SystemMetric {
   business_service_id?: string | null;
   customer_id?: string | null;
 
-  // Current state
+  // Current state (calculated by backend)
   current_value?: number;
   last_updated_at?: string | null;
   last_collection_at?: string | null;
   collection_status: "healthy" | "degraded" | "failing" | "stopped";
 
-  // Aggregation and processing
-  aggregation_type: AggregationType;
-  aggregation_window_minutes?: number;
-  baseline_value?: number;
+  // Backend-calculated metrics
   trend: "up" | "down" | "stable" | "unknown";
-  variance_threshold?: number;
+  baseline_value?: number;
+  data_quality_score?: number;
+  anomaly_detected?: boolean;
+  anomaly_score?: number;
 
-  // Alerting and thresholds
+  // Configuration
   thresholds: MetricThreshold[];
   alert_enabled: boolean;
   last_alert_at?: string | null;
   alert_count_24h: number;
 
-  // Data points (recent data)
+  // Data points (for UI display)
   data_points: MetricDataPoint[];
   data_points_count: number;
   oldest_data_point?: string | null;
   newest_data_point?: string | null;
 
-  // Quality and reliability
-  data_quality_score?: number; // 0-100%
-  missing_data_points?: number;
-  anomaly_detected?: boolean;
-  anomaly_score?: number;
-  seasonality_detected?: boolean;
-
-  // Business context
+  // Business context (from backend)
   business_impact: "none" | "low" | "medium" | "high" | "critical";
   sla_relevant: boolean;
   kpi_relevant: boolean;
@@ -128,12 +125,6 @@ export interface SystemMetric {
   // Governance
   owner_user_id?: string | null;
   owner_team_id?: string | null;
-  data_classification?: "public" | "internal" | "confidential" | "restricted";
-  compliance_requirement_ids: string[];
-
-  // Visualization and reporting
-  chart_type?: "line" | "bar" | "gauge" | "pie" | "scatter";
-  display_precision?: number;
   dashboard_visible: boolean;
   report_included: boolean;
 
@@ -157,645 +148,750 @@ export interface MetricDetails extends SystemMetric {
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 3. UI-Focused Operations Interface
+// ---------------------------------
+interface SystemMetricsOperations {
+  // Basic CRUD (UI orchestration only)
+  addMetric: (metric: Omit<SystemMetric, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<void>;
+  updateMetric: (metricId: string, updates: Partial<SystemMetric>, userId?: string) => Promise<void>;
+  deleteMetric: (id: string, userId?: string) => Promise<void>;
+
+  // Data management (UI actions triggering backend)
+  recordDataPoint: (metricId: string, value: number, labels?: Record<string, string>, userId?: string) => Promise<void>;
+  addThreshold: (metricId: string, threshold: Omit<MetricThreshold, 'id'>, userId?: string) => Promise<void>;
+  removeThreshold: (metricId: string, thresholdId: string, userId?: string) => Promise<void>;
+  
+  // Trigger backend operations
+  refreshMetricData: (metricId: string) => Promise<void>;
+  exportMetricData: (metricId: string, startDate: string, endDate: string, format: "json" | "csv") => Promise<Blob>;
+  triggerBaslineCalculation: (metricId: string, days?: number) => Promise<void>;
+  triggerAnomalyDetection: (metricId: string) => Promise<void>;
+}
+
+// ---------------------------------
+// 4. Frontend Context Interface
 // ---------------------------------
 interface SystemMetricsContextType {
-  metrics: SystemMetric[];
-  addMetric: (metric: SystemMetric, userId?: string) => Promise<void>;
-  updateMetric: (metric: SystemMetric, userId?: string) => Promise<void>;
-  deleteMetric: (id: string, userId?: string) => Promise<void>;
-  refreshMetrics: () => Promise<void>;
-  getMetric: (id: string) => Promise<SystemMetric | undefined>;
-
-  // Metric-specific operations
-  recordDataPoint: (metricId: string, dataPoint: Omit<MetricDataPoint, 'timestamp'>, userId?: string) => Promise<void>;
-  addThreshold: (metricId: string, threshold: MetricThreshold, userId?: string) => Promise<void>;
-  updateThreshold: (metricId: string, thresholdId: string, threshold: Partial<MetricThreshold>, userId?: string) => Promise<void>;
-  removeThreshold: (metricId: string, thresholdId: string, userId?: string) => Promise<void>;
-  evaluateThresholds: (metricId: string) => Promise<{ breached: boolean; alerts: string[] }>;
-  calculateBaseline: (metricId: string, days?: number) => Promise<number>;
-  detectAnomalies: (metricId: string) => Promise<{ anomalies: MetricDataPoint[]; score: number }>;
-  aggregateMetric: (metricId: string, windowMinutes: number, aggregationType: AggregationType) => Promise<MetricDataPoint[]>;
-
-  // Data management
-  cleanupOldData: (metricId: string) => Promise<number>;
-  exportMetricData: (metricId: string, startDate: string, endDate: string, format: "json" | "csv") => Promise<Blob>;
-  importMetricData: (metricId: string, data: MetricDataPoint[], userId?: string) => Promise<number>;
-
-  // Filtering and querying
-  getMetricsByCategory: (category: MetricCategory) => SystemMetric[];
-  getMetricsByType: (type: MetricType) => SystemMetric[];
-  getMetricsBySource: (source: string) => SystemMetric[];
-  getMetricsByAsset: (assetId: string) => SystemMetric[];
-  getMetricsByServiceComponent: (componentId: string) => SystemMetric[];
-  getMetricsByBusinessService: (serviceId: string) => SystemMetric[];
-  getAlertingMetrics: () => SystemMetric[];
-  getFailingMetrics: () => SystemMetric[];
-  getSLAMetrics: () => SystemMetric[];
-  getKPIMetrics: () => SystemMetric[];
-  getMetricsWithAnomalies: () => SystemMetric[];
-  searchMetrics: (query: string) => SystemMetric[];
-
-  // Analytics and insights
-  getMetricStats: (timeframe?: "hour" | "day" | "week" | "month") => {
-    totalMetrics: number;
-    collectingMetrics: number;
-    failingMetrics: number;
-    alertingMetrics: number;
-    averageDataQuality: number;
-    anomaliesDetected: number;
-    dataPointsCollected: number;
+  // AsyncState for metrics collection
+  metrics: AsyncState<SystemMetric[]>;
+  
+  // Individual metric state (for detail views)
+  getMetricState: (id: string) => AsyncState<MetricDetails | null>;
+  
+  // Operations
+  operations: SystemMetricsOperations;
+  
+  // UI Helpers (client-side only)
+  uiHelpers: {
+    // Simple client-side filtering for immediate UI responsiveness
+    filterByCategory: (category: MetricCategory) => SystemMetric[];
+    filterByType: (type: MetricType) => SystemMetric[];
+    filterByStatus: (status: string) => SystemMetric[];
+    filterByHealthStatus: (health: SystemMetric['health_status']) => SystemMetric[];
+    
+    // Basic text search for UI
+    searchMetrics: (query: string) => SystemMetric[];
+    
+    // Simple UI grouping
+    groupByCategory: () => Record<MetricCategory, SystemMetric[]>;
+    groupBySource: () => Record<string, SystemMetric[]>;
+    
+    // UI-specific selectors
+    getAlertingMetrics: () => SystemMetric[];
+    getFailingMetrics: () => SystemMetric[];
+    getSLAMetrics: () => SystemMetric[];
+    getKPIMetrics: () => SystemMetric[];
+    getDashboardMetrics: () => SystemMetric[];
+    
+    // Recently updated for UI indicators
+    getRecentlyUpdated: (minutes?: number) => SystemMetric[];
   };
   
-  getTopMetrics: (criterion: "alerts" | "variance" | "business_impact", limit?: number) => SystemMetric[];
-  getMetricTrends: () => {
-    improving: SystemMetric[];
-    degrading: SystemMetric[];
-    stable: SystemMetric[];
-  };
-
-  // Config integration
+  // Configuration from backend
   config: {
-    types: string[];
-    categories: string[];
+    types: MetricType[];
+    categories: MetricCategory[];
     units: string[];
     collection_methods: string[];
-    aggregation_types: string[];
     chart_types: string[];
+  };
+  
+  // Cache control
+  cache: {
+    invalidateAll: () => void;
+    invalidateMetric: (id: string) => void;
+    getLastRefresh: () => string | null;
+    isStale: (maxAgeMinutes?: number) => boolean;
   };
 }
 
 const SystemMetricsContext = createContext<SystemMetricsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 5. Cache Management
+// ---------------------------------
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DETAIL_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+interface CacheEntry<T> {
+  data: T;
+  fetchedAt: string;
+  isStale: boolean;
+}
+
+// ---------------------------------
+// 6. Provider Implementation
 // ---------------------------------
 export const SystemMetricsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
   const { config: globalConfig } = useConfig();
-  const [metrics, setMetrics] = useState<SystemMetric[]>([]);
+  
+  // Main metrics state
+  const [metricsState, setMetricsState] = useState<AsyncState<SystemMetric[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    isStale: false,
+  });
+  
+  // Detail cache for individual metrics
+  const [detailCache, setDetailCache] = useState<Map<string, CacheEntry<MetricDetails | null>>>(new Map());
+  
+  // Optimistic updates state
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, Partial<SystemMetric>>>(new Map());
 
-  const config = {
-    types: globalConfig?.metrics?.types || ["gauge", "counter", "histogram", "summary", "timer"],
+  // Config derived from backend
+  const config = useMemo(() => ({
+    types: globalConfig?.metrics?.types || ["gauge", "counter", "histogram", "summary", "timer"] as MetricType[],
     categories: globalConfig?.metrics?.categories || [
       "performance", "availability", "resource", "business", "security", "compliance", "custom"
-    ],
+    ] as MetricCategory[],
     units: globalConfig?.metrics?.units || [
       "bytes", "seconds", "milliseconds", "percent", "count", "requests", "errors", "users", "dollars"
     ],
     collection_methods: globalConfig?.metrics?.collection_methods || ["push", "pull", "batch", "streaming"],
-    aggregation_types: globalConfig?.metrics?.aggregation_types || ["sum", "average", "min", "max", "count", "percentile"],
     chart_types: globalConfig?.metrics?.chart_types || ["line", "bar", "gauge", "pie", "scatter"],
-  };
+  }), [globalConfig]);
 
-  const refreshMetrics = useCallback(async () => {
+  // ---------------------------------
+  // Cache Utilities
+  // ---------------------------------
+  const isDataStale = useCallback((lastFetch: string | null, ttlMs: number = CACHE_TTL_MS) => {
+    if (!lastFetch) return true;
+    return Date.now() - new Date(lastFetch).getTime() > ttlMs;
+  }, []);
+
+  const invalidateCache = useCallback(() => {
+    setMetricsState(prev => ({ ...prev, isStale: true }));
+    setDetailCache(new Map());
+    setOptimisticUpdates(new Map());
+  }, []);
+
+  const invalidateMetricCache = useCallback((id: string) => {
+    setDetailCache(prev => {
+      const newCache = new Map(prev);
+      newCache.delete(id);
+      return newCache;
+    });
+    
+    setOptimisticUpdates(prev => {
+      const newUpdates = new Map(prev);
+      newUpdates.delete(id);
+      return newUpdates;
+    });
+  }, []);
+
+  // ---------------------------------
+  // Data Fetching
+  // ---------------------------------
+  const refreshMetrics = useCallback(async (force: boolean = false) => {
     if (!tenantId) return;
+    
+    if (!force && !isDataStale(metricsState.lastFetch)) {
+      return; // Use cached data
+    }
+    
+    setMetricsState(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      const all = await getAll<SystemMetric>(tenantId, "system_metrics");
-      setMetrics(all);
+      const fetchedMetrics = await getAll<SystemMetric>(tenantId, "system_metrics");
+      
+      setMetricsState({
+        data: fetchedMetrics,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        isStale: false,
+      });
+      
+      console.log(`✅ Loaded ${fetchedMetrics.length} system metrics for tenant ${tenantId}`);
     } catch (error) {
-      console.error("Failed to refresh system metrics:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load metrics';
+      setMetricsState(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+        isStale: true,
+      }));
+      console.error('Failed to refresh system metrics:', error);
     }
-  }, [tenantId]);
+  }, [tenantId, metricsState.lastFetch, isDataStale]);
 
-  const getMetric = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<SystemMetric>(tenantId, "system_metrics", id);
-  }, [tenantId]);
+  // Get individual metric with caching
+  const getMetricState = useCallback((id: string): AsyncState<MetricDetails | null> => {
+    const cached = detailCache.get(id);
+    
+    if (cached && !isDataStale(cached.fetchedAt, DETAIL_CACHE_TTL_MS)) {
+      return {
+        data: cached.data,
+        loading: false,
+        error: null,
+        lastFetch: cached.fetchedAt,
+        isStale: cached.isStale,
+      };
+    }
+    
+    // Async load (will update cache)
+    loadMetricDetails(id);
+    
+    return {
+      data: cached?.data || null,
+      loading: true,
+      error: null,
+      lastFetch: cached?.fetchedAt || null,
+      isStale: true,
+    };
+  }, [detailCache, isDataStale]);
 
-  const addMetric = useCallback(async (metric: SystemMetric, userId?: string) => {
+  const loadMetricDetails = useCallback(async (id: string) => {
     if (!tenantId) return;
+    
+    try {
+      const metric = await getById<MetricDetails>(tenantId, "system_metrics", id);
+      
+      setDetailCache(prev => new Map(prev).set(id, {
+        data: metric || null,
+        fetchedAt: new Date().toISOString(),
+        isStale: false,
+      }));
+    } catch (error) {
+      setDetailCache(prev => new Map(prev).set(id, {
+        data: null,
+        fetchedAt: new Date().toISOString(),
+        isStale: true,
+      }));
+      console.error(`Failed to load metric details for ${id}:`, error);
+    }
+  }, [tenantId]);
 
-    // ✅ Config validation
-    if (!config.types.includes(metric.type)) {
-      throw new Error(`Invalid metric type: ${metric.type}`);
-    }
-    if (!config.categories.includes(metric.category)) {
-      throw new Error(`Invalid metric category: ${metric.category}`);
-    }
-    if (!config.collection_methods.includes(metric.collection_method)) {
-      throw new Error(`Invalid collection method: ${metric.collection_method}`);
-    }
-    if (!config.aggregation_types.includes(metric.aggregation_type)) {
-      throw new Error(`Invalid aggregation type: ${metric.aggregation_type}`);
+  // ---------------------------------
+  // Operations (Thin API wrappers)
+  // ---------------------------------
+  const addMetric = useCallback(async (
+    metricData: Omit<SystemMetric, 'id' | 'created_at' | 'updated_at'>, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    const tempId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    
+    // Basic UI validation only
+    if (!metricData.name || !metricData.display_name) {
+      throw new Error("Name and display name are required");
     }
 
-    const enrichedMetric: SystemMetric = {
-      ...metric,
-      created_at: metric.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      collection_status: metric.collection_status || "healthy",
+    // Optimistic update for immediate UI feedback
+    const optimisticMetric: SystemMetric = {
+      id: tempId,
+      created_at: now,
+      updated_at: now,
+      collection_status: "healthy",
       alert_count_24h: 0,
-      data_points: metric.data_points || [],
-      data_points_count: metric.data_points?.length || 0,
-      trend: metric.trend || "unknown",
-      labels: metric.labels || {},
-      compliance_requirement_ids: metric.compliance_requirement_ids || [],
-      health_status: metric.health_status || "green",
+      data_points: [],
+      data_points_count: 0,
+      trend: "unknown",
+      labels: {},
+      thresholds: [],
+      health_status: "gray",
       sync_status: "dirty",
       tenantId,
+      ...metricData,
     };
 
-    await putWithAudit(
-      tenantId,
-      "system_metrics",
-      enrichedMetric,
-      userId,
-      { action: "create", description: `System metric "${metric.display_name}" created` },
-      enqueueItem
-    );
-    await refreshMetrics();
-  }, [tenantId, config, enqueueItem, refreshMetrics]);
+    // Show optimistic update
+    setMetricsState(prev => ({
+      ...prev,
+      data: [optimisticMetric, ...prev.data],
+    }));
 
-  const updateMetric = useCallback(async (metric: SystemMetric, userId?: string) => {
-    if (!tenantId) return;
-
-    const enrichedMetric: SystemMetric = {
-      ...metric,
-      updated_at: new Date().toISOString(),
-      data_points_count: metric.data_points?.length || 0,
-      sync_status: "dirty",
-      tenantId,
-    };
-
-    await putWithAudit(
-      tenantId,
-      "system_metrics",
-      enrichedMetric,
-      userId,
-      { action: "update", description: `System metric "${metric.display_name}" updated` },
-      enqueueItem
-    );
-    await refreshMetrics();
+    try {
+      // Backend handles ALL validation and business logic
+      await putWithAudit(
+        tenantId,
+        "system_metrics",
+        optimisticMetric,
+        userId,
+        { action: "create", description: `System metric "${metricData.display_name}" created` },
+        enqueueItem
+      );
+      
+      // Refresh to get the real data from backend
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      // Rollback optimistic update
+      setMetricsState(prev => ({
+        ...prev,
+        data: prev.data.filter(m => m.id !== tempId),
+        error: error instanceof Error ? error.message : 'Failed to create metric',
+      }));
+      throw error;
+    }
   }, [tenantId, enqueueItem, refreshMetrics]);
 
-  const deleteMetric = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
+  const updateMetric = useCallback(async (
+    metricId: string, 
+    updates: Partial<SystemMetric>, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-    const metric = await getMetric(id);
-    const metricName = metric?.display_name || id;
+    // Find current metric for optimistic update
+    const currentMetric = metricsState.data.find(m => m.id === metricId);
+    if (!currentMetric) throw new Error("Metric not found");
 
-    await removeWithAudit(
-      tenantId,
-      "system_metrics",
-      id,
-      userId,
-      { action: "delete", description: `System metric "${metricName}" deleted` },
-      enqueueItem
-    );
-    await refreshMetrics();
-  }, [tenantId, getMetric, enqueueItem, refreshMetrics]);
+    // Optimistic update
+    const optimisticUpdates = new Map([[metricId, updates]]);
+    setOptimisticUpdates(prev => new Map([...prev, [metricId, { ...prev.get(metricId), ...updates }]]));
 
-  // Metric-specific operations
-  const recordDataPoint = useCallback(async (metricId: string, dataPoint: Omit<MetricDataPoint, 'timestamp'>, userId?: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return;
-
-    const newDataPoint: MetricDataPoint = {
-      ...dataPoint,
-      timestamp: new Date().toISOString(),
-    };
-
-    // Add new data point and maintain retention policy
-    const updatedDataPoints = [...metric.data_points, newDataPoint]
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 1000); // Keep last 1000 points
-
-    const updatedMetric = {
-      ...metric,
-      current_value: dataPoint.value,
-      last_updated_at: newDataPoint.timestamp,
-      last_collection_at: newDataPoint.timestamp,
-      data_points: updatedDataPoints,
-      data_points_count: updatedDataPoints.length,
-      oldest_data_point: updatedDataPoints[updatedDataPoints.length - 1]?.timestamp,
-      newest_data_point: updatedDataPoints[0]?.timestamp,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateMetric(updatedMetric, userId);
-  }, [getMetric, updateMetric]);
-
-  const addThreshold = useCallback(async (metricId: string, threshold: MetricThreshold, userId?: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return;
-
-    const updatedThresholds = [...metric.thresholds, threshold];
-    const updatedMetric = {
-      ...metric,
-      thresholds: updatedThresholds,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateMetric(updatedMetric, userId);
-  }, [getMetric, updateMetric]);
-
-  const updateThreshold = useCallback(async (metricId: string, thresholdId: string, thresholdUpdate: Partial<MetricThreshold>, userId?: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return;
-
-    const updatedThresholds = metric.thresholds.map(t =>
-      t.id === thresholdId ? { ...t, ...thresholdUpdate } : t
-    );
-
-    const updatedMetric = {
-      ...metric,
-      thresholds: updatedThresholds,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateMetric(updatedMetric, userId);
-  }, [getMetric, updateMetric]);
-
-  const removeThreshold = useCallback(async (metricId: string, thresholdId: string, userId?: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return;
-
-    const updatedThresholds = metric.thresholds.filter(t => t.id !== thresholdId);
-    const updatedMetric = {
-      ...metric,
-      thresholds: updatedThresholds,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateMetric(updatedMetric, userId);
-  }, [getMetric, updateMetric]);
-
-  const evaluateThresholds = useCallback(async (metricId: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric || !metric.current_value) {
-      return { breached: false, alerts: [] };
-    }
-
-    const breachedThresholds = metric.thresholds.filter(threshold => {
-      if (!threshold.enabled) return false;
-      
-      const value = metric.current_value!;
-      switch (threshold.operator) {
-        case "gt": return value > (threshold.critical_value || threshold.warning_value || 0);
-        case "lt": return value < (threshold.critical_value || threshold.warning_value || 0);
-        case "gte": return value >= (threshold.critical_value || threshold.warning_value || 0);
-        case "lte": return value <= (threshold.critical_value || threshold.warning_value || 0);
-        case "eq": return value === (threshold.critical_value || threshold.warning_value || 0);
-        default: return false;
-      }
-    });
-
-    return {
-      breached: breachedThresholds.length > 0,
-      alerts: breachedThresholds.map(t => `Threshold '${t.name}' breached: ${metric.current_value} ${threshold.operator} ${t.critical_value || t.warning_value}`),
-    };
-  }, [getMetric]);
-
-  const calculateBaseline = useCallback(async (metricId: string, days: number = 30) => {
-    const metric = await getMetric(metricId);
-    if (!metric || metric.data_points.length === 0) return 0;
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-    
-    const relevantPoints = metric.data_points.filter(point => 
-      new Date(point.timestamp) >= cutoffDate
-    );
-
-    if (relevantPoints.length === 0) return metric.current_value || 0;
-
-    const sum = relevantPoints.reduce((total, point) => total + point.value, 0);
-    return sum / relevantPoints.length;
-  }, [getMetric]);
-
-  const detectAnomalies = useCallback(async (metricId: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric || metric.data_points.length < 10) {
-      return { anomalies: [], score: 0 };
-    }
-
-    const baseline = await calculateBaseline(metricId);
-    const variance = metric.variance_threshold || 0.2; // 20% variance threshold
-    
-    const anomalies = metric.data_points.filter(point => {
-      const deviation = Math.abs(point.value - baseline) / baseline;
-      return deviation > variance;
-    });
-
-    const anomalyScore = anomalies.length / metric.data_points.length;
-
-    return { anomalies, score: anomalyScore };
-  }, [getMetric, calculateBaseline]);
-
-  const aggregateMetric = useCallback(async (metricId: string, windowMinutes: number, aggregationType: AggregationType) => {
-    const metric = await getMetric(metricId);
-    if (!metric || metric.data_points.length === 0) return [];
-
-    const windowMs = windowMinutes * 60 * 1000;
-    const now = Date.now();
-    
-    // Group data points by time windows
-    const windows = new Map<number, MetricDataPoint[]>();
-    
-    for (const point of metric.data_points) {
-      const pointTime = new Date(point.timestamp).getTime();
-      const windowStart = Math.floor((now - pointTime) / windowMs) * windowMs;
-      
-      if (!windows.has(windowStart)) {
-        windows.set(windowStart, []);
-      }
-      windows.get(windowStart)!.push(point);
-    }
-
-    // Aggregate each window
-    const aggregated: MetricDataPoint[] = [];
-    
-    for (const [windowStart, points] of windows.entries()) {
-      let aggregatedValue: number;
-      
-      switch (aggregationType) {
-        case "sum":
-          aggregatedValue = points.reduce((sum, p) => sum + p.value, 0);
-          break;
-        case "average":
-          aggregatedValue = points.reduce((sum, p) => sum + p.value, 0) / points.length;
-          break;
-        case "min":
-          aggregatedValue = Math.min(...points.map(p => p.value));
-          break;
-        case "max":
-          aggregatedValue = Math.max(...points.map(p => p.value));
-          break;
-        case "count":
-          aggregatedValue = points.length;
-          break;
-        case "percentile":
-          // Simple 95th percentile calculation
-          const sorted = points.map(p => p.value).sort((a, b) => a - b);
-          const index = Math.floor(0.95 * sorted.length);
-          aggregatedValue = sorted[index] || 0;
-          break;
-        default:
-          aggregatedValue = points[0]?.value || 0;
-      }
-
-      aggregated.push({
-        timestamp: new Date(now - windowStart).toISOString(),
-        value: aggregatedValue,
-        source: `aggregated_${aggregationType}`,
-      });
-    }
-
-    return aggregated.sort((a, b) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-  }, [getMetric]);
-
-  const cleanupOldData = useCallback(async (metricId: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return 0;
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - metric.retention_days);
-    
-    const initialCount = metric.data_points.length;
-    const filteredDataPoints = metric.data_points.filter(point =>
-      new Date(point.timestamp) >= cutoffDate
-    );
-
-    if (filteredDataPoints.length !== initialCount) {
+    try {
       const updatedMetric = {
-        ...metric,
-        data_points: filteredDataPoints,
-        data_points_count: filteredDataPoints.length,
-        oldest_data_point: filteredDataPoints[filteredDataPoints.length - 1]?.timestamp,
+        ...currentMetric,
+        ...updates,
         updated_at: new Date().toISOString(),
+        sync_status: "dirty" as const,
       };
 
-      await updateMetric(updatedMetric);
+      // Backend handles ALL business logic
+      await putWithAudit(
+        tenantId,
+        "system_metrics",
+        updatedMetric,
+        userId,
+        { action: "update", description: `System metric "${currentMetric.display_name}" updated` },
+        enqueueItem
+      );
+
+      // Clear optimistic update and refresh
+      setOptimisticUpdates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(metricId);
+        return newMap;
+      });
+      
+      await refreshMetrics(true);
+      invalidateMetricCache(metricId);
+      
+    } catch (error) {
+      // Rollback optimistic update
+      setOptimisticUpdates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(metricId);
+        return newMap;
+      });
+      
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to update metric',
+      }));
+      throw error;
     }
+  }, [tenantId, metricsState.data, enqueueItem, refreshMetrics, invalidateMetricCache]);
 
-    return initialCount - filteredDataPoints.length;
-  }, [getMetric, updateMetric]);
+  const deleteMetric = useCallback(async (id: string, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const exportMetricData = useCallback(async (metricId: string, startDate: string, endDate: string, format: "json" | "csv") => {
-    const metric = await getMetric(metricId);
+    const metric = metricsState.data.find(m => m.id === id);
     if (!metric) throw new Error("Metric not found");
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    const filteredData = metric.data_points.filter(point => {
-      const pointDate = new Date(point.timestamp);
-      return pointDate >= start && pointDate <= end;
-    });
+    // Optimistic removal
+    setMetricsState(prev => ({
+      ...prev,
+      data: prev.data.filter(m => m.id !== id),
+    }));
 
-    let content: string;
-    let mimeType: string;
+    try {
+      // Backend handles ALL deletion business logic
+      await removeWithAudit(
+        tenantId,
+        "system_metrics",
+        id,
+        userId,
+        { action: "delete", description: `System metric "${metric.display_name}" deleted` },
+        enqueueItem
+      );
 
-    if (format === "json") {
-      content = JSON.stringify({
-        metric: {
-          id: metric.id,
-          name: metric.display_name,
-          unit: metric.unit,
-        },
-        data_points: filteredData,
-        exported_at: new Date().toISOString(),
-      }, null, 2);
-      mimeType = "application/json";
-    } else {
-      // CSV format
-      const headers = ["timestamp", "value", "labels", "source"];
-      const csvRows = filteredData.map(point => [
-        point.timestamp,
-        point.value.toString(),
-        JSON.stringify(point.labels || {}),
-        point.source || "",
-      ]);
+      invalidateMetricCache(id);
       
-      content = [headers, ...csvRows]
-        .map(row => row.map(field => `"${field}"`).join(","))
-        .join("\n");
-      mimeType = "text/csv";
+    } catch (error) {
+      // Rollback optimistic deletion
+      setMetricsState(prev => ({
+        ...prev,
+        data: [metric, ...prev.data],
+        error: error instanceof Error ? error.message : 'Failed to delete metric',
+      }));
+      throw error;
     }
+  }, [tenantId, metricsState.data, enqueueItem, invalidateMetricCache]);
 
-    return new Blob([content], { type: mimeType });
-  }, [getMetric]);
+  // ---------------------------------
+  // Simplified Operations
+  // ---------------------------------
+  const recordDataPoint = useCallback(async (
+    metricId: string, 
+    value: number, 
+    labels?: Record<string, string>, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const importMetricData = useCallback(async (metricId: string, data: MetricDataPoint[], userId?: string) => {
-    const metric = await getMetric(metricId);
-    if (!metric) return 0;
+    try {
+      // Backend API handles data point recording and all related business logic
+      const response = await fetch(`/api/metrics/${metricId}/datapoints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value, labels, userId, tenantId }),
+      });
 
-    // Merge with existing data and sort
-    const allDataPoints = [...metric.data_points, ...data]
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 2000); // Keep reasonable limit
+      if (!response.ok) {
+        throw new Error(`Failed to record data point: ${response.statusText}`);
+      }
 
-    const updatedMetric = {
-      ...metric,
-      data_points: allDataPoints,
-      data_points_count: allDataPoints.length,
-      oldest_data_point: allDataPoints[allDataPoints.length - 1]?.timestamp,
-      newest_data_point: allDataPoints[0]?.timestamp,
-      current_value: allDataPoints[0]?.value || metric.current_value,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateMetric(updatedMetric, userId);
-    return data.length;
-  }, [getMetric, updateMetric]);
-
-  // Filtering functions
-  const getMetricsByCategory = useCallback((category: MetricCategory) => {
-    return metrics.filter(m => m.category === category);
-  }, [metrics]);
-
-  const getMetricsByType = useCallback((type: MetricType) => {
-    return metrics.filter(m => m.type === type);
-  }, [metrics]);
-
-  const getMetricsBySource = useCallback((source: string) => {
-    return metrics.filter(m => m.source_system === source);
-  }, [metrics]);
-
-  const getMetricsByAsset = useCallback((assetId: string) => {
-    return metrics.filter(m => m.asset_id === assetId);
-  }, [metrics]);
-
-  const getMetricsByServiceComponent = useCallback((componentId: string) => {
-    return metrics.filter(m => m.service_component_id === componentId);
-  }, [metrics]);
-
-  const getMetricsByBusinessService = useCallback((serviceId: string) => {
-    return metrics.filter(m => m.business_service_id === serviceId);
-  }, [metrics]);
-
-  const getAlertingMetrics = useCallback(() => {
-    return metrics.filter(m => m.alert_enabled === true);
-  }, [metrics]);
-
-  const getFailingMetrics = useCallback(() => {
-    return metrics.filter(m => m.collection_status === "failing");
-  }, [metrics]);
-
-  const getSLAMetrics = useCallback(() => {
-    return metrics.filter(m => m.sla_relevant === true);
-  }, [metrics]);
-
-  const getKPIMetrics = useCallback(() => {
-    return metrics.filter(m => m.kpi_relevant === true);
-  }, [metrics]);
-
-  const getMetricsWithAnomalies = useCallback(() => {
-    return metrics.filter(m => m.anomaly_detected === true);
-  }, [metrics]);
-
-  const searchMetrics = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return metrics.filter(m => 
-      m.name.toLowerCase().includes(lowerQuery) ||
-      m.display_name.toLowerCase().includes(lowerQuery) ||
-      m.description?.toLowerCase().includes(lowerQuery) ||
-      m.source_system.toLowerCase().includes(lowerQuery) ||
-      m.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-      Object.values(m.labels).some(label => label.toLowerCase().includes(lowerQuery))
-    );
-  }, [metrics]);
-
-  const getMetricStats = useCallback((timeframe: "hour" | "day" | "week" | "month" = "day") => {
-    const totalMetrics = metrics.length;
-    const collectingMetrics = metrics.filter(m => m.collection_status === "healthy").length;
-    const failingMetrics = metrics.filter(m => m.collection_status === "failing").length;
-    const alertingMetrics = metrics.filter(m => m.alert_enabled).length;
-    const averageDataQuality = metrics.length > 0 
-      ? metrics.reduce((sum, m) => sum + (m.data_quality_score || 0), 0) / metrics.length 
-      : 0;
-    const anomaliesDetected = metrics.filter(m => m.anomaly_detected).length;
-    const dataPointsCollected = metrics.reduce((sum, m) => sum + m.data_points_count, 0);
-
-    return {
-      totalMetrics,
-      collectingMetrics,
-      failingMetrics,
-      alertingMetrics,
-      averageDataQuality,
-      anomaliesDetected,
-      dataPointsCollected,
-    };
-  }, [metrics]);
-
-  const getTopMetrics = useCallback((criterion: "alerts" | "variance" | "business_impact", limit: number = 10) => {
-    let sortedMetrics: SystemMetric[];
-
-    switch (criterion) {
-      case "alerts":
-        sortedMetrics = [...metrics].sort((a, b) => b.alert_count_24h - a.alert_count_24h);
-        break;
-      case "variance":
-        sortedMetrics = [...metrics].sort((a, b) => (b.anomaly_score || 0) - (a.anomaly_score || 0));
-        break;
-      case "business_impact":
-        const impactOrder = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
-        sortedMetrics = [...metrics].sort((a, b) => 
-          impactOrder[b.business_impact] - impactOrder[a.business_impact]
-        );
-        break;
-      default:
-        sortedMetrics = metrics;
+      // Refresh metric to get updated data
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to record data point',
+      }));
+      throw error;
     }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
 
-    return sortedMetrics.slice(0, limit);
-  }, [metrics]);
+  const addThreshold = useCallback(async (
+    metricId: string, 
+    threshold: Omit<MetricThreshold, 'id'>, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const getMetricTrends = useCallback(() => {
-    const improving = metrics.filter(m => m.trend === "down" && m.business_impact !== "none");
-    const degrading = metrics.filter(m => m.trend === "up" && m.business_impact !== "none");
-    const stable = metrics.filter(m => m.trend === "stable");
+    try {
+      // Backend API handles threshold creation and validation
+      const response = await fetch(`/api/metrics/${metricId}/thresholds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...threshold, userId, tenantId }),
+      });
 
-    return { improving, degrading, stable };
-  }, [metrics]);
+      if (!response.ok) {
+        throw new Error(`Failed to add threshold: ${response.statusText}`);
+      }
 
-  // Initialize
+      // Refresh data
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to add threshold',
+      }));
+      throw error;
+    }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
+
+  const removeThreshold = useCallback(async (
+    metricId: string, 
+    thresholdId: string, 
+    userId?: string
+  ) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    try {
+      // Backend API handles threshold removal
+      const response = await fetch(`/api/metrics/${metricId}/thresholds/${thresholdId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, tenantId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to remove threshold: ${response.statusText}`);
+      }
+
+      // Refresh data
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to remove threshold',
+      }));
+      throw error;
+    }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
+
+  const refreshMetricData = useCallback(async (metricId: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    try {
+      // Trigger backend data refresh
+      const response = await fetch(`/api/metrics/${metricId}/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to refresh metric data: ${response.statusText}`);
+      }
+
+      // Refresh local cache
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to refresh metric data',
+      }));
+      throw error;
+    }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
+
+  const exportMetricData = useCallback(async (
+    metricId: string, 
+    startDate: string, 
+    endDate: string, 
+    format: "json" | "csv"
+  ): Promise<Blob> => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    try {
+      // Backend handles all export logic
+      const response = await fetch(`/api/metrics/${metricId}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate, endDate, format, tenantId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to export metric data: ${response.statusText}`);
+      }
+
+      return await response.blob();
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to export metric data',
+      }));
+      throw error;
+    }
+  }, [tenantId]);
+
+  const triggerBaslineCalculation = useCallback(async (metricId: string, days: number = 30) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    try {
+      // Backend handles baseline calculation business logic
+      const response = await fetch(`/api/metrics/${metricId}/calculate-baseline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days, tenantId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to calculate baseline: ${response.statusText}`);
+      }
+
+      // Refresh data to show updated baseline
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to calculate baseline',
+      }));
+      throw error;
+    }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
+
+  const triggerAnomalyDetection = useCallback(async (metricId: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    try {
+      // Backend handles anomaly detection algorithms
+      const response = await fetch(`/api/metrics/${metricId}/detect-anomalies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to detect anomalies: ${response.statusText}`);
+      }
+
+      // Refresh data to show anomaly results
+      invalidateMetricCache(metricId);
+      await refreshMetrics(true);
+      
+    } catch (error) {
+      setMetricsState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to detect anomalies',
+      }));
+      throw error;
+    }
+  }, [tenantId, invalidateMetricCache, refreshMetrics]);
+
+  // ---------------------------------
+  // UI Helpers (Client-side only, simple filtering)
+  // ---------------------------------
+  const getCurrentMetrics = useCallback(() => {
+    // Apply optimistic updates for immediate UI feedback
+    return metricsState.data.map(metric => {
+      const optimisticUpdate = optimisticUpdates.get(metric.id);
+      return optimisticUpdate ? { ...metric, ...optimisticUpdate } : metric;
+    });
+  }, [metricsState.data, optimisticUpdates]);
+
+  const uiHelpers = useMemo(() => ({
+    filterByCategory: (category: MetricCategory) => 
+      getCurrentMetrics().filter(m => m.category === category),
+    
+    filterByType: (type: MetricType) => 
+      getCurrentMetrics().filter(m => m.type === type),
+    
+    filterByStatus: (status: string) => 
+      getCurrentMetrics().filter(m => m.collection_status === status),
+    
+    filterByHealthStatus: (health: SystemMetric['health_status']) => 
+      getCurrentMetrics().filter(m => m.health_status === health),
+    
+    searchMetrics: (query: string) => {
+      const lowerQuery = query.toLowerCase();
+      return getCurrentMetrics().filter(m => 
+        m.name.toLowerCase().includes(lowerQuery) ||
+        m.display_name.toLowerCase().includes(lowerQuery) ||
+        m.description?.toLowerCase().includes(lowerQuery) ||
+        m.source_system.toLowerCase().includes(lowerQuery) ||
+        m.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
+        Object.values(m.labels).some(label => label.toLowerCase().includes(lowerQuery))
+      );
+    },
+    
+    groupByCategory: () => {
+      const metrics = getCurrentMetrics();
+      return metrics.reduce((groups, metric) => {
+        const category = metric.category;
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(metric);
+        return groups;
+      }, {} as Record<MetricCategory, SystemMetric[]>);
+    },
+    
+    groupBySource: () => {
+      const metrics = getCurrentMetrics();
+      return metrics.reduce((groups, metric) => {
+        const source = metric.source_system;
+        if (!groups[source]) groups[source] = [];
+        groups[source].push(metric);
+        return groups;
+      }, {} as Record<string, SystemMetric[]>);
+    },
+    
+    getAlertingMetrics: () => getCurrentMetrics().filter(m => m.alert_enabled),
+    getFailingMetrics: () => getCurrentMetrics().filter(m => m.collection_status === "failing"),
+    getSLAMetrics: () => getCurrentMetrics().filter(m => m.sla_relevant),
+    getKPIMetrics: () => getCurrentMetrics().filter(m => m.kpi_relevant),
+    getDashboardMetrics: () => getCurrentMetrics().filter(m => m.dashboard_visible),
+    
+    getRecentlyUpdated: (minutes: number = 60) => {
+      const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+      return getCurrentMetrics().filter(m => 
+        m.last_updated_at && new Date(m.last_updated_at) > cutoff
+      );
+    },
+  }), [getCurrentMetrics]);
+
+  const cache = useMemo(() => ({
+    invalidateAll: invalidateCache,
+    invalidateMetric: invalidateMetricCache,
+    getLastRefresh: () => metricsState.lastFetch,
+    isStale: (maxAgeMinutes: number = 5) => isDataStale(metricsState.lastFetch, maxAgeMinutes * 60 * 1000),
+  }), [invalidateCache, invalidateMetricCache, metricsState.lastFetch, isDataStale]);
+
+  const operations: SystemMetricsOperations = useMemo(() => ({
+    addMetric,
+    updateMetric,
+    deleteMetric,
+    recordDataPoint,
+    addThreshold,
+    removeThreshold,
+    refreshMetricData,
+    exportMetricData,
+    triggerBaslineCalculation,
+    triggerAnomalyDetection,
+  }), [
+    addMetric, updateMetric, deleteMetric, recordDataPoint,
+    addThreshold, removeThreshold, refreshMetricData,
+    exportMetricData, triggerBaslineCalculation, triggerAnomalyDetection
+  ]);
+
+  // ---------------------------------
+  // Initialize and Effects
+  // ---------------------------------
   useEffect(() => {
     if (tenantId && globalConfig) {
-      refreshMetrics();
+      refreshMetrics(false); // Use cache if available
+    } else {
+      // Reset state when tenant changes
+      setMetricsState({
+        data: [],
+        loading: false,
+        error: null,
+        lastFetch: null,
+        isStale: false,
+      });
+      setDetailCache(new Map());
+      setOptimisticUpdates(new Map());
     }
   }, [tenantId, globalConfig, refreshMetrics]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      invalidateCache();
+    };
+  }, [invalidateCache]);
 
   return (
     <SystemMetricsContext.Provider
       value={{
-        metrics,
-        addMetric,
-        updateMetric,
-        deleteMetric,
-        refreshMetrics,
-        getMetric,
-        recordDataPoint,
-        addThreshold,
-        updateThreshold,
-        removeThreshold,
-        evaluateThresholds,
-        calculateBaseline,
-        detectAnomalies,
-        aggregateMetric,
-        cleanupOldData,
-        exportMetricData,
-        importMetricData,
-        getMetricsByCategory,
-        getMetricsByType,
-        getMetricsBySource,
-        getMetricsByAsset,
-        getMetricsByServiceComponent,
-        getMetricsByBusinessService,
-        getAlertingMetrics,
-        getFailingMetrics,
-        getSLAMetrics,
-        getKPIMetrics,
-        getMetricsWithAnomalies,
-        searchMetrics,
-        getMetricStats,
-        getTopMetrics,
-        getMetricTrends,
+        metrics: metricsState,
+        getMetricState,
+        operations,
+        uiHelpers,
         config,
+        cache,
       }}
     >
       {children}
@@ -804,7 +900,7 @@ export const SystemMetricsProvider = ({ children }: { children: ReactNode }) => 
 };
 
 // ---------------------------------
-// 4. Hooks
+// 7. Frontend-Focused Hooks
 // ---------------------------------
 export const useSystemMetrics = () => {
   const ctx = useContext(SystemMetricsContext);
@@ -813,32 +909,35 @@ export const useSystemMetrics = () => {
 };
 
 export const useSystemMetricDetails = (id: string) => {
-  const { metrics } = useSystemMetrics();
-  return metrics.find((m) => m.id === id) || null;
+  const { getMetricState } = useSystemMetrics();
+  return getMetricState(id);
 };
 
-// Utility hooks
+// Specialized hooks for common UI patterns
 export const useMetricsByCategory = (category: MetricCategory) => {
-  const { getMetricsByCategory } = useSystemMetrics();
-  return getMetricsByCategory(category);
+  const { uiHelpers } = useSystemMetrics();
+  return useMemo(() => uiHelpers.filterByCategory(category), [uiHelpers, category]);
 };
 
 export const useAlertingMetrics = () => {
-  const { getAlertingMetrics } = useSystemMetrics();
-  return getAlertingMetrics();
+  const { uiHelpers } = useSystemMetrics();
+  return useMemo(() => uiHelpers.getAlertingMetrics(), [uiHelpers]);
 };
 
 export const useFailingMetrics = () => {
-  const { getFailingMetrics } = useSystemMetrics();
-  return getFailingMetrics();
+  const { uiHelpers } = useSystemMetrics();
+  return useMemo(() => uiHelpers.getFailingMetrics(), [uiHelpers]);
 };
 
-export const useMetricStats = (timeframe?: "hour" | "day" | "week" | "month") => {
-  const { getMetricStats } = useSystemMetrics();
-  return getMetricStats(timeframe);
+export const useMetricSearch = (query: string) => {
+  const { uiHelpers } = useSystemMetrics();
+  return useMemo(() => 
+    query.trim() ? uiHelpers.searchMetrics(query) : [], 
+    [uiHelpers, query]
+  );
 };
 
-export const useTopMetrics = (criterion: "alerts" | "variance" | "business_impact", limit?: number) => {
-  const { getTopMetrics } = useSystemMetrics();
-  return getTopMetrics(criterion, limit);
+export const useMetricsGroupedByCategory = () => {
+  const { uiHelpers } = useSystemMetrics();
+  return useMemo(() => uiHelpers.groupByCategory(), [uiHelpers]);
 };

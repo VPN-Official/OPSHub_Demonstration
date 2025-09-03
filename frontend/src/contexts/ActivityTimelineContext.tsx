@@ -6,17 +6,13 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
-import { 
-  getAll,
-  getById,
-  putWithAudit,
-} from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend-Only Type Definitions
 // ---------------------------------
 export type ActivityType =
   | "incident"
@@ -67,318 +63,488 @@ export interface ActivityEvent {
   storeName: string;
   recordId: string;
   action: ActivityAction;
-
-  // Actor information (who performed the action)
-  user_id?: string | null;
-  team_id?: string | null;
-  ai_agent_id?: string | null;
-  automation_rule_id?: string | null;
-  source_system?: string; // "web_ui", "api", "mobile", "automation"
-
-  // Context and relationships
   entity_type: ActivityType;
   entity_name?: string;
   parent_entity_type?: ActivityType;
   parent_entity_id?: string;
-
-  // Change tracking
+  user_id?: string | null;
+  team_id?: string | null;
+  ai_agent_id?: string | null;
+  automation_rule_id?: string | null;
+  source_system?: string;
   field_changes?: Array<{
     field: string;
     old_value?: any;
     new_value?: any;
   }>;
-
-  // Business context
   business_service_id?: string;
   customer_id?: string;
   cost_center_id?: string;
   priority?: "low" | "normal" | "high" | "critical";
-
-  // Session and device info
   session_id?: string;
   ip_address?: string;
   user_agent?: string;
   device_type?: "desktop" | "mobile" | "tablet" | "api";
-
-  // Performance metrics
   execution_time_ms?: number;
   success: boolean;
   error_message?: string;
-
-  // Metadata
   tags: string[];
   metadata?: Record<string, any>;
-  correlation_id?: string; // For grouping related activities
+  correlation_id?: string;
+}
+
+/**
+ * Frontend async state wrapper for better UX
+ */
+interface AsyncState<T> {
+  data: T;
+  loading: boolean;
+  error: string | null;
+  lastFetch: number | null;
+  stale: boolean;
+}
+
+/**
+ * UI-focused filter interface for client-side responsiveness
+ */
+interface ActivityFilters {
+  entityId?: string;
+  entityType?: ActivityType;
+  userId?: string;
+  action?: ActivityAction;
+  businessServiceId?: string;
+  customerId?: string;
+  startDate?: string;
+  endDate?: string;
+  success?: boolean;
+  correlationId?: string;
+  searchQuery?: string;
+}
+
+/**
+ * Request interface for creating activities
+ */
+interface CreateActivityRequest {
+  storeName: string;
+  recordId: string;
+  entity_type: ActivityType;
+  entity_name?: string;
+  action: ActivityAction;
+  message?: string;
+  user_id?: string;
+  team_id?: string;
+  ai_agent_id?: string;
+  automation_rule_id?: string;
+  source_system?: string;
+  field_changes?: Array<{ field: string; old_value?: any; new_value?: any }>;
+  business_service_id?: string;
+  customer_id?: string;
+  cost_center_id?: string;
+  priority?: "low" | "normal" | "high" | "critical";
+  session_id?: string;
+  ip_address?: string;
+  user_agent?: string;
+  device_type?: "desktop" | "mobile" | "tablet" | "api";
+  execution_time_ms?: number;
+  success?: boolean;
+  error_message?: string;
+  tags?: string[];
+  metadata?: Record<string, any>;
+  correlation_id?: string;
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 2. API Client Layer (Thin Wrappers)
+// ---------------------------------
+class ActivityTimelineAPI {
+  private baseUrl = '/api/activity-timeline';
+
+  async getActivities(tenantId: string, filters?: ActivityFilters): Promise<ActivityEvent[]> {
+    const queryParams = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          queryParams.append(key, String(value));
+        }
+      });
+    }
+    
+    const url = `${this.baseUrl}/${tenantId}${queryParams.toString() ? `?${queryParams}` : ''}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch activities: ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+
+  async createActivity(tenantId: string, activity: CreateActivityRequest): Promise<ActivityEvent> {
+    const response = await fetch(`${this.baseUrl}/${tenantId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(activity),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create activity: ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+
+  async getActivityStats(tenantId: string, timeframe: "day" | "week" | "month") {
+    const response = await fetch(`${this.baseUrl}/${tenantId}/stats?timeframe=${timeframe}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch activity stats: ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+
+  async cleanupOldActivities(tenantId: string, olderThanDays: number): Promise<{ deletedCount: number }> {
+    const response = await fetch(`${this.baseUrl}/${tenantId}/cleanup`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ olderThanDays }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to cleanup activities: ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+}
+
+// ---------------------------------
+// 3. Frontend Context Interface
 // ---------------------------------
 interface ActivityTimelineContextType {
-  activities: ActivityEvent[];
-  addActivity: (activity: Omit<ActivityEvent, "id" | "timestamp" | "tenantId">) => Promise<void>;
-  refreshActivities: () => Promise<void>;
+  // Core state
+  activities: AsyncState<ActivityEvent[]>;
   
-  // Filtering and querying
-  getActivitiesByEntity: (entityId: string, entityType: ActivityType) => ActivityEvent[];
-  getActivitiesByUser: (userId: string) => ActivityEvent[];
-  getActivitiesByAction: (action: ActivityAction) => ActivityEvent[];
-  getActivitiesByDateRange: (startDate: string, endDate: string) => ActivityEvent[];
-  getActivitiesByBusinessService: (serviceId: string) => ActivityEvent[];
-  getActivitiesByCustomer: (customerId: string) => ActivityEvent[];
-  getRecentActivities: (limit?: number) => ActivityEvent[];
-  getFailedActivities: () => ActivityEvent[];
-  getActivitiesByCorrelation: (correlationId: string) => ActivityEvent[];
+  // Data operations
+  addActivity: (activity: CreateActivityRequest) => Promise<void>;
+  refreshActivities: (filters?: ActivityFilters) => Promise<void>;
   
-  // Search and analysis
-  searchActivities: (query: string) => ActivityEvent[];
-  getActivityStats: (timeframe: "day" | "week" | "month") => {
-    totalActivities: number;
-    uniqueUsers: number;
-    topActions: Array<{ action: string; count: number }>;
-    successRate: number;
-    avgExecutionTime: number;
-  };
+  // UI-focused client-side helpers (for immediate responsiveness)
+  getFilteredActivities: (filters: ActivityFilters) => ActivityEvent[];
+  searchActivities: (query: string, activities?: ActivityEvent[]) => ActivityEvent[];
   
-  // Cleanup operations
-  cleanupOldActivities: (olderThanDays: number) => Promise<number>;
+  // Cache and performance
+  invalidateCache: () => void;
+  isStale: boolean;
+  
+  // Optimistic updates
+  addOptimisticActivity: (activity: CreateActivityRequest) => string; // returns temp ID
+  removeOptimisticActivity: (tempId: string) => void;
+  
+  // Backend operations (delegated)
+  getStats: (timeframe: "day" | "week" | "month") => Promise<any>;
+  cleanupOld: (olderThanDays: number) => Promise<number>;
 }
 
 const ActivityTimelineContext = createContext<ActivityTimelineContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 4. Provider Implementation
 // ---------------------------------
 export const ActivityTimelineProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const [activities, setActivities] = useState<ActivityEvent[]>([]);
-
-  const refreshActivities = useCallback(async () => {
+  
+  // Core state with AsyncState pattern
+  const [activities, setActivities] = useState<AsyncState<ActivityEvent[]>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: false,
+  });
+  
+  // Optimistic updates state
+  const [optimisticActivities, setOptimisticActivities] = useState<Map<string, CreateActivityRequest>>(new Map());
+  
+  // Cache configuration (frontend performance only)
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  const api = useMemo(() => new ActivityTimelineAPI(), []);
+  
+  /**
+   * Check if data is stale based on TTL
+   */
+  const isStale = useMemo(() => {
+    if (!activities.lastFetch) return true;
+    return Date.now() - activities.lastFetch > CACHE_TTL;
+  }, [activities.lastFetch]);
+  
+  /**
+   * Refresh activities from backend
+   */
+  const refreshActivities = useCallback(async (filters?: ActivityFilters) => {
     if (!tenantId) return;
     
+    setActivities(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      const all = await getAll<ActivityEvent>(tenantId, "activity_timeline");
+      const data = await api.getActivities(tenantId, filters);
       
-      // Sort by timestamp (newest first)
-      all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      setActivities(all);
+      setActivities({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: Date.now(),
+        stale: false,
+      });
     } catch (error) {
-      console.error("Failed to refresh activities:", error);
+      setActivities(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch activities',
+        stale: true,
+      }));
     }
-  }, [tenantId]);
-
-  const addActivity = useCallback(async (
-    activityData: Omit<ActivityEvent, "id" | "timestamp" | "tenantId">
-  ) => {
+  }, [tenantId, api]);
+  
+  /**
+   * Add optimistic activity for immediate UI feedback
+   */
+  const addOptimisticActivity = useCallback((activity: CreateActivityRequest): string => {
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setOptimisticActivities(prev => new Map(prev).set(tempId, activity));
+    return tempId;
+  }, []);
+  
+  /**
+   * Remove optimistic activity
+   */
+  const removeOptimisticActivity = useCallback((tempId: string) => {
+    setOptimisticActivities(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(tempId);
+      return newMap;
+    });
+  }, []);
+  
+  /**
+   * Add activity with optimistic updates
+   */
+  const addActivity = useCallback(async (activity: CreateActivityRequest) => {
     if (!tenantId) return;
-
-    const now = new Date().toISOString();
-    const activity: ActivityEvent = {
-      id: crypto.randomUUID(),
-      timestamp: now,
-      tenantId,
-      tags: [],
-      success: true,
-      ...activityData,
-    };
-
+    
+    // Optimistic update for immediate UI feedback
+    const tempId = addOptimisticActivity(activity);
+    
     try {
-      // Store in database with audit trail
-      await putWithAudit(
-        tenantId,
-        "activity_timeline",
-        activity,
-        activity.user_id || undefined,
-        {
-          action: "create",
-          description: `Activity logged: ${activity.action} on ${activity.entity_type}`,
-          tags: ["activity", "timeline", activity.action, activity.entity_type],
-          metadata: {
-            entity_id: activity.recordId,
-            entity_type: activity.entity_type,
-            actor_type: activity.user_id ? "user" : 
-                       activity.ai_agent_id ? "ai_agent" : 
-                       activity.automation_rule_id ? "automation" : "system",
-            source_system: activity.source_system,
-            success: activity.success,
-          },
-        }
-      );
-
-      // Add to local state
-      setActivities(prev => [activity, ...prev]);
-
+      // Backend handles all business logic, validation, and persistence
+      const newActivity = await api.createActivity(tenantId, activity);
+      
+      // Remove optimistic update
+      removeOptimisticActivity(tempId);
+      
+      // Add real activity to state
+      setActivities(prev => ({
+        ...prev,
+        data: [newActivity, ...prev.data],
+      }));
+      
       // Enqueue for sync
       await enqueueItem({
         storeName: "activity_timeline",
-        entityId: activity.id,
+        entityId: newActivity.id,
         action: "create",
-        payload: activity,
+        payload: newActivity,
         priority: activity.priority === 'critical' ? 'high' : 'low',
       });
-
+      
     } catch (error) {
-      console.error("Failed to add activity:", error);
+      // Remove optimistic update on failure
+      removeOptimisticActivity(tempId);
+      
+      // Set error state
+      setActivities(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to create activity',
+      }));
+      
+      throw error; // Re-throw for caller to handle
     }
-  }, [tenantId, enqueueItem]);
-
-  // Filtering functions
-  const getActivitiesByEntity = useCallback((entityId: string, entityType: ActivityType) => {
-    return activities.filter(a => a.recordId === entityId && a.entity_type === entityType);
-  }, [activities]);
-
-  const getActivitiesByUser = useCallback((userId: string) => {
-    return activities.filter(a => a.user_id === userId);
-  }, [activities]);
-
-  const getActivitiesByAction = useCallback((action: ActivityAction) => {
-    return activities.filter(a => a.action === action);
-  }, [activities]);
-
-  const getActivitiesByDateRange = useCallback((startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+  }, [tenantId, api, enqueueItem, addOptimisticActivity, removeOptimisticActivity]);
+  
+  /**
+   * Simple client-side filtering for UI responsiveness
+   * Note: Complex business filtering should be done on backend
+   */
+  const getFilteredActivities = useCallback((filters: ActivityFilters): ActivityEvent[] => {
+    let filtered = activities.data;
     
-    return activities.filter(a => {
-      const activityDate = new Date(a.timestamp);
-      return activityDate >= start && activityDate <= end;
-    });
-  }, [activities]);
-
-  const getActivitiesByBusinessService = useCallback((serviceId: string) => {
-    return activities.filter(a => a.business_service_id === serviceId);
-  }, [activities]);
-
-  const getActivitiesByCustomer = useCallback((customerId: string) => {
-    return activities.filter(a => a.customer_id === customerId);
-  }, [activities]);
-
-  const getRecentActivities = useCallback((limit: number = 50) => {
-    return activities.slice(0, limit);
-  }, [activities]);
-
-  const getFailedActivities = useCallback(() => {
-    return activities.filter(a => !a.success);
-  }, [activities]);
-
-  const getActivitiesByCorrelation = useCallback((correlationId: string) => {
-    return activities.filter(a => a.correlation_id === correlationId);
-  }, [activities]);
-
-  const searchActivities = useCallback((query: string) => {
+    // Basic UI filters for immediate responsiveness
+    if (filters.entityId) {
+      filtered = filtered.filter(a => a.recordId === filters.entityId);
+    }
+    
+    if (filters.entityType) {
+      filtered = filtered.filter(a => a.entity_type === filters.entityType);
+    }
+    
+    if (filters.userId) {
+      filtered = filtered.filter(a => a.user_id === filters.userId);
+    }
+    
+    if (filters.action) {
+      filtered = filtered.filter(a => a.action === filters.action);
+    }
+    
+    if (filters.businessServiceId) {
+      filtered = filtered.filter(a => a.business_service_id === filters.businessServiceId);
+    }
+    
+    if (filters.customerId) {
+      filtered = filtered.filter(a => a.customer_id === filters.customerId);
+    }
+    
+    if (filters.success !== undefined) {
+      filtered = filtered.filter(a => a.success === filters.success);
+    }
+    
+    if (filters.correlationId) {
+      filtered = filtered.filter(a => a.correlation_id === filters.correlationId);
+    }
+    
+    // Simple date range filtering
+    if (filters.startDate || filters.endDate) {
+      filtered = filtered.filter(a => {
+        const activityDate = new Date(a.timestamp);
+        if (filters.startDate && activityDate < new Date(filters.startDate)) return false;
+        if (filters.endDate && activityDate > new Date(filters.endDate)) return false;
+        return true;
+      });
+    }
+    
+    return filtered;
+  }, [activities.data]);
+  
+  /**
+   * Simple client-side search for immediate UI feedback
+   * Note: Advanced search should be handled by backend
+   */
+  const searchActivities = useCallback((query: string, activitiesToSearch?: ActivityEvent[]): ActivityEvent[] => {
+    const searchTarget = activitiesToSearch || activities.data;
+    
+    if (!query.trim()) return searchTarget;
+    
     const lowerQuery = query.toLowerCase();
-    return activities.filter(a => 
+    return searchTarget.filter(a => 
       a.message.toLowerCase().includes(lowerQuery) ||
       a.entity_type.toLowerCase().includes(lowerQuery) ||
       a.action.toLowerCase().includes(lowerQuery) ||
-      a.storeName.toLowerCase().includes(lowerQuery) ||
       a.recordId.toLowerCase().includes(lowerQuery) ||
       a.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
       (a.entity_name && a.entity_name.toLowerCase().includes(lowerQuery)) ||
       (a.error_message && a.error_message.toLowerCase().includes(lowerQuery))
     );
-  }, [activities]);
-
-  const getActivityStats = useCallback((timeframe: "day" | "week" | "month") => {
-    const now = new Date();
-    let startDate: Date;
+  }, [activities.data]);
+  
+  /**
+   * Get stats from backend (all business logic handled there)
+   */
+  const getStats = useCallback(async (timeframe: "day" | "week" | "month") => {
+    if (!tenantId) throw new Error('No tenant ID');
+    return api.getActivityStats(tenantId, timeframe);
+  }, [tenantId, api]);
+  
+  /**
+   * Cleanup old activities (backend handles the logic)
+   */
+  const cleanupOld = useCallback(async (olderThanDays: number): Promise<number> => {
+    if (!tenantId) throw new Error('No tenant ID');
     
-    switch (timeframe) {
-      case "day":
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case "week":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case "month":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-    }
+    const result = await api.cleanupOldActivities(tenantId, olderThanDays);
     
-    const filteredActivities = activities.filter(a => new Date(a.timestamp) >= startDate);
-    const uniqueUsers = new Set(filteredActivities.map(a => a.user_id).filter(Boolean)).size;
+    // Refresh local cache after cleanup
+    await refreshActivities();
     
-    // Count actions
-    const actionCounts = filteredActivities.reduce((acc, activity) => {
-      acc[activity.action] = (acc[activity.action] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    return result.deletedCount;
+  }, [tenantId, api, refreshActivities]);
+  
+  /**
+   * Invalidate cache and mark data as stale
+   */
+  const invalidateCache = useCallback(() => {
+    setActivities(prev => ({
+      ...prev,
+      stale: true,
+      lastFetch: null,
+    }));
+  }, []);
+  
+  /**
+   * Combine real activities with optimistic ones for UI display
+   */
+  const combinedActivities = useMemo(() => {
+    const optimisticArray = Array.from(optimisticActivities.entries()).map(([tempId, activity]) => ({
+      id: tempId,
+      timestamp: new Date().toISOString(),
+      tenantId: tenantId || '',
+      message: activity.message || `${activity.action} ${activity.entity_type} ${activity.recordId}`,
+      tags: activity.tags || [],
+      success: activity.success ?? true,
+      ...activity,
+    } as ActivityEvent));
     
-    const topActions = Object.entries(actionCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([action, count]) => ({ action, count }));
-    
-    const successfulActivities = filteredActivities.filter(a => a.success);
-    const successRate = filteredActivities.length > 0 ? 
-      (successfulActivities.length / filteredActivities.length) * 100 : 0;
-    
-    const activitiesWithTime = filteredActivities.filter(a => a.execution_time_ms !== undefined);
-    const avgExecutionTime = activitiesWithTime.length > 0 ?
-      activitiesWithTime.reduce((sum, a) => sum + (a.execution_time_ms || 0), 0) / activitiesWithTime.length : 0;
-    
-    return {
-      totalActivities: filteredActivities.length,
-      uniqueUsers,
-      topActions,
-      successRate,
-      avgExecutionTime,
-    };
-  }, [activities]);
-
-  const cleanupOldActivities = useCallback(async (olderThanDays: number): Promise<number> => {
-    if (!tenantId) return 0;
-    
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
-    
-    const oldActivities = activities.filter(a => new Date(a.timestamp) < cutoffDate);
-    
-    if (oldActivities.length === 0) return 0;
-    
-    try {
-      // Note: In a real implementation, you'd use a batch delete operation
-      // For now, we'll just remove from local state and let sync handle it
-      const remainingActivities = activities.filter(a => new Date(a.timestamp) >= cutoffDate);
-      setActivities(remainingActivities);
-      
-      console.log(`Cleaned up ${oldActivities.length} old activity records`);
-      return oldActivities.length;
-    } catch (error) {
-      console.error("Failed to cleanup old activities:", error);
-      return 0;
-    }
-  }, [tenantId, activities]);
-
-  // Initialize
+    // Merge and sort (optimistic first for immediate feedback)
+    return [...optimisticArray, ...activities.data].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [activities.data, optimisticActivities, tenantId]);
+  
+  // Update activities state with combined data
+  const activitiesWithOptimistic = useMemo(() => ({
+    ...activities,
+    data: combinedActivities,
+  }), [activities, combinedActivities]);
+  
+  // Initialize on tenant change
   useEffect(() => {
     if (tenantId) {
       refreshActivities();
     } else {
-      setActivities([]);
+      setActivities({
+        data: [],
+        loading: false,
+        error: null,
+        lastFetch: null,
+        stale: false,
+      });
     }
   }, [tenantId, refreshActivities]);
-
+  
+  // Auto-refresh stale data
+  useEffect(() => {
+    if (isStale && !activities.loading && tenantId) {
+      refreshActivities();
+    }
+  }, [isStale, activities.loading, tenantId, refreshActivities]);
+  
   return (
     <ActivityTimelineContext.Provider
       value={{
-        activities,
+        activities: activitiesWithOptimistic,
         addActivity,
         refreshActivities,
-        getActivitiesByEntity,
-        getActivitiesByUser,
-        getActivitiesByAction,
-        getActivitiesByDateRange,
-        getActivitiesByBusinessService,
-        getActivitiesByCustomer,
-        getRecentActivities,
-        getFailedActivities,
-        getActivitiesByCorrelation,
+        getFilteredActivities,
         searchActivities,
-        getActivityStats,
-        cleanupOldActivities,
+        invalidateCache,
+        isStale,
+        addOptimisticActivity,
+        removeOptimisticActivity,
+        getStats,
+        cleanupOld,
       }}
     >
       {children}
@@ -387,7 +553,7 @@ export const ActivityTimelineProvider = ({ children }: { children: ReactNode }) 
 };
 
 // ---------------------------------
-// 4. Hooks
+// 5. Hooks for UI Components
 // ---------------------------------
 export const useActivityTimeline = () => {
   const ctx = useContext(ActivityTimelineContext);
@@ -395,32 +561,95 @@ export const useActivityTimeline = () => {
   return ctx;
 };
 
+/**
+ * Hook for entity-specific activities with local filtering
+ */
 export const useEntityActivities = (entityId: string, entityType: ActivityType) => {
-  const { getActivitiesByEntity } = useActivityTimeline();
-  return getActivitiesByEntity(entityId, entityType);
+  const { getFilteredActivities, activities } = useActivityTimeline();
+  
+  return useMemo(() => 
+    getFilteredActivities({ entityId, entityType }),
+    [getFilteredActivities, entityId, entityType, activities.data, activities.lastFetch]
+  );
 };
 
+/**
+ * Hook for user-specific activities with local filtering
+ */
 export const useUserActivities = (userId: string) => {
-  const { getActivitiesByUser } = useActivityTimeline();
-  return getActivitiesByUser(userId);
+  const { getFilteredActivities, activities } = useActivityTimeline();
+  
+  return useMemo(() => 
+    getFilteredActivities({ userId }),
+    [getFilteredActivities, userId, activities.data, activities.lastFetch]
+  );
 };
 
-export const useRecentActivity = (limit: number = 10) => {
-  const { getRecentActivities } = useActivityTimeline();
-  return getRecentActivities(limit);
+/**
+ * Hook for recent activities with limit (UI-only slicing)
+ */
+export const useRecentActivities = (limit: number = 10) => {
+  const { activities } = useActivityTimeline();
+  
+  return useMemo(() => 
+    activities.data.slice(0, limit),
+    [activities.data, limit, activities.lastFetch]
+  );
 };
 
+/**
+ * Hook for activity stats (delegates to backend)
+ */
 export const useActivityStats = (timeframe: "day" | "week" | "month" = "week") => {
-  const { getActivityStats } = useActivityTimeline();
-  return getActivityStats(timeframe);
+  const { getStats } = useActivityTimeline();
+  const [stats, setStats] = useState<AsyncState<any>>({
+    data: null,
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
+  
+  const fetchStats = useCallback(async () => {
+    setStats(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      const data = await getStats(timeframe);
+      setStats({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: Date.now(),
+        stale: false,
+      });
+    } catch (error) {
+      setStats(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch stats',
+        stale: true,
+      }));
+    }
+  }, [getStats, timeframe]);
+  
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+  
+  return { ...stats, refresh: fetchStats };
 };
 
-// Activity creation helper hook
+/**
+ * Activity creation helper hook with optimistic updates
+ */
 export const useCreateActivity = () => {
   const { addActivity } = useActivityTimeline();
   
   return {
-    logUserAction: (params: {
+    /**
+     * Log user action with immediate UI feedback
+     */
+    logUserAction: useCallback(async (params: {
       action: ActivityAction;
       entityType: ActivityType;
       entityId: string;
@@ -436,13 +665,13 @@ export const useCreateActivity = () => {
       executionTime?: number;
       correlationId?: string;
     }) => {
-      return addActivity({
+      const activity: CreateActivityRequest = {
         storeName: params.entityType,
         recordId: params.entityId,
         entity_type: params.entityType,
         entity_name: params.entityName,
         action: params.action,
-        message: params.message || `${params.action} ${params.entityType} ${params.entityId}`,
+        message: params.message,
         user_id: params.userId,
         business_service_id: params.businessServiceId,
         customer_id: params.customerId,
@@ -454,10 +683,15 @@ export const useCreateActivity = () => {
         correlation_id: params.correlationId,
         success: true,
         tags: [params.action, params.entityType],
-      });
-    },
+      };
+      
+      return addActivity(activity);
+    }, [addActivity]),
     
-    logSystemAction: (params: {
+    /**
+     * Log system action with immediate UI feedback
+     */
+    logSystemAction: useCallback(async (params: {
       action: ActivityAction;
       entityType: ActivityType;
       entityId: string;
@@ -469,7 +703,7 @@ export const useCreateActivity = () => {
       executionTime?: number;
       correlationId?: string;
     }) => {
-      return addActivity({
+      const activity: CreateActivityRequest = {
         storeName: params.entityType,
         recordId: params.entityId,
         entity_type: params.entityType,
@@ -483,7 +717,9 @@ export const useCreateActivity = () => {
         error_message: params.errorMessage,
         correlation_id: params.correlationId,
         tags: [params.action, params.entityType, "automated"],
-      });
-    },
+      };
+      
+      return addActivity(activity);
+    }, [addActivity]),
   };
 };

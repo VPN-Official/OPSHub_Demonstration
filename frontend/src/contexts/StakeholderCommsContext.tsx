@@ -1,4 +1,4 @@
-// src/contexts/StakeholderCommsContext.tsx
+// src/contexts/StakeholderCommsContext.tsx - REFACTORED FOR ENTERPRISE FRONTEND ARCHITECTURE
 import React, {
   createContext,
   useContext,
@@ -6,6 +6,8 @@ import React, {
   useEffect,
   ReactNode,
   useCallback,
+  useMemo,
+  useRef,
 } from "react";
 import { 
   getAll,
@@ -18,56 +20,29 @@ import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Core Types (Domain Models)
 // ---------------------------------
 export type CommChannel = 
-  | "email" 
-  | "sms" 
-  | "chat" 
-  | "portal" 
-  | "phone" 
-  | "push_notification"
-  | "slack"
-  | "teams"
-  | "webhook"
-  | "api"
-  | "other";
+  | "email" | "sms" | "chat" | "portal" | "phone" 
+  | "push_notification" | "slack" | "teams" | "webhook" | "api" | "other";
 
 export type CommAudience =
-  | "executive"
-  | "business_user"
-  | "customer"
-  | "vendor"
-  | "internal_it"
-  | "end_user"
-  | "stakeholder"
-  | "media"
-  | "regulatory"
-  | "other";
+  | "executive" | "business_user" | "customer" | "vendor" 
+  | "internal_it" | "end_user" | "stakeholder" | "media" | "regulatory" | "other";
 
 export type CommStatus = 
-  | "draft" 
-  | "scheduled" 
-  | "sent" 
-  | "delivered" 
-  | "read" 
-  | "failed" 
-  | "cancelled";
+  | "draft" | "scheduled" | "sent" | "delivered" | "read" | "failed" | "cancelled";
 
-export type CommPriority = 
-  | "low" 
-  | "normal" 
-  | "high" 
-  | "urgent";
+export type CommPriority = "low" | "normal" | "high" | "urgent";
 
 export interface CommRecipient {
   id: string;
   name?: string;
   email?: string;
   phone?: string;
-  user_id?: string | null;     // FK → UsersContext
-  end_user_id?: string | null; // FK → EndUsersContext
-  customer_id?: string | null; // FK → CustomersContext
+  user_id?: string | null;
+  end_user_id?: string | null;
+  customer_id?: string | null;
   role?: string;
   department?: string;
   delivery_status?: "pending" | "delivered" | "bounced" | "read" | "failed";
@@ -83,14 +58,14 @@ export interface CommTemplate {
   body_template: string;
   channel: CommChannel;
   audience: CommAudience;
-  variables: string[];  // List of template variables like {{incident_id}}, {{customer_name}}
+  variables: string[];
 }
 
 export interface StakeholderComm {
   id: string;
   related_entity_type: "incident" | "change" | "problem" | "maintenance" | "alert" | "other";
-  related_entity_id: string;      // FK to Incident/Change/Problem/Maintenance
-  entity_name?: string;            // Cached name for display
+  related_entity_id: string;
+  entity_name?: string;
   audience: CommAudience;
   channel: CommChannel;
   priority: CommPriority;
@@ -100,51 +75,51 @@ export interface StakeholderComm {
   scheduled_at?: string | null;
   sent_at?: string | null;
 
-  // Message content
+  // Content
   subject: string;
   message: string;
-  template_id?: string | null;     // FK → CommTemplate
-  personalized: boolean;          // Whether message was personalized per recipient
+  template_id?: string | null;
+  personalized: boolean;
 
-  // Actor information
-  sender_user_id?: string | null;   // FK → UsersContext
-  sender_team_id?: string | null;   // FK → TeamsContext
-  automation_rule_id?: string | null; // FK → AutomationRulesContext (for automated comms)
-  ai_agent_id?: string | null;     // FK → AiAgentsContext
+  // Actors
+  sender_user_id?: string | null;
+  sender_team_id?: string | null;
+  automation_rule_id?: string | null;
+  ai_agent_id?: string | null;
 
-  // Recipients and delivery
+  // Recipients & Delivery
   recipients: CommRecipient[];
   total_recipients: number;
   successful_deliveries: number;
   failed_deliveries: number;
   read_count: number;
 
-  // Business context
+  // Business Context
   business_service_id?: string | null;
   customer_id?: string | null;
   cost_center_id?: string | null;
   is_public_facing: boolean;
   regulatory_required?: boolean;
 
-  // Approval workflow
+  // Approval Workflow
   requires_approval: boolean;
   approval_status?: "pending" | "approved" | "rejected";
   approved_by?: string | null;
   approved_at?: string | null;
   rejection_reason?: string;
 
-  // Delivery settings
+  // Delivery Settings
   retry_count: number;
   max_retries: number;
   retry_delay_minutes: number;
   delivery_window?: {
-    start_time?: string; // HH:MM format
-    end_time?: string;   // HH:MM format
+    start_time?: string;
+    end_time?: string;
     timezone?: string;
     business_days_only?: boolean;
   };
 
-  // Tracking and analytics
+  // Analytics
   opened_count?: number;
   clicked_count?: number;
   response_count?: number;
@@ -162,576 +137,858 @@ export interface StakeholderComm {
   tenantId?: string;
 }
 
-export interface CommDetails extends StakeholderComm {
-  sender?: any;
-  template?: CommTemplate;
-  related_entity?: any;
-  business_service?: any;
+// ---------------------------------
+// 2. AsyncState Interface for UI State Management
+// ---------------------------------
+export interface AsyncState<T> {
+  data: T[];
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+interface CacheConfig {
+  ttl: number; // Time to live in milliseconds
+  maxSize: number;
+}
+
+interface UIFilters {
+  status?: CommStatus[];
+  channel?: CommChannel[];
+  audience?: CommAudience[];
+  priority?: CommPriority[];
+  search?: string;
+  entityId?: string;
+  entityType?: string;
+  dateRange?: {
+    start: string;
+    end: string;
+  };
+}
+
+interface OptimisticUpdate<T> {
+  id: string;
+  type: 'create' | 'update' | 'delete';
+  entity: T;
+  timestamp: string;
 }
 
 // ---------------------------------
-// 2. Context Interface
+// 3. UI-Focused Context Interface
 // ---------------------------------
 interface StakeholderCommsContextType {
-  communications: StakeholderComm[];
-  templates: CommTemplate[];
+  // Async State Management
+  communications: AsyncState<StakeholderComm>;
+  templates: AsyncState<CommTemplate>;
   
-  // Communication operations
-  addCommunication: (comm: StakeholderComm, userId?: string) => Promise<void>;
-  updateCommunication: (comm: StakeholderComm, userId?: string) => Promise<void>;
+  // API Operations (thin wrappers)
+  createCommunication: (comm: Partial<StakeholderComm>, userId?: string) => Promise<StakeholderComm>;
+  updateCommunication: (id: string, updates: Partial<StakeholderComm>, userId?: string) => Promise<StakeholderComm>;
   deleteCommunication: (id: string, userId?: string) => Promise<void>;
-  refreshCommunications: () => Promise<void>;
-  getCommunication: (id: string) => Promise<StakeholderComm | undefined>;
-
-  // Template operations
-  addTemplate: (template: CommTemplate, userId?: string) => Promise<void>;
-  updateTemplate: (template: CommTemplate, userId?: string) => Promise<void>;
+  getCommunication: (id: string) => Promise<StakeholderComm | null>;
+  
+  createTemplate: (template: Partial<CommTemplate>, userId?: string) => Promise<CommTemplate>;
+  updateTemplate: (id: string, updates: Partial<CommTemplate>, userId?: string) => Promise<CommTemplate>;
   deleteTemplate: (id: string, userId?: string) => Promise<void>;
-  refreshTemplates: () => Promise<void>;
-  getTemplate: (id: string) => Promise<CommTemplate | undefined>;
+  getTemplate: (id: string) => Promise<CommTemplate | null>;
 
-  // Communication-specific operations
-  sendCommunication: (commId: string, userId?: string) => Promise<void>;
-  scheduleCommunication: (commId: string, scheduledAt: string, userId?: string) => Promise<void>;
-  cancelCommunication: (commId: string, userId: string, reason?: string) => Promise<void>;
-  retryCommunication: (commId: string, userId?: string) => Promise<void>;
-  approveCommunication: (commId: string, approverId: string, comments?: string) => Promise<void>;
-  rejectCommunication: (commId: string, reviewerId: string, reason: string) => Promise<void>;
+  // Communication Actions (API calls)
+  sendCommunication: (id: string, userId?: string) => Promise<void>;
+  scheduleCommunication: (id: string, scheduledAt: string, userId?: string) => Promise<void>;
+  cancelCommunication: (id: string, userId: string, reason?: string) => Promise<void>;
+  retryCommunication: (id: string, userId?: string) => Promise<void>;
+  approveCommunication: (id: string, approverId: string, comments?: string) => Promise<void>;
+  rejectCommunication: (id: string, reviewerId: string, reason: string) => Promise<void>;
   markAsRead: (commId: string, recipientId: string) => Promise<void>;
-  createFromTemplate: (templateId: string, entityId: string, entityType: string, overrides?: Partial<StakeholderComm>) => Promise<StakeholderComm>;
+  createFromTemplate: (templateId: string, entityData: any) => Promise<StakeholderComm>;
 
-  // Filtering and querying
-  getCommunicationsByEntity: (entityId: string, entityType: string) => StakeholderComm[];
-  getCommunicationsByChannel: (channel: CommChannel) => StakeholderComm[];
-  getCommunicationsByAudience: (audience: CommAudience) => StakeholderComm[];
-  getCommunicationsByStatus: (status: CommStatus) => StakeholderComm[];
-  getCommunicationsBySender: (senderId: string) => StakeholderComm[];
-  getPendingApprovals: () => StakeholderComm[];
-  getScheduledCommunications: () => StakeholderComm[];
-  getFailedCommunications: () => StakeholderComm[];
-  getCommunicationsNeedingFollowUp: () => StakeholderComm[];
+  // Client-Side UI Helpers
+  getFilteredCommunications: (filters: UIFilters) => StakeholderComm[];
+  getFilteredTemplates: (filters: Pick<UIFilters, 'search' | 'channel' | 'audience'>) => CommTemplate[];
   searchCommunications: (query: string) => StakeholderComm[];
+  searchTemplates: (query: string) => CommTemplate[];
 
-  // Analytics
-  getCommunicationStats: (timeframe?: "day" | "week" | "month") => {
-    totalSent: number;
-    deliveryRate: number;
-    openRate: number;
-    responseRate: number;
-    channelBreakdown: Record<CommChannel, number>;
-    audienceBreakdown: Record<CommAudience, number>;
-  };
-
-  // Config integration
+  // Cache & Performance
+  refreshData: () => Promise<void>;
+  invalidateCache: () => void;
+  
+  // UI State Management
+  filters: UIFilters;
+  setFilters: (filters: Partial<UIFilters>) => void;
+  clearFilters: () => void;
+  
+  // Configuration (from backend)
   config: {
-    channels: string[];
-    audiences: string[];
-    statuses: string[];
-    priorities: string[];
+    channels: CommChannel[];
+    audiences: CommAudience[];
+    statuses: CommStatus[];
+    priorities: CommPriority[];
+    cache: CacheConfig;
   };
 }
+
+// ---------------------------------
+// 4. Default State & Configuration
+// ---------------------------------
+const DEFAULT_ASYNC_STATE = <T,>(): AsyncState<T> => ({
+  data: [],
+  loading: false,
+  error: null,
+  lastFetch: null,
+  stale: false,
+});
+
+const DEFAULT_CACHE_CONFIG: CacheConfig = {
+  ttl: 5 * 60 * 1000, // 5 minutes
+  maxSize: 1000,
+};
+
+const DEFAULT_FILTERS: UIFilters = {};
 
 const StakeholderCommsContext = createContext<StakeholderCommsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 3. Provider
+// 5. Provider Implementation
 // ---------------------------------
 export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
   const { config: globalConfig } = useConfig();
-  const [communications, setCommunications] = useState<StakeholderComm[]>([]);
-  const [templates, setTemplates] = useState<CommTemplate[]>([]);
 
-  const config = {
+  // Core async state
+  const [communications, setCommunications] = useState<AsyncState<StakeholderComm>>(DEFAULT_ASYNC_STATE);
+  const [templates, setTemplates] = useState<AsyncState<CommTemplate>>(DEFAULT_ASYNC_STATE);
+  
+  // UI state
+  const [filters, setFiltersState] = useState<UIFilters>(DEFAULT_FILTERS);
+  
+  // Optimistic updates tracking
+  const optimisticUpdatesRef = useRef<OptimisticUpdate<any>[]>([]);
+  
+  // Cache management
+  const cacheTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  // Configuration from backend
+  const config = useMemo(() => ({
     channels: globalConfig?.communications?.channels || [
       "email", "sms", "chat", "portal", "phone", "push_notification", "slack", "teams", "webhook", "api", "other"
-    ],
+    ] as CommChannel[],
     audiences: globalConfig?.communications?.audiences || [
       "executive", "business_user", "customer", "vendor", "internal_it", "end_user", "stakeholder", "media", "regulatory", "other"
-    ],
+    ] as CommAudience[],
     statuses: globalConfig?.communications?.statuses || [
       "draft", "scheduled", "sent", "delivered", "read", "failed", "cancelled"
-    ],
+    ] as CommStatus[],
     priorities: globalConfig?.communications?.priorities || [
       "low", "normal", "high", "urgent"
-    ],
-  };
+    ] as CommPriority[],
+    cache: globalConfig?.communications?.cache || DEFAULT_CACHE_CONFIG,
+  }), [globalConfig]);
 
-  // Communication operations
-  const refreshCommunications = useCallback(async () => {
+  // ---------------------------------
+  // 6. Cache Management
+  // ---------------------------------
+  const setCacheTimer = useCallback((key: string, ttl: number) => {
+    // Clear existing timer
+    const existing = cacheTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+
+    // Set new timer
+    const timer = setTimeout(() => {
+      if (key === 'communications') {
+        setCommunications(prev => ({ ...prev, stale: true }));
+      } else if (key === 'templates') {
+        setTemplates(prev => ({ ...prev, stale: true }));
+      }
+      cacheTimersRef.current.delete(key);
+    }, ttl);
+
+    cacheTimersRef.current.set(key, timer);
+  }, []);
+
+  const invalidateCache = useCallback(() => {
+    // Clear all timers
+    cacheTimersRef.current.forEach(timer => clearTimeout(timer));
+    cacheTimersRef.current.clear();
+    
+    // Mark all data as stale
+    setCommunications(prev => ({ ...prev, stale: true }));
+    setTemplates(prev => ({ ...prev, stale: true }));
+  }, []);
+
+  // ---------------------------------
+  // 7. Data Fetching Functions
+  // ---------------------------------
+  const fetchCommunications = useCallback(async (): Promise<void> => {
     if (!tenantId) return;
+
+    setCommunications(prev => ({ ...prev, loading: true, error: null }));
+
     try {
-      const all = await getAll<StakeholderComm>(tenantId, "stakeholder_communications");
-      setCommunications(all);
+      const data = await getAll<StakeholderComm>(tenantId, "stakeholder_communications");
+      const now = new Date().toISOString();
+      
+      setCommunications({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: now,
+        stale: false,
+      });
+
+      setCacheTimer('communications', config.cache.ttl);
     } catch (error) {
-      console.error("Failed to refresh communications:", error);
+      setCommunications(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch communications',
+      }));
     }
-  }, [tenantId]);
+  }, [tenantId, config.cache.ttl, setCacheTimer]);
 
-  const getCommunication = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<StakeholderComm>(tenantId, "stakeholder_communications", id);
-  }, [tenantId]);
-
-  const addCommunication = useCallback(async (comm: StakeholderComm, userId?: string) => {
+  const fetchTemplates = useCallback(async (): Promise<void> => {
     if (!tenantId) return;
 
-    // ✅ Config validation
-    if (!config.channels.includes(comm.channel)) {
-      throw new Error(`Invalid communication channel: ${comm.channel}`);
-    }
-    if (!config.audiences.includes(comm.audience)) {
-      throw new Error(`Invalid audience: ${comm.audience}`);
-    }
-    if (!config.statuses.includes(comm.status)) {
-      throw new Error(`Invalid status: ${comm.status}`);
-    }
-    if (!config.priorities.includes(comm.priority)) {
-      throw new Error(`Invalid priority: ${comm.priority}`);
-    }
+    setTemplates(prev => ({ ...prev, loading: true, error: null }));
 
-    const enrichedComm: StakeholderComm = {
-      ...comm,
-      created_at: comm.created_at || new Date().toISOString(),
+    try {
+      const data = await getAll<CommTemplate>(tenantId, "communication_templates");
+      const now = new Date().toISOString();
+      
+      setTemplates({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: now,
+        stale: false,
+      });
+
+      setCacheTimer('templates', config.cache.ttl);
+    } catch (error) {
+      setTemplates(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch templates',
+      }));
+    }
+  }, [tenantId, config.cache.ttl, setCacheTimer]);
+
+  // ---------------------------------
+  // 8. Optimistic UI Helpers
+  // ---------------------------------
+  const addOptimisticUpdate = useCallback(<T,>(update: OptimisticUpdate<T>) => {
+    optimisticUpdatesRef.current.push(update);
+  }, []);
+
+  const removeOptimisticUpdate = useCallback((id: string) => {
+    optimisticUpdatesRef.current = optimisticUpdatesRef.current.filter(u => u.id !== id);
+  }, []);
+
+  const rollbackOptimisticUpdate = useCallback((id: string) => {
+    const update = optimisticUpdatesRef.current.find(u => u.id === id);
+    if (!update) return;
+
+    if (update.type === 'create') {
+      setCommunications(prev => ({
+        ...prev,
+        data: prev.data.filter(c => c.id !== id),
+      }));
+    } else if (update.type === 'delete') {
+      setCommunications(prev => ({
+        ...prev,
+        data: [...prev.data, update.entity as StakeholderComm],
+      }));
+    }
+    
+    removeOptimisticUpdate(id);
+  }, [removeOptimisticUpdate]);
+
+  // ---------------------------------
+  // 9. API Operations (Thin Wrappers)
+  // ---------------------------------
+  const createCommunication = useCallback(async (
+    commData: Partial<StakeholderComm>,
+    userId?: string
+  ): Promise<StakeholderComm> => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    // Create optimistic entity
+    const tempId = `temp_${Date.now()}`;
+    const optimisticComm: StakeholderComm = {
+      id: tempId,
+      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      total_recipients: comm.recipients.length,
+      health_status: "green",
+      sync_status: "dirty",
+      tenantId,
+      recipients: [],
+      total_recipients: 0,
       successful_deliveries: 0,
       failed_deliveries: 0,
       read_count: 0,
       retry_count: 0,
-      max_retries: comm.max_retries || 3,
-      retry_delay_minutes: comm.retry_delay_minutes || 30,
-      health_status: comm.health_status || "green",
-      sync_status: "dirty",
-      tenantId,
-    };
+      max_retries: 3,
+      retry_delay_minutes: 30,
+      requires_approval: false,
+      personalized: false,
+      is_public_facing: false,
+      tags: [],
+      ...commData,
+    } as StakeholderComm;
 
-    await putWithAudit(
-      tenantId,
-      "stakeholder_communications",
-      enrichedComm,
-      userId,
-      { action: "create", description: `Communication "${comm.subject}" created for ${comm.audience}` },
-      enqueueItem
-    );
-    await refreshCommunications();
-  }, [tenantId, config, enqueueItem, refreshCommunications]);
+    // Optimistic UI update
+    setCommunications(prev => ({
+      ...prev,
+      data: [optimisticComm, ...prev.data],
+    }));
 
-  const updateCommunication = useCallback(async (comm: StakeholderComm, userId?: string) => {
-    if (!tenantId) return;
+    addOptimisticUpdate({
+      id: tempId,
+      type: 'create',
+      entity: optimisticComm,
+      timestamp: new Date().toISOString(),
+    });
 
-    const enrichedComm: StakeholderComm = {
-      ...comm,
-      updated_at: new Date().toISOString(),
-      sync_status: "dirty",
-      tenantId,
-    };
-
-    await putWithAudit(
-      tenantId,
-      "stakeholder_communications",
-      enrichedComm,
-      userId,
-      { action: "update", description: `Communication "${comm.subject}" updated` },
-      enqueueItem
-    );
-    await refreshCommunications();
-  }, [tenantId, enqueueItem, refreshCommunications]);
-
-  const deleteCommunication = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
-
-    const comm = await getCommunication(id);
-    const commSubject = comm?.subject || id;
-
-    await removeWithAudit(
-      tenantId,
-      "stakeholder_communications",
-      id,
-      userId,
-      { action: "delete", description: `Communication "${commSubject}" deleted` },
-      enqueueItem
-    );
-    await refreshCommunications();
-  }, [tenantId, getCommunication, enqueueItem, refreshCommunications]);
-
-  // Template operations
-  const refreshTemplates = useCallback(async () => {
-    if (!tenantId) return;
     try {
-      const all = await getAll<CommTemplate>(tenantId, "communication_templates");
-      setTemplates(all);
+      // Call API (backend handles business logic)
+      await putWithAudit(
+        tenantId,
+        "stakeholder_communications",
+        optimisticComm,
+        userId,
+        { action: "create", description: `Communication "${optimisticComm.subject}" created` },
+        enqueueItem
+      );
+
+      removeOptimisticUpdate(tempId);
+      return optimisticComm;
     } catch (error) {
-      console.error("Failed to refresh communication templates:", error);
+      rollbackOptimisticUpdate(tempId);
+      throw error;
     }
-  }, [tenantId]);
+  }, [tenantId, enqueueItem, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate]);
 
-  const getTemplate = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    return getById<CommTemplate>(tenantId, "communication_templates", id);
-  }, [tenantId]);
+  const updateCommunication = useCallback(async (
+    id: string,
+    updates: Partial<StakeholderComm>,
+    userId?: string
+  ): Promise<StakeholderComm> => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const addTemplate = useCallback(async (template: CommTemplate, userId?: string) => {
-    if (!tenantId) return;
+    const existing = communications.data.find(c => c.id === id);
+    if (!existing) throw new Error("Communication not found");
 
-    // ✅ Config validation
-    if (!config.channels.includes(template.channel)) {
-      throw new Error(`Invalid template channel: ${template.channel}`);
+    const updated = {
+      ...existing,
+      ...updates,
+      updated_at: new Date().toISOString(),
+      sync_status: "dirty" as const,
+    };
+
+    // Optimistic UI update
+    setCommunications(prev => ({
+      ...prev,
+      data: prev.data.map(c => c.id === id ? updated : c),
+    }));
+
+    try {
+      await putWithAudit(
+        tenantId,
+        "stakeholder_communications",
+        updated,
+        userId,
+        { action: "update", description: `Communication "${updated.subject}" updated` },
+        enqueueItem
+      );
+
+      return updated;
+    } catch (error) {
+      // Rollback
+      setCommunications(prev => ({
+        ...prev,
+        data: prev.data.map(c => c.id === id ? existing : c),
+      }));
+      throw error;
     }
-    if (!config.audiences.includes(template.audience)) {
-      throw new Error(`Invalid template audience: ${template.audience}`);
-    }
+  }, [tenantId, communications.data, enqueueItem]);
 
-    await putWithAudit(
-      tenantId,
-      "communication_templates",
-      template,
-      userId,
-      { action: "create", description: `Communication template "${template.name}" created` },
-      enqueueItem
-    );
-    await refreshTemplates();
-  }, [tenantId, config, enqueueItem, refreshTemplates]);
+  const deleteCommunication = useCallback(async (id: string, userId?: string): Promise<void> => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const updateTemplate = useCallback(async (template: CommTemplate, userId?: string) => {
-    await putWithAudit(
-      tenantId,
-      "communication_templates",
-      template,
-      userId,
-      { action: "update", description: `Communication template "${template.name}" updated` },
-      enqueueItem
-    );
-    await refreshTemplates();
-  }, [tenantId, enqueueItem, refreshTemplates]);
+    const existing = communications.data.find(c => c.id === id);
+    if (!existing) return;
 
-  const deleteTemplate = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
+    // Optimistic UI update
+    setCommunications(prev => ({
+      ...prev,
+      data: prev.data.filter(c => c.id !== id),
+    }));
 
-    const template = await getTemplate(id);
-    const templateName = template?.name || id;
-
-    await removeWithAudit(
-      tenantId,
-      "communication_templates",
+    addOptimisticUpdate({
       id,
-      userId,
-      { action: "delete", description: `Communication template "${templateName}" deleted` },
-      enqueueItem
-    );
-    await refreshTemplates();
-  }, [tenantId, getTemplate, enqueueItem, refreshTemplates]);
+      type: 'delete',
+      entity: existing,
+      timestamp: new Date().toISOString(),
+    });
 
-  // Communication-specific operations
-  const sendCommunication = useCallback(async (commId: string, userId?: string) => {
-    const comm = await getCommunication(commId);
-    if (!comm) return;
+    try {
+      await removeWithAudit(
+        tenantId,
+        "stakeholder_communications",
+        id,
+        userId,
+        { action: "delete", description: `Communication "${existing.subject}" deleted` },
+        enqueueItem
+      );
 
-    const updatedComm = {
-      ...comm,
-      status: "sent" as CommStatus,
-      sent_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+      removeOptimisticUpdate(id);
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
+    }
+  }, [tenantId, communications.data, enqueueItem, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate]);
 
-    await updateCommunication(updatedComm, userId);
-  }, [getCommunication, updateCommunication]);
+  const getCommunication = useCallback(async (id: string): Promise<StakeholderComm | null> => {
+    if (!tenantId) return null;
 
-  const scheduleCommunication = useCallback(async (commId: string, scheduledAt: string, userId?: string) => {
-    const comm = await getCommunication(commId);
-    if (!comm) return;
+    // Check cache first
+    const cached = communications.data.find(c => c.id === id);
+    if (cached && !communications.stale) return cached;
 
-    const updatedComm = {
-      ...comm,
-      status: "scheduled" as CommStatus,
-      scheduled_at: scheduledAt,
-      updated_at: new Date().toISOString(),
-    };
+    // Fetch from API
+    try {
+      return await getById<StakeholderComm>(tenantId, "stakeholder_communications", id);
+    } catch {
+      return null;
+    }
+  }, [tenantId, communications.data, communications.stale]);
 
-    await updateCommunication(updatedComm, userId);
-  }, [getCommunication, updateCommunication]);
+  // Template operations (similar pattern)
+  const createTemplate = useCallback(async (
+    templateData: Partial<CommTemplate>,
+    userId?: string
+  ): Promise<CommTemplate> => {
+    if (!tenantId) throw new Error("No tenant selected");
 
-  const cancelCommunication = useCallback(async (commId: string, userId: string, reason?: string) => {
-    const comm = await getCommunication(commId);
-    if (!comm) return;
+    const template: CommTemplate = {
+      id: `template_${Date.now()}`,
+      variables: [],
+      ...templateData,
+    } as CommTemplate;
 
-    const updatedComm = {
-      ...comm,
-      status: "cancelled" as CommStatus,
-      updated_at: new Date().toISOString(),
-      custom_fields: {
-        ...comm.custom_fields,
-        cancellation_reason: reason,
-        cancelled_by: userId,
-      },
-    };
+    // Optimistic update
+    setTemplates(prev => ({
+      ...prev,
+      data: [template, ...prev.data],
+    }));
 
-    await updateCommunication(updatedComm, userId);
-  }, [getCommunication, updateCommunication]);
+    try {
+      await putWithAudit(
+        tenantId,
+        "communication_templates",
+        template,
+        userId,
+        { action: "create", description: `Template "${template.name}" created` },
+        enqueueItem
+      );
 
-  const retryCommunication = useCallback(async (commId: string, userId?: string) => {
-    const comm = await getCommunication(commId);
+      return template;
+    } catch (error) {
+      // Rollback
+      setTemplates(prev => ({
+        ...prev,
+        data: prev.data.filter(t => t.id !== template.id),
+      }));
+      throw error;
+    }
+  }, [tenantId, enqueueItem]);
+
+  const updateTemplate = useCallback(async (
+    id: string,
+    updates: Partial<CommTemplate>,
+    userId?: string
+  ): Promise<CommTemplate> => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    const existing = templates.data.find(t => t.id === id);
+    if (!existing) throw new Error("Template not found");
+
+    const updated = { ...existing, ...updates };
+
+    setTemplates(prev => ({
+      ...prev,
+      data: prev.data.map(t => t.id === id ? updated : t),
+    }));
+
+    try {
+      await putWithAudit(
+        tenantId,
+        "communication_templates",
+        updated,
+        userId,
+        { action: "update", description: `Template "${updated.name}" updated` },
+        enqueueItem
+      );
+
+      return updated;
+    } catch (error) {
+      setTemplates(prev => ({
+        ...prev,
+        data: prev.data.map(t => t.id === id ? existing : t),
+      }));
+      throw error;
+    }
+  }, [tenantId, templates.data, enqueueItem]);
+
+  const deleteTemplate = useCallback(async (id: string, userId?: string): Promise<void> => {
+    if (!tenantId) throw new Error("No tenant selected");
+
+    const existing = templates.data.find(t => t.id === id);
+    if (!existing) return;
+
+    setTemplates(prev => ({
+      ...prev,
+      data: prev.data.filter(t => t.id !== id),
+    }));
+
+    try {
+      await removeWithAudit(
+        tenantId,
+        "communication_templates",
+        id,
+        userId,
+        { action: "delete", description: `Template "${existing.name}" deleted` },
+        enqueueItem
+      );
+    } catch (error) {
+      setTemplates(prev => ({
+        ...prev,
+        data: [...prev.data, existing],
+      }));
+      throw error;
+    }
+  }, [tenantId, templates.data, enqueueItem]);
+
+  const getTemplate = useCallback(async (id: string): Promise<CommTemplate | null> => {
+    if (!tenantId) return null;
+
+    const cached = templates.data.find(t => t.id === id);
+    if (cached && !templates.stale) return cached;
+
+    try {
+      return await getById<CommTemplate>(tenantId, "communication_templates", id);
+    } catch {
+      return null;
+    }
+  }, [tenantId, templates.data, templates.stale]);
+
+  // ---------------------------------
+  // 10. Communication Actions (API calls)
+  // ---------------------------------
+  const sendCommunication = useCallback(async (id: string, userId?: string): Promise<void> => {
+    // API call - backend handles all business logic
+    await updateCommunication(id, { 
+      status: "sent", 
+      sent_at: new Date().toISOString() 
+    }, userId);
+  }, [updateCommunication]);
+
+  const scheduleCommunication = useCallback(async (
+    id: string, 
+    scheduledAt: string, 
+    userId?: string
+  ): Promise<void> => {
+    await updateCommunication(id, { 
+      status: "scheduled", 
+      scheduled_at: scheduledAt 
+    }, userId);
+  }, [updateCommunication]);
+
+  const cancelCommunication = useCallback(async (
+    id: string, 
+    userId: string, 
+    reason?: string
+  ): Promise<void> => {
+    await updateCommunication(id, { 
+      status: "cancelled",
+      custom_fields: { cancellation_reason: reason, cancelled_by: userId }
+    }, userId);
+  }, [updateCommunication]);
+
+  const retryCommunication = useCallback(async (id: string, userId?: string): Promise<void> => {
+    const comm = await getCommunication(id);
     if (!comm || comm.retry_count >= comm.max_retries) return;
 
-    const updatedComm = {
-      ...comm,
-      status: "sent" as CommStatus,
+    await updateCommunication(id, {
+      status: "sent",
       retry_count: comm.retry_count + 1,
       sent_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateCommunication(updatedComm, userId);
+    }, userId);
   }, [getCommunication, updateCommunication]);
 
-  const approveCommunication = useCallback(async (commId: string, approverId: string, comments?: string) => {
-    const comm = await getCommunication(commId);
-    if (!comm) return;
-
-    const updatedComm = {
-      ...comm,
-      approval_status: "approved" as const,
+  const approveCommunication = useCallback(async (
+    id: string, 
+    approverId: string, 
+    comments?: string
+  ): Promise<void> => {
+    await updateCommunication(id, {
+      approval_status: "approved",
       approved_by: approverId,
       approved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      custom_fields: {
-        ...comm.custom_fields,
-        approval_comments: comments,
-      },
-    };
+      custom_fields: { approval_comments: comments },
+    }, approverId);
+  }, [updateCommunication]);
 
-    await updateCommunication(updatedComm, approverId);
-  }, [getCommunication, updateCommunication]);
-
-  const rejectCommunication = useCallback(async (commId: string, reviewerId: string, reason: string) => {
-    const comm = await getCommunication(commId);
-    if (!comm) return;
-
-    const updatedComm = {
-      ...comm,
-      approval_status: "rejected" as const,
+  const rejectCommunication = useCallback(async (
+    id: string, 
+    reviewerId: string, 
+    reason: string
+  ): Promise<void> => {
+    await updateCommunication(id, {
+      approval_status: "rejected",
       rejection_reason: reason,
-      updated_at: new Date().toISOString(),
-      custom_fields: {
-        ...comm.custom_fields,
-        rejected_by: reviewerId,
-      },
-    };
+      custom_fields: { rejected_by: reviewerId },
+    }, reviewerId);
+  }, [updateCommunication]);
 
-    await updateCommunication(updatedComm, reviewerId);
-  }, [getCommunication, updateCommunication]);
-
-  const markAsRead = useCallback(async (commId: string, recipientId: string) => {
+  const markAsRead = useCallback(async (commId: string, recipientId: string): Promise<void> => {
     const comm = await getCommunication(commId);
     if (!comm) return;
 
+    // Frontend only updates UI state - backend handles delivery tracking
     const updatedRecipients = comm.recipients.map(r => 
       r.id === recipientId 
         ? { ...r, delivery_status: "read" as const, read_at: new Date().toISOString() }
         : r
     );
 
-    const readCount = updatedRecipients.filter(r => r.delivery_status === "read").length;
-
-    const updatedComm = {
-      ...comm,
+    await updateCommunication(commId, {
       recipients: updatedRecipients,
-      read_count: readCount,
-      updated_at: new Date().toISOString(),
-    };
-
-    await updateCommunication(updatedComm);
+      read_count: updatedRecipients.filter(r => r.delivery_status === "read").length,
+    });
   }, [getCommunication, updateCommunication]);
 
-  const createFromTemplate = useCallback(async (templateId: string, entityId: string, entityType: string, overrides?: Partial<StakeholderComm>): Promise<StakeholderComm> => {
+  const createFromTemplate = useCallback(async (
+    templateId: string, 
+    entityData: any
+  ): Promise<StakeholderComm> => {
     const template = await getTemplate(templateId);
     if (!template) throw new Error("Template not found");
 
-    const newComm: StakeholderComm = {
-      id: `comm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      related_entity_id: entityId,
-      related_entity_type: entityType as any,
+    // Frontend creates base structure - backend handles template processing
+    return createCommunication({
+      related_entity_id: entityData.id,
+      related_entity_type: entityData.type,
       audience: template.audience,
       channel: template.channel,
-      priority: "normal",
-      status: "draft",
       subject: template.subject_template,
       message: template.body_template,
       template_id: templateId,
-      personalized: false,
-      recipients: [],
-      total_recipients: 0,
-      successful_deliveries: 0,
-      failed_deliveries: 0,
-      read_count: 0,
-      requires_approval: false,
-      retry_count: 0,
-      max_retries: 3,
-      retry_delay_minutes: 30,
-      is_public_facing: false,
-      tags: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      health_status: "green",
-      sync_status: "dirty",
-      tenantId: tenantId!,
-      ...overrides,
-    };
+      status: "draft",
+      priority: "normal",
+    });
+  }, [getTemplate, createCommunication]);
 
-    return newComm;
-  }, [getTemplate, tenantId]);
+  // ---------------------------------
+  // 11. Client-Side UI Helpers
+  // ---------------------------------
+  const getFilteredCommunications = useCallback((filters: UIFilters): StakeholderComm[] => {
+    let filtered = communications.data;
 
-  // Filtering functions
-  const getCommunicationsByEntity = useCallback((entityId: string, entityType: string) => {
-    return communications.filter(c => 
-      c.related_entity_id === entityId && c.related_entity_type === entityType
-    );
-  }, [communications]);
+    if (filters.status?.length) {
+      filtered = filtered.filter(c => filters.status!.includes(c.status));
+    }
+    if (filters.channel?.length) {
+      filtered = filtered.filter(c => filters.channel!.includes(c.channel));
+    }
+    if (filters.audience?.length) {
+      filtered = filtered.filter(c => filters.audience!.includes(c.audience));
+    }
+    if (filters.priority?.length) {
+      filtered = filtered.filter(c => filters.priority!.includes(c.priority));
+    }
+    if (filters.entityId) {
+      filtered = filtered.filter(c => c.related_entity_id === filters.entityId);
+    }
+    if (filters.entityType) {
+      filtered = filtered.filter(c => c.related_entity_type === filters.entityType);
+    }
+    if (filters.search) {
+      const query = filters.search.toLowerCase();
+      filtered = filtered.filter(c => 
+        c.subject.toLowerCase().includes(query) ||
+        c.message.toLowerCase().includes(query) ||
+        c.tags.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+    if (filters.dateRange) {
+      filtered = filtered.filter(c => 
+        c.created_at >= filters.dateRange!.start && 
+        c.created_at <= filters.dateRange!.end
+      );
+    }
 
-  const getCommunicationsByChannel = useCallback((channel: CommChannel) => {
-    return communications.filter(c => c.channel === channel);
-  }, [communications]);
+    return filtered;
+  }, [communications.data]);
 
-  const getCommunicationsByAudience = useCallback((audience: CommAudience) => {
-    return communications.filter(c => c.audience === audience);
-  }, [communications]);
+  const getFilteredTemplates = useCallback((
+    filters: Pick<UIFilters, 'search' | 'channel' | 'audience'>
+  ): CommTemplate[] => {
+    let filtered = templates.data;
 
-  const getCommunicationsByStatus = useCallback((status: CommStatus) => {
-    return communications.filter(c => c.status === status);
-  }, [communications]);
+    if (filters.channel?.length) {
+      filtered = filtered.filter(t => filters.channel!.includes(t.channel));
+    }
+    if (filters.audience?.length) {
+      filtered = filtered.filter(t => filters.audience!.includes(t.audience));
+    }
+    if (filters.search) {
+      const query = filters.search.toLowerCase();
+      filtered = filtered.filter(t => 
+        t.name.toLowerCase().includes(query) ||
+        t.subject_template.toLowerCase().includes(query)
+      );
+    }
 
-  const getCommunicationsBySender = useCallback((senderId: string) => {
-    return communications.filter(c => 
-      c.sender_user_id === senderId || c.sender_team_id === senderId
-    );
-  }, [communications]);
+    return filtered;
+  }, [templates.data]);
 
-  const getPendingApprovals = useCallback(() => {
-    return communications.filter(c => 
-      c.requires_approval && c.approval_status === "pending"
-    );
-  }, [communications]);
-
-  const getScheduledCommunications = useCallback(() => {
-    return communications.filter(c => c.status === "scheduled");
-  }, [communications]);
-
-  const getFailedCommunications = useCallback(() => {
-    return communications.filter(c => c.status === "failed");
-  }, [communications]);
-
-  const getCommunicationsNeedingFollowUp = useCallback(() => {
-    return communications.filter(c => c.follow_up_required === true);
-  }, [communications]);
-
-  const searchCommunications = useCallback((query: string) => {
+  const searchCommunications = useCallback((query: string): StakeholderComm[] => {
+    if (!query.trim()) return communications.data;
+    
     const lowerQuery = query.toLowerCase();
-    return communications.filter(c => 
+    return communications.data.filter(c => 
       c.subject.toLowerCase().includes(lowerQuery) ||
       c.message.toLowerCase().includes(lowerQuery) ||
       c.audience.toLowerCase().includes(lowerQuery) ||
       c.channel.toLowerCase().includes(lowerQuery) ||
-      c.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+      c.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
+      c.entity_name?.toLowerCase().includes(lowerQuery)
     );
-  }, [communications]);
+  }, [communications.data]);
 
-  const getCommunicationStats = useCallback((timeframe: "day" | "week" | "month" = "week") => {
-    const cutoffDate = new Date();
-    switch (timeframe) {
-      case "day":
-        cutoffDate.setDate(cutoffDate.getDate() - 1);
-        break;
-      case "week":
-        cutoffDate.setDate(cutoffDate.getDate() - 7);
-        break;
-      case "month":
-        cutoffDate.setMonth(cutoffDate.getMonth() - 1);
-        break;
-    }
+  const searchTemplates = useCallback((query: string): CommTemplate[] => {
+    if (!query.trim()) return templates.data;
     
-    const recentComms = communications.filter(c => 
-      new Date(c.created_at) >= cutoffDate
+    const lowerQuery = query.toLowerCase();
+    return templates.data.filter(t => 
+      t.name.toLowerCase().includes(lowerQuery) ||
+      t.subject_template.toLowerCase().includes(lowerQuery) ||
+      t.body_template.toLowerCase().includes(lowerQuery)
     );
+  }, [templates.data]);
 
-    const totalSent = recentComms.filter(c => c.status === "sent" || c.status === "delivered").length;
-    const delivered = recentComms.reduce((sum, c) => sum + c.successful_deliveries, 0);
-    const totalRecipients = recentComms.reduce((sum, c) => sum + c.total_recipients, 0);
-    const totalReads = recentComms.reduce((sum, c) => sum + c.read_count, 0);
-    const totalResponses = recentComms.reduce((sum, c) => sum + (c.response_count || 0), 0);
+  // ---------------------------------
+  // 12. UI State Management
+  // ---------------------------------
+  const setFilters = useCallback((newFilters: Partial<UIFilters>) => {
+    setFiltersState(prev => ({ ...prev, ...newFilters }));
+  }, []);
 
-    const channelBreakdown = recentComms.reduce((acc, c) => {
-      acc[c.channel] = (acc[c.channel] || 0) + 1;
-      return acc;
-    }, {} as Record<CommChannel, number>);
+  const clearFilters = useCallback(() => {
+    setFiltersState(DEFAULT_FILTERS);
+  }, []);
 
-    const audienceBreakdown = recentComms.reduce((acc, c) => {
-      acc[c.audience] = (acc[c.audience] || 0) + 1;
-      return acc;
-    }, {} as Record<CommAudience, number>);
+  const refreshData = useCallback(async () => {
+    await Promise.all([fetchCommunications(), fetchTemplates()]);
+  }, [fetchCommunications, fetchTemplates]);
 
-    return {
-      totalSent,
-      deliveryRate: totalRecipients > 0 ? delivered / totalRecipients : 0,
-      openRate: totalRecipients > 0 ? totalReads / totalRecipients : 0,
-      responseRate: totalRecipients > 0 ? totalResponses / totalRecipients : 0,
-      channelBreakdown,
-      audienceBreakdown,
-    };
-  }, [communications]);
-
-  // Initialize
+  // ---------------------------------
+  // 13. Initialization & Cleanup
+  // ---------------------------------
   useEffect(() => {
     if (tenantId && globalConfig) {
-      refreshCommunications();
-      refreshTemplates();
+      refreshData();
+    } else {
+      setCommunications(DEFAULT_ASYNC_STATE);
+      setTemplates(DEFAULT_ASYNC_STATE);
     }
-  }, [tenantId, globalConfig, refreshCommunications, refreshTemplates]);
+  }, [tenantId, globalConfig, refreshData]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cacheTimersRef.current.forEach(timer => clearTimeout(timer));
+      cacheTimersRef.current.clear();
+    };
+  }, []);
+
+  // Auto-refresh when data becomes stale
+  useEffect(() => {
+    if (communications.stale && !communications.loading) {
+      fetchCommunications();
+    }
+  }, [communications.stale, communications.loading, fetchCommunications]);
+
+  useEffect(() => {
+    if (templates.stale && !templates.loading) {
+      fetchTemplates();
+    }
+  }, [templates.stale, templates.loading, fetchTemplates]);
+
+  // ---------------------------------
+  // 14. Context Value (Memoized for Performance)
+  // ---------------------------------
+  const contextValue = useMemo(() => ({
+    // State
+    communications,
+    templates,
+    
+    // CRUD Operations
+    createCommunication,
+    updateCommunication,
+    deleteCommunication,
+    getCommunication,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
+    getTemplate,
+    
+    // Communication Actions
+    sendCommunication,
+    scheduleCommunication,
+    cancelCommunication,
+    retryCommunication,
+    approveCommunication,
+    rejectCommunication,
+    markAsRead,
+    createFromTemplate,
+    
+    // UI Helpers
+    getFilteredCommunications,
+    getFilteredTemplates,
+    searchCommunications,
+    searchTemplates,
+    
+    // Cache & Performance
+    refreshData,
+    invalidateCache,
+    
+    // UI State
+    filters,
+    setFilters,
+    clearFilters,
+    
+    // Config
+    config,
+  }), [
+    communications, templates, createCommunication, updateCommunication, deleteCommunication, getCommunication,
+    createTemplate, updateTemplate, deleteTemplate, getTemplate, sendCommunication, scheduleCommunication,
+    cancelCommunication, retryCommunication, approveCommunication, rejectCommunication, markAsRead, 
+    createFromTemplate, getFilteredCommunications, getFilteredTemplates, searchCommunications, 
+    searchTemplates, refreshData, invalidateCache, filters, setFilters, clearFilters, config
+  ]);
 
   return (
-    <StakeholderCommsContext.Provider
-      value={{
-        communications,
-        templates,
-        addCommunication,
-        updateCommunication,
-        deleteCommunication,
-        refreshCommunications,
-        getCommunication,
-        addTemplate,
-        updateTemplate,
-        deleteTemplate,
-        refreshTemplates,
-        getTemplate,
-        sendCommunication,
-        scheduleCommunication,
-        cancelCommunication,
-        retryCommunication,
-        approveCommunication,
-        rejectCommunication,
-        markAsRead,
-        createFromTemplate,
-        getCommunicationsByEntity,
-        getCommunicationsByChannel,
-        getCommunicationsByAudience,
-        getCommunicationsByStatus,
-        getCommunicationsBySender,
-        getPendingApprovals,
-        getScheduledCommunications,
-        getFailedCommunications,
-        getCommunicationsNeedingFollowUp,
-        searchCommunications,
-        getCommunicationStats,
-        config,
-      }}
-    >
+    <StakeholderCommsContext.Provider value={contextValue}>
       {children}
     </StakeholderCommsContext.Provider>
   );
 };
 
 // ---------------------------------
-// 4. Hooks
+// 15. Hooks for Consumers
 // ---------------------------------
 export const useStakeholderComms = () => {
   const ctx = useContext(StakeholderCommsContext);
@@ -739,38 +996,59 @@ export const useStakeholderComms = () => {
   return ctx;
 };
 
+// Selective subscription hooks for performance
 export const useStakeholderCommDetails = (id: string) => {
   const { communications } = useStakeholderComms();
-  return communications.find((c) => c.id === id) || null;
+  return useMemo(() => 
+    communications.data.find(c => c.id === id) || null, 
+    [communications.data, id]
+  );
 };
 
 export const useCommTemplate = (id: string) => {
   const { templates } = useStakeholderComms();
-  return templates.find((t) => t.id === id) || null;
+  return useMemo(() => 
+    templates.data.find(t => t.id === id) || null, 
+    [templates.data, id]
+  );
 };
 
-export const useEntityComms = (entityId: string, entityType: StakeholderComm["related_entity_type"]) => {
-  const { getCommunicationsByEntity } = useStakeholderComms();
-  return getCommunicationsByEntity(entityId, entityType);
+export const useEntityComms = (entityId: string, entityType: string) => {
+  const { getFilteredCommunications } = useStakeholderComms();
+  return useMemo(() => 
+    getFilteredCommunications({ entityId, entityType }), 
+    [getFilteredCommunications, entityId, entityType]
+  );
 };
 
-// Utility hooks
+export const useCommsByStatus = (status: CommStatus[]) => {
+  const { getFilteredCommunications } = useStakeholderComms();
+  return useMemo(() => 
+    getFilteredCommunications({ status }), 
+    [getFilteredCommunications, status]
+  );
+};
+
 export const usePendingApprovals = () => {
-  const { getPendingApprovals } = useStakeholderComms();
-  return getPendingApprovals();
+  const { communications } = useStakeholderComms();
+  return useMemo(() => 
+    communications.data.filter(c => c.requires_approval && c.approval_status === "pending"),
+    [communications.data]
+  );
 };
 
 export const useScheduledCommunications = () => {
-  const { getScheduledCommunications } = useStakeholderComms();
-  return getScheduledCommunications();
+  const { getFilteredCommunications } = useStakeholderComms();
+  return useMemo(() => 
+    getFilteredCommunications({ status: ["scheduled"] }), 
+    [getFilteredCommunications]
+  );
 };
 
 export const useFailedCommunications = () => {
-  const { getFailedCommunications } = useStakeholderComms();
-  return getFailedCommunications();
-};
-
-export const useCommunicationStats = (timeframe?: "day" | "week" | "month") => {
-  const { getCommunicationStats } = useStakeholderComms();
-  return getCommunicationStats(timeframe);
+  const { getFilteredCommunications } = useStakeholderComms();
+  return useMemo(() => 
+    getFilteredCommunications({ status: ["failed"] }), 
+    [getFilteredCommunications]
+  );
 };
