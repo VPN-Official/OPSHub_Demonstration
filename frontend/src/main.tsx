@@ -1,5 +1,5 @@
 // src/main.tsx - Enhanced with error boundaries and proper setup
-import { StrictMode } from 'react';
+import React, { StrictMode, Component } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -17,7 +17,7 @@ import App from './App.tsx';
 // ---------------------------------
 // Error Boundary Component
 // ---------------------------------
-class ErrorBoundary extends StrictMode {
+class ErrorBoundary extends Component {
   constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -131,9 +131,11 @@ if (process.env.NODE_ENV === 'development') {
 
 // Render the application
 createRoot(rootElement).render(
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </ErrorBoundary>
+  <StrictMode>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </ErrorBoundary>
+  </StrictMode>
 );
