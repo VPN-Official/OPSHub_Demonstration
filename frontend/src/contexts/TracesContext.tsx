@@ -54,7 +54,7 @@ const TracesContext = createContext<TracesContextType | undefined>(undefined);
 
 export const TracesProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [traces, setTraces] = useState<Trace[]>([]);
 
   // 🔑 Tenant-specific config

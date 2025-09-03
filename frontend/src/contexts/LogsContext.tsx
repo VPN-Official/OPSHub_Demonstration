@@ -38,7 +38,7 @@ const LogsContext = createContext<LogsContextType | undefined>(undefined);
 
 export const LogsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [logs, setLogs] = useState<Log[]>([]);
 
   const refreshLogs = async () => {

@@ -62,7 +62,7 @@ const EventsContext = createContext<EventsContextType | undefined>(undefined);
 // ---------------------------------
 export const EventsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [events, setEvents] = useState<Event[]>([]);
   const [config, setConfig] = useState<any>(null);
 

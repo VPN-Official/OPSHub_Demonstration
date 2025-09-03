@@ -99,7 +99,7 @@ const ChangeRequestsContext = createContext<ChangeRequestsContextType | undefine
 
 export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
 
   const refreshChangeRequests = async () => {

@@ -80,7 +80,7 @@ const RisksContext = createContext<RisksContextType | undefined>(undefined);
 // ---------------------------------
 export const RisksProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [risks, setRisks] = useState<Risk[]>([]);
 
   const refreshRisks = async () => {

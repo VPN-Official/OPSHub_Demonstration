@@ -36,7 +36,7 @@ const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
 
 export const MetricsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [metrics, setMetrics] = useState<Metric[]>([]);
 
   const refreshMetrics = async () => {

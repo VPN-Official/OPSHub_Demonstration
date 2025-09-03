@@ -54,7 +54,7 @@ const KpisContext = createContext<KpisContextType | undefined>(undefined);
 // ---------------------------------
 export const KpisProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [kpis, setKpis] = useState<Kpi[]>([]);
 
   const config = loadConfig(tenantId).kpis;

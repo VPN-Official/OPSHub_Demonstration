@@ -148,7 +148,7 @@ const ServiceRequestsContext = createContext<ServiceRequestsContextType | undefi
 
 export const ServiceRequestsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
 
   const config = loadConfig(tenantId).work.service_request;

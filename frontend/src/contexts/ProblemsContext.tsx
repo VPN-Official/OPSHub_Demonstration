@@ -84,7 +84,7 @@ const ProblemsContext = createContext<ProblemsContextType | undefined>(
 // ---------------------------------
 export const ProblemsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [problems, setProblems] = useState<Problem[]>([]);
   const [config, setConfig] = useState<any>(null);
 

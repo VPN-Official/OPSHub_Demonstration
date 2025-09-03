@@ -74,7 +74,7 @@ const KnowledgeBaseContext = createContext<KnowledgeBaseContextType | undefined>
 // ---------------------------------
 export const KnowledgeBaseProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
 
   const config = loadConfig(tenantId).knowledge;

@@ -1,8 +1,8 @@
-// src/db/dbClient.ts
+// src/db/dbClient.ts - UPDATED to use browser-compatible auditUtils
 import { openDB, IDBPDatabase } from "idb";
 import type { AIOpsDB } from "./seedIndexedDB";
 import { enqueue } from "./syncQueue";
-import { generateImmutableHash } from "../utils/auditUtils";
+import { generateImmutableHash, generateSecureId } from "../utils/auditUtils";
 
 // ---------------------------------
 // DB cache per tenant
@@ -37,7 +37,7 @@ export interface ActivityEvent {
 }
 
 // ---------------------------------
-// Audit Log Entry
+// Audit Log Entry (Updated interface)
 // ---------------------------------
 export interface AuditLogEntry {
   id: string;
@@ -48,7 +48,7 @@ export interface AuditLogEntry {
   timestamp: string;
   user_id: string | null;
   tags: string[];
-  hash: string;
+  hash: string; // Renamed from immutable_hash for consistency
   tenantId: string;
   metadata?: Record<string, any>;
 }
@@ -119,7 +119,7 @@ const logActivityEvent = async (
 };
 
 // ---------------------------------
-// Internal: Audit Logging
+// Internal: Audit Logging (UPDATED to use async hash generation)
 // ---------------------------------
 const logAuditEvent = async (
   tenantId: string,
@@ -132,29 +132,38 @@ const logAuditEvent = async (
   metadata?: Record<string, any>
 ) => {
   const timestamp = new Date().toISOString();
-  const auditLog: AuditLogEntry = {
-    id: crypto.randomUUID(),
-    entity_type: storeName.toString(),
-    entity_id: entityId,
-    action,
-    description: description || `${storeName} ${action}`,
-    timestamp,
-    user_id: userId || null,
-    tags: tags || [],
-    tenantId,
-    metadata,
-    hash: await generateImmutableHash({
-      entity_type: storeName,
+  
+  try {
+    // Generate immutable hash using the new async function
+    const hash = await generateImmutableHash({
+      entity_type: storeName.toString(),
       entity_id: entityId,
       action,
       timestamp,
       tenantId,
-    }),
-  };
-  
-  try {
+      user_id: userId || null,
+      description: description || `${storeName} ${action}`,
+      metadata,
+    });
+
+    const auditLog: AuditLogEntry = {
+      id: generateSecureId(),
+      entity_type: storeName.toString(),
+      entity_id: entityId,
+      action,
+      description: description || `${storeName} ${action}`,
+      timestamp,
+      user_id: userId || null,
+      tags: tags || [],
+      tenantId,
+      metadata,
+      hash, // Using the generated hash
+    };
+    
     const db = await getDB(tenantId);
     await db.add("audit_logs", auditLog);
+    
+    console.log(`Audit logged: ${auditLog.description} (${auditLog.id})`);
   } catch (error) {
     console.error("Failed to log audit event:", error);
     throw new Error(`Audit logging failed: ${error}`);
@@ -162,7 +171,7 @@ const logAuditEvent = async (
 };
 
 // ---------------------------------
-// CRUD with Audit + Activity + Sync
+// CRUD with Audit + Activity + Sync (UPDATED)
 // ---------------------------------
 interface AuditMetadata {
   action?: string;
@@ -181,75 +190,73 @@ export const putWithAudit = async <T extends { id: string }>(
   if (!tenantId) {
     throw new Error("tenantId is required");
   }
-  if (!entity?.id) {
-    throw new Error("Entity must have an id");
+  if (!entity.id) {
+    throw new Error("Entity must have an id field");
   }
 
   const db = await getDB(tenantId);
   const timestamp = new Date().toISOString();
-  const action = auditMetadata?.action || "update";
 
   try {
     // Check if entity exists to determine if this is create or update
     const existing = await db.get(storeName, entity.id);
-    const actualAction = !existing ? "create" : "update";
+    const action = existing ? "update" : "create";
 
-    // Add tenant metadata to entity if not present
-    const entityWithTenant = {
+    // Add metadata fields to entity
+    const enrichedEntity = {
       ...entity,
-      tenantId,
       updated_at: timestamp,
-      ...(actualAction === "create" && { created_at: timestamp }),
+      ...(action === "create" && { created_at: timestamp }),
     };
 
-    // Save entity
-    await db.put(storeName, entityWithTenant);
+    // Store entity
+    await db.put(storeName, enrichedEntity);
 
-    // Log audit
+    // Log audit event (async)
     await logAuditEvent(
       tenantId,
       storeName,
       entity.id,
-      actualAction,
+      auditMetadata?.action || action,
       userId,
       auditMetadata?.description,
       auditMetadata?.tags,
       auditMetadata?.metadata
     );
 
-    // Log activity
+    // Log activity event
     await logActivityEvent(tenantId, {
-      id: crypto.randomUUID(),
+      id: generateSecureId(),
       tenantId,
       timestamp,
       message:
         auditMetadata?.description ||
-        `${actualAction === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
+        `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
       storeName: storeName.toString(),
       recordId: entity.id,
-      action: actualAction,
+      action: action as "create" | "update",
       userId,
       metadata: auditMetadata?.metadata,
     });
 
     // Enqueue for sync
     await enqueue(tenantId, {
-      id: crypto.randomUUID(),
+      id: generateSecureId(),
       storeName: storeName.toString(),
       entityId: entity.id,
-      action: actualAction,
-      payload: entityWithTenant,
+      action,
+      payload: enrichedEntity,
       timestamp,
       tenantId,
       status: 'pending',
     });
 
     // Notify watchers
-    notifyWatchers(storeName, entityWithTenant, actualAction);
+    notifyWatchers(storeName, enrichedEntity, action);
 
-    return entityWithTenant;
+    return enrichedEntity;
   } catch (error) {
-    console.error(`Failed to ${action} entity in ${storeName}:`, error);
+    console.error(`Failed to put entity ${entity.id} to ${storeName}:`, error);
     throw error;
   }
 };
@@ -281,7 +288,7 @@ export const removeWithAudit = async (
     // Delete entity
     await db.delete(storeName, entityId);
 
-    // Log audit
+    // Log audit event (async)
     await logAuditEvent(
       tenantId,
       storeName,
@@ -293,9 +300,9 @@ export const removeWithAudit = async (
       auditMetadata?.metadata
     );
 
-    // Log activity
+    // Log activity event
     await logActivityEvent(tenantId, {
-      id: crypto.randomUUID(),
+      id: generateSecureId(),
       tenantId,
       timestamp,
       message:
@@ -310,7 +317,7 @@ export const removeWithAudit = async (
 
     // Enqueue for sync
     await enqueue(tenantId, {
-      id: crypto.randomUUID(),
+      id: generateSecureId(),
       storeName: storeName.toString(),
       entityId,
       action: "delete",
@@ -420,7 +427,7 @@ export const clear = async (
     // Clear the store
     await db.clear(storeName);
 
-    // Log audit
+    // Log audit event (async)
     await logAuditEvent(
       tenantId,
       storeName,
@@ -432,9 +439,9 @@ export const clear = async (
       { ...auditMetadata?.metadata, count }
     );
 
-    // Log activity
+    // Log activity event
     await logActivityEvent(tenantId, {
-      id: crypto.randomUUID(),
+      id: generateSecureId(),
       tenantId,
       timestamp,
       message: `Cleared all ${count} entities from ${storeName}`,
@@ -465,7 +472,7 @@ export const markSynced = async (
     const updated = { 
       ...entity, 
       sync_status: 'clean' as const,
-      last_synced: new Date().toISOString()
+      synced_at: new Date().toISOString()
     };
     const db = await getDB(tenantId);
     await db.put(storeName, updated);
@@ -483,13 +490,13 @@ export const lastSynced = async (
     
     if (storeName) {
       const storeItems = syncQueue
-        .filter((item: SyncItem) => item.storeName === storeName && item.status === 'completed')
-        .sort((a: SyncItem, b: SyncItem) => b.timestamp.localeCompare(a.timestamp));
+        .filter((item: any) => item.storeName === storeName && item.status === 'completed')
+        .sort((a: any, b: any) => b.timestamp.localeCompare(a.timestamp));
       return storeItems[0]?.timestamp || null;
     } else {
       const completedItems = syncQueue
-        .filter((item: SyncItem) => item.status === 'completed')
-        .sort((a: SyncItem, b: SyncItem) => b.timestamp.localeCompare(a.timestamp));
+        .filter((item: any) => item.status === 'completed')
+        .sort((a: any, b: any) => b.timestamp.localeCompare(a.timestamp));
       return completedItems[0]?.timestamp || null;
     }
   } catch (error) {
@@ -559,6 +566,10 @@ export const healthCheck = async (tenantId: string) => {
     const isHealthy = db && typeof db.get === 'function';
     return { healthy: isHealthy, tenantId };
   } catch (error) {
-    return { healthy: false, tenantId, error: error.message };
+    return { 
+      healthy: false, 
+      tenantId, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
   }
 };

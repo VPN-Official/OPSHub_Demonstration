@@ -84,7 +84,7 @@ const ContractsContext = createContext<ContractsContextType | undefined>(undefin
 
 export const ContractsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [contracts, setContracts] = useState<Contract[]>([]);
 
   const config = loadConfig(tenantId).business.contracts;

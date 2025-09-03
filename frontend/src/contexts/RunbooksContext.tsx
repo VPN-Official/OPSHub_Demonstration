@@ -76,7 +76,7 @@ const RunbooksContext = createContext<RunbooksContextType | undefined>(undefined
 // ---------------------------------
 export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
 
   const config = loadConfig(tenantId).runbooks;

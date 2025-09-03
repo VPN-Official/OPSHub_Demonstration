@@ -121,7 +121,7 @@ const MaintenanceContext = createContext<MaintenanceContextType | undefined>(und
 
 export const MaintenanceProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueue } = useSync();
+  const { enqueueItem } = useSync();
   const [maintenanceWorks, setMaintenanceWorks] = useState<MaintenanceWork[]>([]);
 
   const config = loadConfig(tenantId).work.maintenance;
