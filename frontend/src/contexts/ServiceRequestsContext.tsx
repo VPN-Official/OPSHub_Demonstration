@@ -1,3 +1,4 @@
+// src/contexts/ServiceRequestsContext.tsx
 import React, {
   createContext,
   useContext,
@@ -7,62 +8,60 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
+import { 
+  getAll,
+  getById,
+  putWithAudit,
+  removeWithAudit,
+} from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
-import { useEndUsers } from "./EndUsersContext";
-import { loadConfig } from "../config/configLoader";
+import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Core State Management Types
+// 1. Frontend State Management Types
 // ---------------------------------
 
 /**
- * Generic async state container for UI state management
- * Used across all data operations to provide consistent loading/error states
+ * Generic async state wrapper for UI operations
+ * Provides loading, error, and staleness information to consumers
  */
-interface AsyncState<T> {
-  data: T;
-  isLoading: boolean;
+export interface AsyncState<T> {
+  data: T[];
+  loading: boolean;
   error: string | null;
   lastFetch: string | null;
-  isStale: boolean;
+  stale: boolean;
 }
 
 /**
- * Cache entry with TTL for client-side performance optimization
+ * UI-specific filters for client-side responsiveness
+ * Business filtering should be handled by backend APIs
  */
-interface CacheEntry<T> {
-  data: T;
-  timestamp: string;
-  ttl: number;
-}
-
-/**
- * UI filtering state for immediate client-side responsiveness
- */
-interface UIFilters {
-  status?: string[];
-  priority?: string[];
-  urgency?: string[];
+export interface ServiceRequestUIFilters {
+  status?: string;
+  priority?: string;
+  urgency?: string;
+  requestType?: string;
   assignedToMe?: boolean;
-  requestType?: string[];
-  search?: string;
+  businessService?: string;
+  searchQuery?: string;
+  healthStatus?: string;
+  tags?: string[];
 }
 
 /**
- * Optimistic update state for immediate UI feedback
+ * Optimistic update tracking for better UX
  */
 interface OptimisticUpdate {
   id: string;
   type: 'create' | 'update' | 'delete';
   timestamp: string;
-  originalData?: ServiceRequest;
-  pendingData?: Partial<ServiceRequest>;
+  rollbackData?: ServiceRequest;
 }
 
 // ---------------------------------
-// 2. Business Entity Types (Backend-Driven)
+// 2. Domain Types (From Backend)
 // ---------------------------------
 
 export interface LinkedRecommendation {
@@ -143,18 +142,29 @@ export interface ServiceRequest {
 
   // Business Impact (calculated by backend)
   business_impact?: string;
+  customer_impact?: string;
+  financial_impact?: number;
   estimated_cost?: number | null;
   actual_cost?: number | null;
   billable_hours?: number | null;
   parts_cost?: number | null;
   customer_impact_summary?: string;
+  affected_user_count?: number;
 
   // Risk & Compliance
   risk_score?: number;
   compliance_requirement_ids: string[];
 
-  // AI-Generated Content (from backend)
+  // SLA tracking (calculated by backend)
+  fulfillment_due_at?: string | null;
+  sla_breached?: boolean;
+  breach_reason?: string;
+
+  // AI/Automation (provided by backend)
   linked_recommendations: LinkedRecommendation[];
+  auto_assigned?: boolean;
+  ai_suggested_priority?: string;
+  ai_suggested_category?: string;
 
   // Metadata
   tags: string[];
@@ -170,558 +180,819 @@ export interface ServiceRequestDetails extends ServiceRequest {
   assignee?: any;
   business_service?: any;
   customer?: any;
+  related_incidents?: any[];
+  related_problems?: any[];
+  related_changes?: any[];
 }
 
 // ---------------------------------
-// 3. Configuration Types (Backend-Provided)
+// 3. API Client Abstraction
 // ---------------------------------
 
-interface ServiceRequestConfig {
-  statuses: string[];
-  priorities: string[];
-  urgency_levels: string[];
-  request_types: string[];
-  fulfillment_types: string[];
-  sla_targets: Record<string, number>;
-  validation_rules?: Record<string, any>;
+interface ServiceRequestAPIClient {
+  getAll: (tenantId: string, filters?: Record<string, any>) => Promise<ServiceRequest[]>;
+  getById: (tenantId: string, id: string) => Promise<ServiceRequest | undefined>;
+  create: (tenantId: string, request: Partial<ServiceRequest>) => Promise<ServiceRequest>;
+  update: (tenantId: string, id: string, request: Partial<ServiceRequest>) => Promise<ServiceRequest>;
+  delete: (tenantId: string, id: string) => Promise<void>;
+  getMetrics: (tenantId: string, filters?: Record<string, any>) => Promise<any>;
+  validate: (tenantId: string, request: Partial<ServiceRequest>) => Promise<{ valid: boolean; errors?: string[] }>;
+  approve: (tenantId: string, id: string, approvalData: any) => Promise<ServiceRequest>;
+  reject: (tenantId: string, id: string, rejectionData: any) => Promise<ServiceRequest>;
+  escalate: (tenantId: string, id: string, escalationData: any) => Promise<ServiceRequest>;
+  fulfill: (tenantId: string, id: string, fulfillmentData: any) => Promise<ServiceRequest>;
+}
+
+// Thin API client wrapper - delegates ALL business logic to backend
+const createServiceRequestAPIClient = (): ServiceRequestAPIClient => ({
+  async getAll(tenantId: string, filters = {}) {
+    // Backend handles complex filtering, sorting, and business rules
+    const response = await fetch(`/api/service-requests?${new URLSearchParams(filters)}`);
+    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+    return response.json();
+  },
+
+  async getById(tenantId: string, id: string) {
+    return getById<ServiceRequest>(tenantId, "service_requests", id);
+  },
+
+  async create(tenantId: string, request: Partial<ServiceRequest>) {
+    // Backend handles all validation, business rules, SLA calculations, etc.
+    const response = await fetch('/api/service-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...request, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create service request');
+    }
+    return response.json();
+  },
+
+  async update(tenantId: string, id: string, request: Partial<ServiceRequest>) {
+    // Backend handles business validation and state transitions
+    const response = await fetch(`/api/service-requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...request, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update service request');
+    }
+    return response.json();
+  },
+
+  async delete(tenantId: string, id: string) {
+    // Backend handles cascade deletion and business rules
+    const response = await fetch(`/api/service-requests/${id}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete service request');
+    }
+  },
+
+  async getMetrics(tenantId: string, filters = {}) {
+    // Backend calculates all business metrics
+    const response = await fetch(`/api/service-requests/metrics?${new URLSearchParams(filters)}`);
+    if (!response.ok) throw new Error('Failed to load metrics');
+    return response.json();
+  },
+
+  async validate(tenantId: string, request: Partial<ServiceRequest>) {
+    // Backend performs comprehensive business validation
+    const response = await fetch('/api/service-requests/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...request, tenantId })
+    });
+    if (!response.ok) throw new Error('Validation failed');
+    return response.json();
+  },
+
+  async approve(tenantId: string, id: string, approvalData: any) {
+    const response = await fetch(`/api/service-requests/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...approvalData, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to approve request');
+    }
+    return response.json();
+  },
+
+  async reject(tenantId: string, id: string, rejectionData: any) {
+    const response = await fetch(`/api/service-requests/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...rejectionData, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to reject request');
+    }
+    return response.json();
+  },
+
+  async escalate(tenantId: string, id: string, escalationData: any) {
+    const response = await fetch(`/api/service-requests/${id}/escalate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...escalationData, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to escalate request');
+    }
+    return response.json();
+  },
+
+  async fulfill(tenantId: string, id: string, fulfillmentData: any) {
+    const response = await fetch(`/api/service-requests/${id}/fulfill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...fulfillmentData, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fulfill request');
+    }
+    return response.json();
+  },
+});
+
+// ---------------------------------
+// 4. Cache Management for UI Performance
+// ---------------------------------
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 1000; // Prevent memory leaks
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: string;
+  accessCount: number;
+  lastAccessed: string;
+}
+
+class UICache<T> {
+  private cache = new Map<string, CacheEntry<T>>();
+  
+  set(key: string, data: T): void {
+    // LRU eviction when cache is full
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const oldestKey = Array.from(this.cache.entries())
+        .sort(([,a], [,b]) => new Date(a.lastAccessed).getTime() - new Date(b.lastAccessed).getTime())[0][0];
+      this.cache.delete(oldestKey);
+    }
+    
+    this.cache.set(key, {
+      data,
+      timestamp: new Date().toISOString(),
+      accessCount: 0,
+      lastAccessed: new Date().toISOString(),
+    });
+  }
+  
+  get(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    // Check if stale
+    if (Date.now() - new Date(entry.timestamp).getTime() > CACHE_TTL) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    // Update access tracking
+    entry.accessCount++;
+    entry.lastAccessed = new Date().toISOString();
+    
+    return entry.data;
+  }
+  
+  invalidate(key?: string): void {
+    if (key) {
+      this.cache.delete(key);
+    } else {
+      this.cache.clear();
+    }
+  }
+  
+  isStale(key: string): boolean {
+    const entry = this.cache.get(key);
+    if (!entry) return true;
+    return Date.now() - new Date(entry.timestamp).getTime() > CACHE_TTL;
+  }
 }
 
 // ---------------------------------
-// 4. Context Interface (UI-Focused)
+// 5. Context Interface
 // ---------------------------------
-
 interface ServiceRequestsContextType {
-  // Core async state
-  serviceRequestsState: AsyncState<ServiceRequest[]>;
+  // Async state for UI
+  serviceRequests: AsyncState<ServiceRequest>;
   
-  // Individual entity state
-  getServiceRequestState: (id: string) => AsyncState<ServiceRequest | null>;
-  
-  // Backend API orchestration (no business logic)
-  createServiceRequest: (request: Omit<ServiceRequest, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<void>;
-  updateServiceRequest: (id: string, updates: Partial<ServiceRequest>, userId?: string) => Promise<void>;
+  // CRUD operations with optimistic updates
+  addServiceRequest: (request: Partial<ServiceRequest>, userId?: string) => Promise<void>;
+  updateServiceRequest: (id: string, request: Partial<ServiceRequest>, userId?: string) => Promise<void>;
   deleteServiceRequest: (id: string, userId?: string) => Promise<void>;
+  
+  // Service request specific operations
+  approveRequest: (id: string, approvalData: any, userId?: string) => Promise<void>;
+  rejectRequest: (id: string, rejectionData: any, userId?: string) => Promise<void>;
+  escalateRequest: (id: string, escalationData: any, userId?: string) => Promise<void>;
+  fulfillRequest: (id: string, fulfillmentData: any, userId?: string) => Promise<void>;
+  
+  // Data fetching
   refreshServiceRequests: () => Promise<void>;
-  refreshServiceRequest: (id: string) => Promise<void>;
+  getServiceRequest: (id: string) => Promise<ServiceRequest | undefined>;
   
-  // UI-specific helpers (no business rules)
-  getFilteredRequests: (filters: UIFilters) => ServiceRequest[];
-  searchRequests: (query: string) => ServiceRequest[];
-  getRequestsByStatus: (status: string) => ServiceRequest[];
-  getMyRequests: (userId: string) => ServiceRequest[];
+  // Client-side UI helpers (not business logic)
+  filterServiceRequests: (filters: ServiceRequestUIFilters) => ServiceRequest[];
+  searchServiceRequests: (query: string) => ServiceRequest[];
+  sortServiceRequests: (sortBy: keyof ServiceRequest, order: 'asc' | 'desc') => ServiceRequest[];
   
-  // UI state management
-  filters: UIFilters;
-  setFilters: (filters: Partial<UIFilters>) => void;
-  clearFilters: () => void;
-  
-  // Configuration (from backend)
-  config: ServiceRequestConfig;
+  // Optimistic update state
+  optimisticUpdates: OptimisticUpdate[];
+  rollbackOptimisticUpdate: (updateId: string) => void;
   
   // Cache management
-  invalidateCache: () => void;
+  invalidateCache: (key?: string) => void;
+  getCacheStats: () => { size: number; hitRate: number };
   
-  // Optimistic updates state
-  optimisticUpdates: OptimisticUpdate[];
+  // Backend config integration (read-only from backend)
+  config: {
+    statuses: string[];
+    priorities: string[];
+    urgency_levels: string[];
+    request_types: string[];
+    fulfillment_types: string[];
+    sla_targets: Record<string, number>;
+  };
 }
 
-const ServiceRequestsContext = createContext<ServiceRequestsContextType | undefined>(
-  undefined
-);
-
-// ---------------------------------
-// 5. Constants & Configuration
-// ---------------------------------
-
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const STALE_TIME_MS = 30 * 1000; // 30 seconds
-
-const DEFAULT_FILTERS: UIFilters = {};
-
-const createAsyncState = <T,>(initialData: T): AsyncState<T> => ({
-  data: initialData,
-  isLoading: false,
-  error: null,
-  lastFetch: null,
-  isStale: false,
-});
+const ServiceRequestsContext = createContext<ServiceRequestsContextType | undefined>(undefined);
 
 // ---------------------------------
 // 6. Provider Implementation
 // ---------------------------------
-
 export const ServiceRequestsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { endUsers } = useEndUsers();
-
-  // Core state
-  const [serviceRequestsState, setServiceRequestsState] = useState<AsyncState<ServiceRequest[]>>(
-    createAsyncState([])
-  );
+  const { config: globalConfig } = useConfig();
   
-  // Individual entity cache
-  const [entityCache, setEntityCache] = useState<Map<string, CacheEntry<AsyncState<ServiceRequest | null>>>>(
-    new Map()
-  );
+  // UI State Management
+  const [serviceRequests, setServiceRequests] = useState<AsyncState<ServiceRequest>>({
+    data: [],
+    loading: false,
+    error: null,
+    lastFetch: null,
+    stale: true,
+  });
   
-  // UI state
-  const [filters, setFiltersState] = useState<UIFilters>(DEFAULT_FILTERS);
   const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
   
-  // Configuration (loaded from backend)
-  const [config, setConfig] = useState<ServiceRequestConfig>({
-    statuses: [],
-    priorities: [],
-    urgency_levels: [],
-    request_types: [],
-    fulfillment_types: [],
-    sla_targets: {},
-  });
+  // Memoized instances
+  const apiClient = useMemo(() => createServiceRequestAPIClient(), []);
+  const cache = useMemo(() => new UICache<ServiceRequest[]>(), []);
+  
+  // Extract UI config from backend config
+  const config = useMemo(() => ({
+    statuses: globalConfig?.work?.service_request?.statuses || [],
+    priorities: globalConfig?.work?.service_request?.priorities || [],
+    urgency_levels: globalConfig?.work?.service_request?.urgency_levels || [],
+    request_types: globalConfig?.work?.service_request?.request_types || [],
+    fulfillment_types: globalConfig?.work?.service_request?.fulfillment_types || [],
+    sla_targets: globalConfig?.work?.service_request?.sla_targets || {},
+  }), [globalConfig]);
 
   // ---------------------------------
-  // 7. Initialization & Config Loading
+  // Cache & Performance Management
   // ---------------------------------
   
-  useEffect(() => {
-    if (tenantId) {
-      loadBackendConfig();
-      refreshServiceRequests();
+  const getCacheKey = useCallback((filters?: Record<string, any>) => 
+    `service_requests_${tenantId}_${JSON.stringify(filters || {})}`, [tenantId]);
+  
+  const invalidateCache = useCallback((key?: string) => {
+    if (key) {
+      cache.invalidate(key);
     } else {
-      resetState();
+      cache.invalidate();
     }
-  }, [tenantId]);
-
-  const loadBackendConfig = useCallback(async () => {
-    try {
-      const loadedConfig = await loadConfig(tenantId);
-      setConfig(loadedConfig.work.service_request);
-    } catch (error) {
-      console.error('Failed to load service request configuration:', error);
-      setServiceRequestsState(prev => ({
-        ...prev,
-        error: 'Failed to load configuration'
-      }));
-    }
-  }, [tenantId]);
-
-  const resetState = useCallback(() => {
-    setServiceRequestsState(createAsyncState([]));
-    setEntityCache(new Map());
-    setFiltersState(DEFAULT_FILTERS);
-    setOptimisticUpdates([]);
-  }, []);
+  }, [cache]);
+  
+  const getCacheStats = useCallback(() => {
+    const entries = Array.from((cache as any).cache.values());
+    const totalAccesses = entries.reduce((sum, entry) => sum + entry.accessCount, 0);
+    const hits = entries.filter(entry => entry.accessCount > 0).length;
+    return {
+      size: entries.length,
+      hitRate: totalAccesses > 0 ? hits / totalAccesses : 0,
+    };
+  }, [cache]);
 
   // ---------------------------------
-  // 8. Core Data Management (API Orchestration)
+  // Data Fetching with Cache
   // ---------------------------------
-
-  const refreshServiceRequests = useCallback(async () => {
+  
+  const refreshServiceRequests = useCallback(async (filters?: Record<string, any>) => {
     if (!tenantId) return;
-
-    setServiceRequestsState(prev => ({ ...prev, isLoading: true, error: null }));
-
+    
+    const cacheKey = getCacheKey(filters);
+    
+    // Check cache first
+    const cached = cache.get(cacheKey);
+    if (cached && !cache.isStale(cacheKey)) {
+      setServiceRequests(prev => ({
+        ...prev,
+        data: cached,
+        stale: false,
+      }));
+      return;
+    }
+    
+    setServiceRequests(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      // Backend API call - all business logic handled server-side
-      const requests = await getAll<ServiceRequest>(tenantId, "service_requests");
+      // Backend handles sorting, filtering, and business logic
+      const data = await apiClient.getAll(tenantId, filters);
       
-      const now = new Date().toISOString();
-      setServiceRequestsState({
-        data: requests,
-        isLoading: false,
+      // Cache for UI performance
+      cache.set(cacheKey, data);
+      
+      setServiceRequests({
+        data,
+        loading: false,
         error: null,
-        lastFetch: now,
-        isStale: false,
+        lastFetch: new Date().toISOString(),
+        stale: false,
       });
-
-      // Clear optimistic updates that have been resolved
-      setOptimisticUpdates(prev => 
-        prev.filter(update => 
-          !requests.some(req => req.id === update.id)
-        )
-      );
-
-      console.log(`✅ Loaded ${requests.length} service requests for tenant ${tenantId}`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load service requests';
-      console.error('Service requests loading error:', errorMessage);
-      
-      setServiceRequestsState(prev => ({
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setServiceRequests(prev => ({
         ...prev,
-        isLoading: false,
+        loading: false,
         error: errorMessage,
+        stale: true,
       }));
     }
-  }, [tenantId]);
+  }, [tenantId, apiClient, cache, getCacheKey]);
 
-  const refreshServiceRequest = useCallback(async (id: string) => {
-    if (!tenantId) return;
-
-    const now = Date.now();
-    setEntityCache(prev => {
-      const newCache = new Map(prev);
-      const existing = newCache.get(id);
-      newCache.set(id, {
-        data: {
-          ...existing?.data || createAsyncState(null),
-          isLoading: true,
-          error: null,
-        },
-        timestamp: new Date().toISOString(),
-        ttl: CACHE_TTL_MS,
-      });
-      return newCache;
-    });
-
+  const getServiceRequest = useCallback(async (id: string) => {
+    if (!tenantId) return undefined;
+    
+    // Check current data first for UI responsiveness
+    const existing = serviceRequests.data.find(sr => sr.id === id);
+    if (existing && !serviceRequests.stale) return existing;
+    
     try {
-      const request = await getById<ServiceRequest>(tenantId, "service_requests", id);
-      
-      setEntityCache(prev => {
-        const newCache = new Map(prev);
-        newCache.set(id, {
-          data: {
-            data: request || null,
-            isLoading: false,
-            error: null,
-            lastFetch: new Date().toISOString(),
-            isStale: false,
-          },
-          timestamp: new Date().toISOString(),
-          ttl: CACHE_TTL_MS,
-        });
-        return newCache;
-      });
+      return await apiClient.getById(tenantId, id);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load service request';
-      
-      setEntityCache(prev => {
-        const newCache = new Map(prev);
-        const existing = newCache.get(id);
-        newCache.set(id, {
-          data: {
-            ...existing?.data || createAsyncState(null),
-            isLoading: false,
-            error: errorMessage,
-          },
-          timestamp: new Date().toISOString(),
-          ttl: CACHE_TTL_MS,
-        });
-        return newCache;
-      });
+      console.warn(`Failed to fetch service request ${id}:`, error);
+      return existing; // Fallback to cached data
     }
-  }, [tenantId]);
+  }, [tenantId, apiClient, serviceRequests]);
 
   // ---------------------------------
-  // 9. CRUD Operations (API Orchestration Only)
+  // Optimistic Updates for Better UX
   // ---------------------------------
+  
+  const addOptimisticUpdate = useCallback((update: OptimisticUpdate) => {
+    setOptimisticUpdates(prev => [...prev, update]);
+  }, []);
+  
+  const removeOptimisticUpdate = useCallback((updateId: string) => {
+    setOptimisticUpdates(prev => prev.filter(u => u.id !== updateId));
+  }, []);
+  
+  const rollbackOptimisticUpdate = useCallback((updateId: string) => {
+    const update = optimisticUpdates.find(u => u.id === updateId);
+    if (!update) return;
+    
+    setServiceRequests(prev => {
+      let newData = [...prev.data];
+      
+      switch (update.type) {
+        case 'create':
+          newData = newData.filter(sr => sr.id !== update.id);
+          break;
+        case 'update':
+          if (update.rollbackData) {
+            const index = newData.findIndex(sr => sr.id === update.id);
+            if (index >= 0) newData[index] = update.rollbackData;
+          }
+          break;
+        case 'delete':
+          if (update.rollbackData) {
+            newData.push(update.rollbackData);
+          }
+          break;
+      }
+      
+      return { ...prev, data: newData };
+    });
+    
+    removeOptimisticUpdate(updateId);
+  }, [optimisticUpdates, removeOptimisticUpdate]);
 
-  const createServiceRequest = useCallback(async (
-    requestData: Omit<ServiceRequest, 'id' | 'created_at' | 'updated_at'>,
-    userId?: string
-  ) => {
-    if (!tenantId) return;
-
-    // Generate temporary ID for optimistic update
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  // ---------------------------------
+  // CRUD Operations with Optimistic Updates
+  // ---------------------------------
+  
+  const addServiceRequest = useCallback(async (request: Partial<ServiceRequest>, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const optimisticId = `temp-${Date.now()}`;
     const optimisticRequest: ServiceRequest = {
-      ...requestData,
-      id: tempId,
+      id: optimisticId,
+      title: request.title || '',
+      description: request.description || '',
+      status: request.status || config.statuses[0] || 'draft',
+      priority: request.priority || config.priorities[0] || 'medium',
+      urgency: request.urgency || config.urgency_levels[0] || 'medium',
+      request_type: request.request_type || config.request_types[0] || 'general',
+      category: request.category || '',
+      subcategory: request.subcategory || '',
+      product_family: request.product_family || '',
+      fulfillment_type: request.fulfillment_type || config.fulfillment_types[0] || 'manual',
+      approval_required: request.approval_required || false,
+      approval_workflow: [],
+      tasks: [],
+      requested_by_end_user_id: request.requested_by_end_user_id || '',
+      approved_by_user_ids: [],
+      escalation_team_ids: [],
+      service_component_ids: [],
+      asset_ids: [],
+      related_incident_ids: [],
+      related_problem_ids: [],
+      related_change_ids: [],
+      related_log_ids: [],
+      related_metric_ids: [],
+      related_event_ids: [],
+      related_trace_ids: [],
+      compliance_requirement_ids: [],
+      linked_recommendations: [],
+      tags: [],
+      health_status: "gray",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      tenantId,
+      ...request,
     };
-
-    // Apply optimistic update to UI
-    setOptimisticUpdates(prev => [...prev, {
-      id: tempId,
-      type: 'create',
-      timestamp: new Date().toISOString(),
-      pendingData: optimisticRequest,
-    }]);
-
-    setServiceRequestsState(prev => ({
+    
+    // Optimistic UI update
+    setServiceRequests(prev => ({
       ...prev,
       data: [optimisticRequest, ...prev.data],
     }));
-
+    
+    const update: OptimisticUpdate = {
+      id: optimisticId,
+      type: 'create',
+      timestamp: new Date().toISOString(),
+    };
+    addOptimisticUpdate(update);
+    
     try {
-      // Backend handles ALL validation and business logic
-      await putWithAudit(
-        tenantId,
-        "service_requests",
-        optimisticRequest,
-        userId,
-        { action: "create", description: `Service Request "${requestData.title}" created` },
-        enqueueItem
-      );
-
-      // Refresh data to get the real entity from backend
-      await refreshServiceRequests();
-    } catch (error) {
-      // Rollback optimistic update on failure
-      setOptimisticUpdates(prev => prev.filter(u => u.id !== tempId));
-      setServiceRequestsState(prev => ({
+      // Backend handles ALL business logic
+      const created = await apiClient.create(tenantId, request);
+      
+      // Replace optimistic with real data
+      setServiceRequests(prev => ({
         ...prev,
-        data: prev.data.filter(req => req.id !== tempId),
-        error: error instanceof Error ? error.message : 'Failed to create service request',
+        data: prev.data.map(sr => sr.id === optimisticId ? created : sr),
       }));
       
+      removeOptimisticUpdate(optimisticId);
+      invalidateCache();
+      
+      // Sync for offline support
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: created.id,
+        action: "create",
+        payload: created,
+        priority: created.priority === 'urgent' ? 'critical' : 'normal',
+      });
+      
+    } catch (error) {
+      // Rollback on failure
+      rollbackOptimisticUpdate(optimisticId);
       throw error;
     }
-  }, [tenantId, enqueueItem, refreshServiceRequests]);
+  }, [tenantId, config, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
 
-  const updateServiceRequest = useCallback(async (
-    id: string,
-    updates: Partial<ServiceRequest>,
-    userId?: string
-  ) => {
-    if (!tenantId) return;
-
-    const existingRequest = serviceRequestsState.data.find(req => req.id === id);
-    if (!existingRequest) {
-      throw new Error('Service request not found');
-    }
-
-    const optimisticRequest = { ...existingRequest, ...updates, updated_at: new Date().toISOString() };
-
-    // Apply optimistic update
-    setOptimisticUpdates(prev => [...prev, {
+  const updateServiceRequest = useCallback(async (id: string, request: Partial<ServiceRequest>, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = serviceRequests.data.find(sr => sr.id === id);
+    if (!existing) throw new Error("Service request not found");
+    
+    const optimisticRequest = { ...existing, ...request, updated_at: new Date().toISOString() };
+    
+    // Optimistic UI update
+    setServiceRequests(prev => ({
+      ...prev,
+      data: prev.data.map(sr => sr.id === id ? optimisticRequest : sr),
+    }));
+    
+    const update: OptimisticUpdate = {
       id,
       type: 'update',
       timestamp: new Date().toISOString(),
-      originalData: existingRequest,
-      pendingData: optimisticRequest,
-    }]);
-
-    setServiceRequestsState(prev => ({
-      ...prev,
-      data: prev.data.map(req => req.id === id ? optimisticRequest : req),
-    }));
-
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
     try {
-      // Backend handles ALL business logic and validation
-      await putWithAudit(
-        tenantId,
-        "service_requests",
-        optimisticRequest,
-        userId,
-        { action: "update", description: `Service Request "${optimisticRequest.title}" updated` },
-        enqueueItem
-      );
-
-      await refreshServiceRequests();
-    } catch (error) {
-      // Rollback optimistic update
-      setOptimisticUpdates(prev => prev.filter(u => u.id !== id || u.type !== 'update'));
-      setServiceRequestsState(prev => ({
+      // Backend handles business logic and state transitions
+      const updated = await apiClient.update(tenantId, id, request);
+      
+      setServiceRequests(prev => ({
         ...prev,
-        data: prev.data.map(req => req.id === id ? existingRequest : req),
-        error: error instanceof Error ? error.message : 'Failed to update service request',
+        data: prev.data.map(sr => sr.id === id ? updated : sr),
       }));
       
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "update",
+        payload: updated,
+        priority: updated.priority === 'urgent' ? 'critical' : 'normal',
+      });
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
       throw error;
     }
-  }, [tenantId, enqueueItem, refreshServiceRequests, serviceRequestsState.data]);
+  }, [tenantId, serviceRequests.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
 
   const deleteServiceRequest = useCallback(async (id: string, userId?: string) => {
-    if (!tenantId) return;
-
-    const existingRequest = serviceRequestsState.data.find(req => req.id === id);
-    if (!existingRequest) return;
-
-    // Apply optimistic update
-    setOptimisticUpdates(prev => [...prev, {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = serviceRequests.data.find(sr => sr.id === id);
+    if (!existing) throw new Error("Service request not found");
+    
+    // Optimistic UI update
+    setServiceRequests(prev => ({
+      ...prev,
+      data: prev.data.filter(sr => sr.id !== id),
+    }));
+    
+    const update: OptimisticUpdate = {
       id,
       type: 'delete',
       timestamp: new Date().toISOString(),
-      originalData: existingRequest,
-    }]);
-
-    setServiceRequestsState(prev => ({
-      ...prev,
-      data: prev.data.filter(req => req.id !== id),
-    }));
-
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
     try {
-      // Backend handles deletion logic
-      await removeWithAudit(
-        tenantId,
-        "service_requests",
-        id,
-        userId,
-        { description: `Service Request ${id} deleted` },
-        enqueueItem
-      );
-
-      // Remove from individual cache
-      setEntityCache(prev => {
-        const newCache = new Map(prev);
-        newCache.delete(id);
-        return newCache;
-      });
-    } catch (error) {
-      // Rollback optimistic update
-      setOptimisticUpdates(prev => prev.filter(u => u.id !== id || u.type !== 'delete'));
-      setServiceRequestsState(prev => ({
-        ...prev,
-        data: [...prev.data, existingRequest],
-        error: error instanceof Error ? error.message : 'Failed to delete service request',
-      }));
+      await apiClient.delete(tenantId, id);
       
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "delete",
+        payload: null,
+      });
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
       throw error;
     }
-  }, [tenantId, enqueueItem, serviceRequestsState.data]);
+  }, [tenantId, serviceRequests.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
 
   // ---------------------------------
-  // 10. UI Helper Functions (Client-Side Only)
+  // Service Request Specific Operations
   // ---------------------------------
 
-  const getFilteredRequests = useCallback((filters: UIFilters): ServiceRequest[] => {
-    return serviceRequestsState.data.filter(request => {
-      // Simple client-side filtering for immediate UI responsiveness
-      if (filters.status?.length && !filters.status.includes(request.status)) return false;
-      if (filters.priority?.length && !filters.priority.includes(request.priority)) return false;
-      if (filters.urgency?.length && !filters.urgency.includes(request.urgency)) return false;
-      if (filters.requestType?.length && !filters.requestType.includes(request.request_type)) return false;
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        const matchesSearch = 
-          request.title.toLowerCase().includes(searchLower) ||
-          request.description.toLowerCase().includes(searchLower) ||
-          request.id.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
-      return true;
+  const approveRequest = useCallback(async (id: string, approvalData: any, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const updated = await apiClient.approve(tenantId, id, approvalData);
+      
+      setServiceRequests(prev => ({
+        ...prev,
+        data: prev.data.map(sr => sr.id === id ? updated : sr),
+      }));
+      
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "update",
+        payload: updated,
+      });
+      
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, invalidateCache, enqueueItem]);
+
+  const rejectRequest = useCallback(async (id: string, rejectionData: any, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const updated = await apiClient.reject(tenantId, id, rejectionData);
+      
+      setServiceRequests(prev => ({
+        ...prev,
+        data: prev.data.map(sr => sr.id === id ? updated : sr),
+      }));
+      
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "update",
+        payload: updated,
+      });
+      
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, invalidateCache, enqueueItem]);
+
+  const escalateRequest = useCallback(async (id: string, escalationData: any, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const updated = await apiClient.escalate(tenantId, id, escalationData);
+      
+      setServiceRequests(prev => ({
+        ...prev,
+        data: prev.data.map(sr => sr.id === id ? updated : sr),
+      }));
+      
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "update",
+        payload: updated,
+        priority: 'critical', // Escalations are high priority
+      });
+      
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, invalidateCache, enqueueItem]);
+
+  const fulfillRequest = useCallback(async (id: string, fulfillmentData: any, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const updated = await apiClient.fulfill(tenantId, id, fulfillmentData);
+      
+      setServiceRequests(prev => ({
+        ...prev,
+        data: prev.data.map(sr => sr.id === id ? updated : sr),
+      }));
+      
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "service_requests",
+        entityId: id,
+        action: "update",
+        payload: updated,
+      });
+      
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, invalidateCache, enqueueItem]);
+
+  // ---------------------------------
+  // Client-Side UI Helpers (No Business Logic)
+  // ---------------------------------
+  
+  const filterServiceRequests = useCallback((filters: ServiceRequestUIFilters): ServiceRequest[] => {
+    let filtered = [...serviceRequests.data];
+    
+    if (filters.status) {
+      filtered = filtered.filter(sr => sr.status === filters.status);
+    }
+    
+    if (filters.priority) {
+      filtered = filtered.filter(sr => sr.priority === filters.priority);
+    }
+    
+    if (filters.urgency) {
+      filtered = filtered.filter(sr => sr.urgency === filters.urgency);
+    }
+    
+    if (filters.requestType) {
+      filtered = filtered.filter(sr => sr.request_type === filters.requestType);
+    }
+    
+    if (filters.businessService) {
+      filtered = filtered.filter(sr => sr.business_service_id === filters.businessService);
+    }
+    
+    if (filters.healthStatus) {
+      filtered = filtered.filter(sr => sr.health_status === filters.healthStatus);
+    }
+    
+    if (filters.tags && filters.tags.length > 0) {
+      filtered = filtered.filter(sr => 
+        filters.tags!.some(tag => sr.tags.includes(tag))
+      );
+    }
+    
+    if (filters.searchQuery) {
+      const query = filters.searchQuery.toLowerCase();
+      filtered = filtered.filter(sr =>
+        sr.title.toLowerCase().includes(query) ||
+        sr.description.toLowerCase().includes(query) ||
+        sr.tags.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+    
+    return filtered;
+  }, [serviceRequests.data]);
+  
+  const searchServiceRequests = useCallback((query: string): ServiceRequest[] => {
+    return filterServiceRequests({ searchQuery: query });
+  }, [filterServiceRequests]);
+  
+  const sortServiceRequests = useCallback((sortBy: keyof ServiceRequest, order: 'asc' | 'desc' = 'desc'): ServiceRequest[] => {
+    return [...serviceRequests.data].sort((a, b) => {
+      const aVal = a[sortBy];
+      const bVal = b[sortBy];
+      
+      if (aVal === bVal) return 0;
+      const result = aVal > bVal ? 1 : -1;
+      return order === 'asc' ? result : -result;
     });
-  }, [serviceRequestsState.data]);
+  }, [serviceRequests.data]);
 
-  const searchRequests = useCallback((query: string): ServiceRequest[] => {
-    if (!query.trim()) return serviceRequestsState.data;
-    
-    const searchLower = query.toLowerCase();
-    return serviceRequestsState.data.filter(request =>
-      request.title.toLowerCase().includes(searchLower) ||
-      request.description.toLowerCase().includes(searchLower) ||
-      request.id.toLowerCase().includes(searchLower) ||
-      request.tags.some(tag => tag.toLowerCase().includes(searchLower))
-    );
-  }, [serviceRequestsState.data]);
-
-  const getRequestsByStatus = useCallback((status: string): ServiceRequest[] => {
-    return serviceRequestsState.data.filter(request => request.status === status);
-  }, [serviceRequestsState.data]);
-
-  const getMyRequests = useCallback((userId: string): ServiceRequest[] => {
-    return serviceRequestsState.data.filter(request => 
-      request.assigned_to_user_id === userId || 
-      request.requested_by_user_id === userId
-    );
-  }, [serviceRequestsState.data]);
-
-  const getServiceRequestState = useCallback((id: string): AsyncState<ServiceRequest | null> => {
-    const cached = entityCache.get(id);
-    if (cached && Date.now() - new Date(cached.timestamp).getTime() < cached.ttl) {
-      return cached.data;
+  // ---------------------------------
+  // Initialization & Cleanup
+  // ---------------------------------
+  
+  useEffect(() => {
+    if (tenantId && globalConfig) {
+      refreshServiceRequests();
     }
-    
-    // Return from main list if available
-    const fromList = serviceRequestsState.data.find(req => req.id === id);
-    if (fromList) {
-      return {
-        data: fromList,
-        isLoading: false,
-        error: null,
-        lastFetch: serviceRequestsState.lastFetch,
-        isStale: serviceRequestsState.isStale,
-      };
-    }
-    
-    // Trigger fetch if not in cache
-    refreshServiceRequest(id);
-    
-    return createAsyncState(null);
-  }, [entityCache, serviceRequestsState, refreshServiceRequest]);
-
-  // ---------------------------------
-  // 11. UI State Management
-  // ---------------------------------
-
-  const setFilters = useCallback((newFilters: Partial<UIFilters>) => {
-    setFiltersState(prev => ({ ...prev, ...newFilters }));
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setFiltersState(DEFAULT_FILTERS);
-  }, []);
-
-  const invalidateCache = useCallback(() => {
-    setEntityCache(new Map());
-    setServiceRequestsState(prev => ({ ...prev, isStale: true }));
-  }, []);
-
-  // ---------------------------------
-  // 12. Computed Values & Memoization
-  // ---------------------------------
-
-  const filteredRequests = useMemo(() => getFilteredRequests(filters), [getFilteredRequests, filters]);
-
-  // ---------------------------------
-  // 13. Context Value
-  // ---------------------------------
-
-  const contextValue: ServiceRequestsContextType = useMemo(() => ({
-    serviceRequestsState,
-    getServiceRequestState,
-    createServiceRequest,
-    updateServiceRequest,
-    deleteServiceRequest,
-    refreshServiceRequests,
-    refreshServiceRequest,
-    getFilteredRequests,
-    searchRequests,
-    getRequestsByStatus,
-    getMyRequests,
-    filters,
-    setFilters,
-    clearFilters,
-    config,
-    invalidateCache,
-    optimisticUpdates,
-  }), [
-    serviceRequestsState,
-    getServiceRequestState,
-    createServiceRequest,
-    updateServiceRequest,
-    deleteServiceRequest,
-    refreshServiceRequests,
-    refreshServiceRequest,
-    getFilteredRequests,
-    searchRequests,
-    getRequestsByStatus,
-    getMyRequests,
-    filters,
-    setFilters,
-    clearFilters,
-    config,
-    invalidateCache,
-    optimisticUpdates,
-  ]);
+  }, [tenantId, globalConfig, refreshServiceRequests]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      invalidateCache();
+      setOptimisticUpdates([]);
+    };
+  }, [invalidateCache]);
 
   return (
-    <ServiceRequestsContext.Provider value={contextValue}>
+    <ServiceRequestsContext.Provider
+      value={{
+        serviceRequests,
+        addServiceRequest,
+        updateServiceRequest,
+        deleteServiceRequest,
+        approveRequest,
+        rejectRequest,
+        escalateRequest,
+        fulfillRequest,
+        refreshServiceRequests,
+        getServiceRequest,
+        filterServiceRequests,
+        searchServiceRequests,
+        sortServiceRequests,
+        optimisticUpdates,
+        rollbackOptimisticUpdate,
+        invalidateCache,
+        getCacheStats,
+        config,
+      }}
+    >
       {children}
     </ServiceRequestsContext.Provider>
   );
 };
 
 // ---------------------------------
-// 14. Hooks
+// 7. Hooks for Selective Subscriptions
 // ---------------------------------
 
-/**
- * Primary hook for accessing service requests context
- * Provides full access to service requests state and operations
- */
-export const useServiceRequests = () => {
+export const useServiceRequests = (): ServiceRequestsContextType => {
   const ctx = useContext(ServiceRequestsContext);
   if (!ctx) {
     throw new Error("useServiceRequests must be used within ServiceRequestsProvider");
@@ -730,71 +1001,120 @@ export const useServiceRequests = () => {
 };
 
 /**
- * Hook for accessing service request details with related entities
- * Handles data composition and relationship mapping for UI
+ * Performance-optimized hook for service request details with caching
  */
-export const useServiceRequestDetails = (id: string) => {
-  const { getServiceRequestState } = useServiceRequests();
-  const { endUsers } = useEndUsers();
+export const useServiceRequestDetails = (id: string): {
+  serviceRequest: ServiceRequestDetails | undefined;
+  loading: boolean;
+  error: string | null;
+} => {
+  const { getServiceRequest, serviceRequests } = useServiceRequests();
+  const [state, setState] = useState<{
+    serviceRequest: ServiceRequestDetails | undefined;
+    loading: boolean;
+    error: string | null;
+  }>({
+    serviceRequest: undefined,
+    loading: false,
+    error: null,
+  });
   
-  const requestState = getServiceRequestState(id);
+  useEffect(() => {
+    let cancelled = false;
+    
+    const fetchServiceRequest = async () => {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      try {
+        const serviceRequest = await getServiceRequest(id);
+        if (!cancelled) {
+          setState({
+            serviceRequest: serviceRequest as ServiceRequestDetails,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            serviceRequest: undefined,
+            loading: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+    };
+    
+    fetchServiceRequest();
+    
+    return () => { cancelled = true; };
+  }, [id, getServiceRequest]);
   
-  return useMemo(() => {
-    if (!requestState.data) {
-      return {
-        ...requestState,
-        data: null,
-      };
-    }
-
-    const requestWithDetails: ServiceRequestDetails = {
-      ...requestState.data,
-      requestor: endUsers.find(u => u.id === requestState.data!.requested_by_end_user_id) || null,
-      // Additional relationship data would be loaded from respective contexts
-    };
-
-    return {
-      ...requestState,
-      data: requestWithDetails,
-    };
-  }, [requestState, endUsers]);
+  return state;
 };
 
 /**
- * Specialized hook for filtered service requests
- * Optimized for list views with filtering requirements
+ * Memoized hooks for specific service request queries
  */
-export const useFilteredServiceRequests = (customFilters?: Partial<UIFilters>) => {
-  const { serviceRequestsState, filters, getFilteredRequests } = useServiceRequests();
-  
-  const effectiveFilters = useMemo(() => ({
-    ...filters,
-    ...customFilters,
-  }), [filters, customFilters]);
-  
-  const filteredData = useMemo(() => 
-    getFilteredRequests(effectiveFilters), 
-    [getFilteredRequests, effectiveFilters]
+export const useServiceRequestsByStatus = (status: string) => {
+  const { filterServiceRequests } = useServiceRequests();
+  return useMemo(() => filterServiceRequests({ status }), [filterServiceRequests, status]);
+};
+
+export const useUrgentServiceRequests = () => {
+  const { filterServiceRequests } = useServiceRequests();
+  return useMemo(() => filterServiceRequests({ priority: 'urgent' }), [filterServiceRequests]);
+};
+
+export const useOpenServiceRequests = () => {
+  const { serviceRequests } = useServiceRequests();
+  return useMemo(() => 
+    serviceRequests.data.filter(sr => !['fulfilled', 'closed', 'cancelled'].includes(sr.status)),
+    [serviceRequests.data]
   );
-  
-  return {
-    ...serviceRequestsState,
-    data: filteredData,
-    filters: effectiveFilters,
-  };
+};
+
+export const useBreachedServiceRequests = () => {
+  const { serviceRequests } = useServiceRequests();
+  return useMemo(() => 
+    serviceRequests.data.filter(sr => sr.breached === true || sr.sla_breached === true),
+    [serviceRequests.data]
+  );
+};
+
+export const usePendingApprovalRequests = () => {
+  const { serviceRequests } = useServiceRequests();
+  return useMemo(() => 
+    serviceRequests.data.filter(sr => sr.approval_required && sr.status === 'pending_approval'),
+    [serviceRequests.data]
+  );
+};
+
+export const useMyServiceRequests = (userId: string) => {
+  const { serviceRequests } = useServiceRequests();
+  return useMemo(() => 
+    serviceRequests.data.filter(sr => 
+      sr.assigned_to_user_id === userId || 
+      sr.requested_by_user_id === userId
+    ),
+    [serviceRequests.data, userId]
+  );
 };
 
 /**
- * Specialized hook for my service requests
- * Pre-filtered for current user's requests
+ * Hook for search with debouncing for better performance
  */
-export const useMyServiceRequests = (userId: string) => {
-  const { serviceRequestsState, getMyRequests } = useServiceRequests();
+export const useServiceRequestSearch = (query: string, debounceMs = 300) => {
+  const { searchServiceRequests } = useServiceRequests();
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   
-  const myRequests = useMemo(() => getMyRequests(userId), [getMyRequests, userId]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), debounceMs);
+    return () => clearTimeout(timer);
+  }, [query, debounceMs]);
   
-  return {
-    ...serviceRequestsState,
-    data: myRequests,
-  };
+  return useMemo(() => 
+    debouncedQuery ? searchServiceRequests(debouncedQuery) : [],
+    [searchServiceRequests, debouncedQuery]
+  );
 };

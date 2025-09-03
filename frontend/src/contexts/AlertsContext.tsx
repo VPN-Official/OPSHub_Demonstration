@@ -8,7 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
+import { 
   getAll,
   getById,
   putWithAudit,
@@ -19,8 +19,52 @@ import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
 
 // ---------------------------------
-// 1. Type Definitions
+// 1. Frontend State Management Types
 // ---------------------------------
+
+/**
+ * Generic async state wrapper for UI operations
+ */
+export interface AsyncState<T> {
+  data: T[];
+  loading: boolean;
+  error: string | null;
+  lastFetch: string | null;
+  stale: boolean;
+}
+
+/**
+ * UI-specific filters for client-side responsiveness
+ */
+export interface AlertUIFilters {
+  status?: string[];
+  severity?: string[];
+  sourceSystem?: string[];
+  businessService?: string[];
+  assignedToMe?: boolean;
+  teamId?: string;
+  tags?: string[];
+  dateRange?: {
+    start: string;
+    end: string;
+  };
+  searchQuery?: string;
+}
+
+/**
+ * Optimistic update tracking for better UX
+ */
+interface OptimisticUpdate {
+  id: string;
+  type: 'create' | 'update' | 'delete' | 'acknowledge' | 'resolve' | 'escalate' | 'suppress' | 'correlate' | 'promote';
+  timestamp: string;
+  rollbackData?: Alert;
+}
+
+// ---------------------------------
+// 2. Domain Types (From Backend)
+// ---------------------------------
+
 export type AlertStatus = "new" | "acknowledged" | "in_progress" | "resolved" | "closed";
 export type AlertSeverity = "info" | "warning" | "minor" | "major" | "critical";
 
@@ -77,7 +121,7 @@ export interface Alert {
   child_alert_ids: string[];
   duplicate_of_alert_id?: string | null;
 
-  // Metrics and thresholds
+  // Metrics and thresholds (calculated by backend)
   threshold_value?: number;
   current_value?: number;
   threshold_operator?: "gt" | "lt" | "eq" | "gte" | "lte";
@@ -91,7 +135,7 @@ export interface Alert {
   suppressed_by_user_id?: string | null;
   suppression_reason?: string;
 
-  // AI and automation
+  // AI and automation (provided by backend)
   recommendations: LinkedRecommendation[];
   auto_resolved?: boolean;
   ai_analysis?: {
@@ -101,13 +145,13 @@ export interface Alert {
     confidence: number;
   };
 
-  // Business impact
+  // Business impact (calculated by backend)
   business_impact?: string;
   financial_impact?: number;
   affected_user_count?: number;
   customer_impact_level?: "none" | "low" | "medium" | "high" | "critical";
 
-  // Metadata
+  // UI metadata
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
@@ -127,729 +171,929 @@ export interface AlertDetails extends Alert {
 }
 
 // ---------------------------------
-// 2. Async State Management
+// 3. API Client Abstraction
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T | null;
-  isLoading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
+
+interface AlertAPIClient {
+  getAll: (tenantId: string, filters?: Record<string, any>) => Promise<Alert[]>;
+  getById: (tenantId: string, id: string) => Promise<Alert | undefined>;
+  create: (tenantId: string, alert: Partial<Alert>) => Promise<Alert>;
+  update: (tenantId: string, id: string, alert: Partial<Alert>) => Promise<Alert>;
+  delete: (tenantId: string, id: string) => Promise<void>;
+  acknowledge: (tenantId: string, id: string, userId: string) => Promise<Alert>;
+  resolve: (tenantId: string, id: string, userId: string, resolution?: string) => Promise<Alert>;
+  escalate: (tenantId: string, id: string, userId: string, reason?: string) => Promise<Alert>;
+  suppress: (tenantId: string, id: string, userId: string, durationMinutes: number, reason: string) => Promise<Alert>;
+  correlate: (tenantId: string, alertIds: string[], correlationRule: string) => Promise<string>;
+  promoteToIncident: (tenantId: string, id: string, userId: string) => Promise<string>;
 }
 
-interface CacheConfig {
-  ttlMinutes: number;
-  maxSize: number;
-}
+// Thin API client wrapper - delegates ALL business logic to backend
+const createAlertAPIClient = (): AlertAPIClient => ({
+  async getAll(tenantId: string, filters = {}) {
+    // Backend handles complex filtering, sorting, and business rules
+    const response = await fetch(`/api/alerts?${new URLSearchParams(filters)}`);
+    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+    return response.json();
+  },
 
-interface OptimisticUpdate<T> {
-  id: string;
-  operation: 'create' | 'update' | 'delete';
-  payload: T;
+  async getById(tenantId: string, id: string) {
+    return getById<Alert>(tenantId, "alerts", id);
+  },
+
+  async create(tenantId: string, alert: Partial<Alert>) {
+    // Backend handles all validation, business rules, correlation, etc.
+    const response = await fetch('/api/alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...alert, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create alert');
+    }
+    return response.json();
+  },
+
+  async update(tenantId: string, id: string, alert: Partial<Alert>) {
+    // Backend handles business validation and state transitions
+    const response = await fetch(`/api/alerts/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...alert, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update alert');
+    }
+    return response.json();
+  },
+
+  async delete(tenantId: string, id: string) {
+    // Backend handles cascade deletion and business rules
+    const response = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete alert');
+    }
+  },
+
+  async acknowledge(tenantId: string, id: string, userId: string) {
+    // Backend handles acknowledgment business logic
+    const response = await fetch(`/api/alerts/${id}/acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to acknowledge alert');
+    }
+    return response.json();
+  },
+
+  async resolve(tenantId: string, id: string, userId: string, resolution?: string) {
+    // Backend handles resolution business logic and automation
+    const response = await fetch(`/api/alerts/${id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tenantId, resolution })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to resolve alert');
+    }
+    return response.json();
+  },
+
+  async escalate(tenantId: string, id: string, userId: string, reason?: string) {
+    // Backend handles escalation rules and notifications
+    const response = await fetch(`/api/alerts/${id}/escalate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tenantId, reason })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to escalate alert');
+    }
+    return response.json();
+  },
+
+  async suppress(tenantId: string, id: string, userId: string, durationMinutes: number, reason: string) {
+    // Backend handles suppression business logic
+    const response = await fetch(`/api/alerts/${id}/suppress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tenantId, durationMinutes, reason })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to suppress alert');
+    }
+    return response.json();
+  },
+
+  async correlate(tenantId: string, alertIds: string[], correlationRule: string) {
+    // Backend handles correlation algorithms and grouping logic
+    const response = await fetch('/api/alerts/correlate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alertIds, correlationRule, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to correlate alerts');
+    }
+    const result = await response.json();
+    return result.correlationId;
+  },
+
+  async promoteToIncident(tenantId: string, id: string, userId: string) {
+    // Backend handles incident creation and business rules
+    const response = await fetch(`/api/alerts/${id}/promote-to-incident`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tenantId })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to promote alert to incident');
+    }
+    const result = await response.json();
+    return result.incidentId;
+  },
+});
+
+// ---------------------------------
+// 4. Cache Management for UI Performance
+// ---------------------------------
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 1000; // Prevent memory leaks
+
+interface CacheEntry<T> {
+  data: T;
   timestamp: string;
+  accessCount: number;
+  lastAccessed: string;
+}
+
+class UICache<T> {
+  private cache = new Map<string, CacheEntry<T>>();
+  
+  set(key: string, data: T): void {
+    // LRU eviction when cache is full
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const oldestKey = Array.from(this.cache.entries())
+        .sort(([,a], [,b]) => new Date(a.lastAccessed).getTime() - new Date(b.lastAccessed).getTime())[0][0];
+      this.cache.delete(oldestKey);
+    }
+    
+    this.cache.set(key, {
+      data,
+      timestamp: new Date().toISOString(),
+      accessCount: 0,
+      lastAccessed: new Date().toISOString(),
+    });
+  }
+  
+  get(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    // Check if stale
+    if (Date.now() - new Date(entry.timestamp).getTime() > CACHE_TTL) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    // Update access tracking
+    entry.accessCount++;
+    entry.lastAccessed = new Date().toISOString();
+    
+    return entry.data;
+  }
+  
+  invalidate(key?: string): void {
+    if (key) {
+      this.cache.delete(key);
+    } else {
+      this.cache.clear();
+    }
+  }
+  
+  isStale(key: string): boolean {
+    const entry = this.cache.get(key);
+    if (!entry) return true;
+    return Date.now() - new Date(entry.timestamp).getTime() > CACHE_TTL;
+  }
 }
 
 // ---------------------------------
-// 3. UI Filters (Client-Side Only)
-// ---------------------------------
-export interface AlertUIFilters {
-  status?: AlertStatus[];
-  severity?: AlertSeverity[];
-  sourceSystem?: string[];
-  businessService?: string[];
-  assignedToMe?: boolean;
-  teamId?: string;
-  tags?: string[];
-  dateRange?: {
-    start: string;
-    end: string;
-  };
-  textSearch?: string;
-}
-
-// ---------------------------------
-// 4. Context Interface
+// 5. Context Interface
 // ---------------------------------
 interface AlertsContextType {
-  // Async State
-  alerts: AsyncState<Alert[]>;
+  // Async state for UI
+  alerts: AsyncState<Alert>;
   
-  // Core CRUD Operations (API Orchestration Only)
-  createAlert: (alert: Omit<Alert, 'id' | 'created_at' | 'updated_at'>, userId?: string) => Promise<void>;
-  updateAlert: (alert: Alert, userId?: string) => Promise<void>;
+  // CRUD operations with optimistic updates
+  addAlert: (alert: Partial<Alert>, userId?: string) => Promise<void>;
+  updateAlert: (id: string, alert: Partial<Alert>, userId?: string) => Promise<void>;
   deleteAlert: (id: string, userId?: string) => Promise<void>;
+  
+  // Alert-specific operations with optimistic updates
+  acknowledgeAlert: (id: string, userId: string) => Promise<void>;
+  resolveAlert: (id: string, userId: string, resolution?: string) => Promise<void>;
+  escalateAlert: (id: string, userId: string, reason?: string) => Promise<void>;
+  suppressAlert: (id: string, userId: string, durationMinutes: number, reason: string) => Promise<void>;
+  correlateAlerts: (alertIds: string[], correlationRule: string) => Promise<string>;
+  promoteToIncident: (id: string, userId: string) => Promise<string>;
+  
+  // Data fetching
   refreshAlerts: () => Promise<void>;
   getAlert: (id: string) => Promise<Alert | undefined>;
-
-  // Alert Operations (API Calls Only)
-  acknowledgeAlert: (alertId: string, userId: string) => Promise<void>;
-  resolveAlert: (alertId: string, userId: string, resolution?: string) => Promise<void>;
-  escalateAlert: (alertId: string, userId: string, reason?: string) => Promise<void>;
-  suppressAlert: (alertId: string, userId: string, durationMinutes: number, reason: string) => Promise<void>;
-  correlateAlerts: (alertIds: string[], correlationRule: string) => Promise<string>;
-  promoteToIncident: (alertId: string, userId: string) => Promise<string>;
-
-  // UI Helpers (Client-Side Only)
-  getFilteredAlerts: (filters: AlertUIFilters) => Alert[];
-  searchAlerts: (query: string) => Alert[];
-  getSortedAlerts: (sortBy: keyof Alert, direction: 'asc' | 'desc') => Alert[];
   
-  // Quick Access Getters (No Business Logic)
-  openAlerts: Alert[];
-  criticalAlerts: Alert[];
-  myAlerts: Alert[];
-  recentAlerts: Alert[];
-
-  // Config from Backend
+  // Client-side UI helpers (not business logic)
+  filterAlerts: (filters: AlertUIFilters) => Alert[];
+  searchAlerts: (query: string) => Alert[];
+  sortAlerts: (sortBy: keyof Alert, order: 'asc' | 'desc') => Alert[];
+  
+  // Optimistic update state
+  optimisticUpdates: OptimisticUpdate[];
+  rollbackOptimisticUpdate: (updateId: string) => void;
+  
+  // Cache management
+  invalidateCache: (key?: string) => void;
+  getCacheStats: () => { size: number; hitRate: number };
+  
+  // Backend config integration (read-only from backend)
   config: {
     statuses: string[];
     severities: string[];
     sourceSystems: string[];
     notificationChannels: string[];
   };
-
-  // Cache Management
-  clearCache: () => void;
-  invalidateCache: () => void;
-  getCacheStats: () => { size: number; lastCleared: string | null; hitRate: number };
 }
 
 const AlertsContext = createContext<AlertsContextType | undefined>(undefined);
 
 // ---------------------------------
-// 5. Provider Implementation
+// 6. Provider Implementation
 // ---------------------------------
 export const AlertsProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
   const { enqueueItem } = useSync();
-  const { config: globalConfig, validateEnum } = useConfig();
-
-  // Core async state
-  const [alertsState, setAlertsState] = useState<AsyncState<Alert[]>>({
+  const { config: globalConfig } = useConfig();
+  
+  // UI State Management
+  const [alerts, setAlerts] = useState<AsyncState<Alert>>({
     data: [],
-    isLoading: false,
+    loading: false,
     error: null,
     lastFetch: null,
     stale: true,
   });
-
-  // Optimistic updates tracking
-  const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate<Alert>[]>([]);
   
-  // Cache management
-  const [cacheStats, setCacheStats] = useState({
-    size: 0,
-    lastCleared: null as string | null,
-    hitRate: 0,
-    requests: 0,
-    hits: 0,
-  });
-
-  // Cache configuration
-  const cacheConfig: CacheConfig = {
-    ttlMinutes: 5, // 5 minutes for alert data
-    maxSize: 1000, // Maximum alerts to cache
-  };
-
-  // Extract alert-specific config from backend
+  const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
+  
+  // Memoized instances
+  const apiClient = useMemo(() => createAlertAPIClient(), []);
+  const cache = useMemo(() => new UICache<Alert[]>(), []);
+  
+  // Extract UI config from backend config
   const config = useMemo(() => ({
-    statuses: globalConfig?.statuses?.alerts || [],
+    statuses: globalConfig?.statuses?.alerts || ["new", "acknowledged", "in_progress", "resolved", "closed"],
     severities: Object.keys(globalConfig?.severities || {}),
     sourceSystems: ['monitoring', 'logging', 'apm', 'security', 'custom'],
     notificationChannels: ['email', 'sms', 'slack', 'webhook', 'pagerduty'],
   }), [globalConfig]);
 
-  // Basic UI validation only (not business rules)
-  const validateAlertUI = useCallback((alert: Partial<Alert>) => {
-    const errors: string[] = [];
-
-    if (!alert.title || alert.title.trim().length < 3) {
-      errors.push("Title must be at least 3 characters long");
+  // ---------------------------------
+  // Cache & Performance Management
+  // ---------------------------------
+  
+  const getCacheKey = useCallback((filters?: Record<string, any>) => 
+    `alerts_${tenantId}_${JSON.stringify(filters || {})}`, [tenantId]);
+  
+  const invalidateCache = useCallback((key?: string) => {
+    if (key) {
+      cache.invalidate(key);
+    } else {
+      cache.invalidate();
     }
+  }, [cache]);
+  
+  const getCacheStats = useCallback(() => {
+    const entries = Array.from((cache as any).cache.values());
+    const totalAccesses = entries.reduce((sum, entry) => sum + entry.accessCount, 0);
+    const hits = entries.filter(entry => entry.accessCount > 0).length;
+    return {
+      size: entries.length,
+      hitRate: totalAccesses > 0 ? hits / totalAccesses : 0,
+    };
+  }, [cache]);
 
-    if (!alert.description || alert.description.trim().length < 10) {
-      errors.push("Description must be at least 10 characters long");
+  // ---------------------------------
+  // Data Fetching with Cache
+  // ---------------------------------
+  
+  const refreshAlerts = useCallback(async (filters?: Record<string, any>) => {
+    if (!tenantId) return;
+    
+    const cacheKey = getCacheKey(filters);
+    
+    // Check cache first
+    const cached = cache.get(cacheKey);
+    if (cached && !cache.isStale(cacheKey)) {
+      setAlerts(prev => ({
+        ...prev,
+        data: cached,
+        stale: false,
+      }));
+      return;
     }
+    
+    setAlerts(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      // Backend handles sorting, filtering, and business logic
+      const data = await apiClient.getAll(tenantId, filters);
+      
+      // Cache for UI performance
+      cache.set(cacheKey, data);
+      
+      setAlerts({
+        data,
+        loading: false,
+        error: null,
+        lastFetch: new Date().toISOString(),
+        stale: false,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setAlerts(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+        stale: true,
+      }));
+    }
+  }, [tenantId, apiClient, cache, getCacheKey]);
 
-    if (errors.length > 0) {
-      throw new Error(errors.join(', '));
+  const getAlert = useCallback(async (id: string) => {
+    if (!tenantId) return undefined;
+    
+    // Check current data first for UI responsiveness
+    const existing = alerts.data.find(a => a.id === id);
+    if (existing && !alerts.stale) return existing;
+    
+    try {
+      return await apiClient.getById(tenantId, id);
+    } catch (error) {
+      console.warn(`Failed to fetch alert ${id}:`, error);
+      return existing; // Fallback to cached data
     }
+  }, [tenantId, apiClient, alerts]);
+
+  // ---------------------------------
+  // Optimistic Updates for Better UX
+  // ---------------------------------
+  
+  const addOptimisticUpdate = useCallback((update: OptimisticUpdate) => {
+    setOptimisticUpdates(prev => [...prev, update]);
   }, []);
+  
+  const removeOptimisticUpdate = useCallback((updateId: string) => {
+    setOptimisticUpdates(prev => prev.filter(u => u.id !== updateId));
+  }, []);
+  
+  const rollbackOptimisticUpdate = useCallback((updateId: string) => {
+    const update = optimisticUpdates.find(u => u.id === updateId);
+    if (!update) return;
+    
+    setAlerts(prev => {
+      let newData = [...prev.data];
+      
+      switch (update.type) {
+        case 'create':
+          newData = newData.filter(a => a.id !== update.id);
+          break;
+        case 'update':
+        case 'acknowledge':
+        case 'resolve':
+        case 'escalate':
+        case 'suppress':
+          if (update.rollbackData) {
+            const index = newData.findIndex(a => a.id === update.id);
+            if (index >= 0) newData[index] = update.rollbackData;
+          }
+          break;
+        case 'delete':
+          if (update.rollbackData) {
+            newData.push(update.rollbackData);
+          }
+          break;
+      }
+      
+      return { ...prev, data: newData };
+    });
+    
+    removeOptimisticUpdate(updateId);
+  }, [optimisticUpdates, removeOptimisticUpdate]);
 
-  // UI metadata helper (not business logic)
+  // ---------------------------------
+  // Helper for UI Metadata
+  // ---------------------------------
+  
   const ensureUIMetadata = useCallback((alert: Partial<Alert>): Alert => {
     const now = new Date().toISOString();
     return {
       id: alert.id || crypto.randomUUID(),
-      tags: [],
+      title: alert.title || '',
+      description: alert.description || '',
+      status: alert.status || config.statuses[0] || 'new',
+      severity: alert.severity || config.severities[0] || 'info',
+      source_system: alert.source_system || 'monitoring',
+      created_at: alert.created_at || now,
+      updated_at: alert.updated_at || now,
       escalation_team_ids: [],
       child_alert_ids: [],
       notification_channels: ['email'],
       escalation_level: 1,
       recommendations: [],
+      tags: [],
       health_status: "gray",
-      sync_status: "dirty",
-      ...alert,
       tenantId,
-      created_at: alert.created_at || now,
-      updated_at: now,
-      synced_at: alert.synced_at || now,
-    } as Alert;
-  }, [tenantId]);
-
-  // Check if data is stale
-  const isDataStale = useCallback(() => {
-    if (!alertsState.lastFetch) return true;
-    const staleThreshold = cacheConfig.ttlMinutes * 60 * 1000;
-    return Date.now() - new Date(alertsState.lastFetch).getTime() > staleThreshold;
-  }, [alertsState.lastFetch, cacheConfig.ttlMinutes]);
-
-  // Apply optimistic updates to display data
-  const getDisplayData = useCallback(() => {
-    let data = alertsState.data || [];
-    
-    // Apply optimistic updates for immediate UI feedback
-    optimisticUpdates.forEach(update => {
-      switch (update.operation) {
-        case 'create':
-          data = [update.payload, ...data];
-          break;
-        case 'update':
-          data = data.map(item => item.id === update.payload.id ? update.payload : item);
-          break;
-        case 'delete':
-          data = data.filter(item => item.id !== update.id);
-          break;
-      }
-    });
-
-    return data;
-  }, [alertsState.data, optimisticUpdates]);
-
-  // Clear optimistic updates after successful API calls
-  const clearOptimisticUpdate = useCallback((id: string) => {
-    setOptimisticUpdates(prev => prev.filter(update => update.id !== id));
-  }, []);
-
-  // Add optimistic update for immediate UI feedback
-  const addOptimisticUpdate = useCallback((update: OptimisticUpdate<Alert>) => {
-    setOptimisticUpdates(prev => [...prev.filter(u => u.id !== update.id), update]);
-    
-    // Auto-clear optimistic update after timeout
-    setTimeout(() => clearOptimisticUpdate(update.id), 10000);
-  }, [clearOptimisticUpdate]);
-
-  // Rollback optimistic update on failure
-  const rollbackOptimisticUpdate = useCallback((id: string) => {
-    setOptimisticUpdates(prev => prev.filter(update => update.id !== id));
-  }, []);
-
-  // Core data fetching
-  const refreshAlerts = useCallback(async () => {
-    if (!tenantId) return;
-
-    setAlertsState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const alerts = await getAll<Alert>(tenantId, "alerts");
-      
-      // Simple client-side sorting for UI (not business logic)
-      const severityOrder = { 'critical': 5, 'major': 4, 'minor': 3, 'warning': 2, 'info': 1 };
-      alerts.sort((a, b) => {
-        const aSeverity = severityOrder[a.severity] || 0;
-        const bSeverity = severityOrder[b.severity] || 0;
-        if (aSeverity !== bSeverity) return bSeverity - aSeverity;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-
-      setAlertsState({
-        data: alerts,
-        isLoading: false,
-        error: null,
-        lastFetch: new Date().toISOString(),
-        stale: false,
-      });
-
-      // Update cache stats
-      setCacheStats(prev => ({
-        ...prev,
-        size: alerts.length,
-      }));
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch alerts';
-      setAlertsState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-        stale: true,
-      }));
-    }
-  }, [tenantId]);
-
-  const getAlert = useCallback(async (id: string) => {
-    if (!tenantId) return undefined;
-    
-    // Update cache stats
-    setCacheStats(prev => {
-      const requests = prev.requests + 1;
-      const existingAlert = alertsState.data?.find(a => a.id === id);
-      const hits = existingAlert ? prev.hits + 1 : prev.hits;
-      return {
-        ...prev,
-        requests,
-        hits,
-        hitRate: requests > 0 ? (hits / requests) * 100 : 0,
-      };
-    });
-
-    return getById<Alert>(tenantId, "alerts", id);
-  }, [tenantId, alertsState.data]);
-
-  // CRUD Operations - Pure API orchestration
-  const createAlert = useCallback(async (
-    alertData: Omit<Alert, 'id' | 'created_at' | 'updated_at'>, 
-    userId?: string
-  ) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    // Only basic UI validation
-    validateAlertUI(alertData);
-
-    const alert = ensureUIMetadata(alertData);
-    const updateId = crypto.randomUUID();
-
-    // Optimistic update for immediate UI feedback
-    addOptimisticUpdate({
-      id: updateId,
-      operation: 'create',
-      payload: alert,
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      const priority = alert.severity === 'critical' ? 'critical' : 
-                      alert.severity === 'major' ? 'high' : 'normal';
-
-      // API call - backend handles all business logic
-      await putWithAudit(
-        tenantId,
-        "alerts",
-        alert,
-        userId,
-        {
-          action: "create",
-          description: `Created alert: ${alert.title}`,
-          tags: ["alert", "create", alert.severity, alert.source_system],
-          priority,
-          metadata: {
-            severity: alert.severity,
-            source_system: alert.source_system,
-          },
-        }
-      );
-
-      await enqueueItem({
-        storeName: "alerts",
-        entityId: alert.id,
-        action: "create",
-        payload: alert,
-        priority,
-      });
-
-      clearOptimisticUpdate(updateId);
-      await refreshAlerts();
-    } catch (error) {
-      rollbackOptimisticUpdate(updateId);
-      throw error;
-    }
-  }, [tenantId, validateAlertUI, ensureUIMetadata, addOptimisticUpdate, enqueueItem, clearOptimisticUpdate, refreshAlerts, rollbackOptimisticUpdate]);
-
-  const updateAlert = useCallback(async (alert: Alert, userId?: string) => {
-    if (!tenantId) throw new Error("No tenant selected");
-
-    validateAlertUI(alert);
-
-    const enriched = ensureUIMetadata({
       ...alert,
-      updated_at: new Date().toISOString(),
+    } as Alert;
+  }, [tenantId, config]);
+
+  // ---------------------------------
+  // CRUD Operations with Optimistic Updates
+  // ---------------------------------
+  
+  const addAlert = useCallback(async (alert: Partial<Alert>, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const optimisticId = `temp-${Date.now()}`;
+    const optimisticAlert = ensureUIMetadata({
+      ...alert,
+      id: optimisticId,
     });
-
-    const updateId = crypto.randomUUID();
-
-    // Optimistic update
-    addOptimisticUpdate({
-      id: updateId,
-      operation: 'update',
-      payload: enriched,
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: [optimisticAlert, ...prev.data],
+    }));
+    
+    const update: OptimisticUpdate = {
+      id: optimisticId,
+      type: 'create',
       timestamp: new Date().toISOString(),
-    });
-
+    };
+    addOptimisticUpdate(update);
+    
     try {
-      const priority = alert.severity === 'critical' ? 'critical' : 
-                      alert.severity === 'major' ? 'high' : 'normal';
-
-      // API call - backend handles validation and business logic
-      await putWithAudit(
-        tenantId,
-        "alerts",
-        enriched,
-        userId,
-        {
-          action: "update",
-          description: `Updated alert: ${alert.title}`,
-          tags: ["alert", "update", alert.status, alert.severity],
-          priority,
-        }
-      );
-
+      // Backend handles ALL business logic
+      const created = await apiClient.create(tenantId, alert);
+      
+      // Replace optimistic with real data
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === optimisticId ? created : a),
+      }));
+      
+      removeOptimisticUpdate(optimisticId);
+      invalidateCache();
+      
+      // Sync for offline support
       await enqueueItem({
         storeName: "alerts",
-        entityId: enriched.id,
-        action: "update",
-        payload: enriched,
-        priority,
+        entityId: created.id,
+        action: "create",
+        payload: created,
+        priority: created.severity === 'critical' ? 'critical' : 'normal',
       });
-
-      clearOptimisticUpdate(updateId);
-      await refreshAlerts();
+      
     } catch (error) {
-      rollbackOptimisticUpdate(updateId);
+      // Rollback on failure
+      rollbackOptimisticUpdate(optimisticId);
       throw error;
     }
-  }, [tenantId, validateAlertUI, ensureUIMetadata, addOptimisticUpdate, enqueueItem, clearOptimisticUpdate, refreshAlerts, rollbackOptimisticUpdate]);
+  }, [tenantId, ensureUIMetadata, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
+
+  const updateAlert = useCallback(async (id: string, alert: Partial<Alert>, userId?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    const optimisticAlert = { ...existing, ...alert, updated_at: new Date().toISOString() };
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.map(a => a.id === id ? optimisticAlert : a),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'update',
+      timestamp: new Date().toISOString(),
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
+    try {
+      // Backend handles business logic and state transitions
+      const updated = await apiClient.update(tenantId, id, alert);
+      
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === id ? updated : a),
+      }));
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+      await enqueueItem({
+        storeName: "alerts",
+        entityId: id,
+        action: "update",
+        payload: updated,
+        priority: updated.severity === 'critical' ? 'critical' : 'normal',
+      });
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
+    }
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
 
   const deleteAlert = useCallback(async (id: string, userId?: string) => {
     if (!tenantId) throw new Error("No tenant selected");
-
-    const alert = await getAlert(id);
-    const updateId = crypto.randomUUID();
     
-    // Optimistic update
-    addOptimisticUpdate({
-      id: updateId,
-      operation: 'delete',
-      payload: alert!,
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.filter(a => a.id !== id),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'delete',
       timestamp: new Date().toISOString(),
-    });
-
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
     try {
-      await removeWithAudit(
-        tenantId,
-        "alerts",
-        id,
-        userId,
-        {
-          action: "delete",
-          description: `Deleted alert: ${alert?.title || id}`,
-          tags: ["alert", "delete"],
-        }
-      );
-
+      await apiClient.delete(tenantId, id);
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
       await enqueueItem({
         storeName: "alerts",
         entityId: id,
         action: "delete",
         payload: null,
       });
-
-      clearOptimisticUpdate(updateId);
-      await refreshAlerts();
+      
     } catch (error) {
-      rollbackOptimisticUpdate(updateId);
+      rollbackOptimisticUpdate(id);
       throw error;
     }
-  }, [tenantId, getAlert, addOptimisticUpdate, enqueueItem, clearOptimisticUpdate, refreshAlerts, rollbackOptimisticUpdate]);
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache, enqueueItem]);
 
-  // Alert Operations - Simple API calls
-  const acknowledgeAlert = useCallback(async (alertId: string, userId: string) => {
-    // Backend API call handles all business logic
-    const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tenantId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to acknowledge alert: ${response.statusText}`);
+  // ---------------------------------
+  // Alert Operations with Optimistic Updates
+  // ---------------------------------
+  
+  const acknowledgeAlert = useCallback(async (id: string, userId: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    const optimisticAlert = {
+      ...existing,
+      status: 'acknowledged' as AlertStatus,
+      acknowledged_at: new Date().toISOString(),
+      acknowledged_by_user_id: userId,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.map(a => a.id === id ? optimisticAlert : a),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'acknowledge',
+      timestamp: new Date().toISOString(),
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
+    try {
+      const acknowledged = await apiClient.acknowledge(tenantId, id, userId);
+      
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === id ? acknowledged : a),
+      }));
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
     }
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache]);
 
-    await refreshAlerts();
-  }, [tenantId, refreshAlerts]);
-
-  const resolveAlert = useCallback(async (alertId: string, userId: string, resolution?: string) => {
-    const response = await fetch(`/api/alerts/${alertId}/resolve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tenantId, resolution }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to resolve alert: ${response.statusText}`);
+  const resolveAlert = useCallback(async (id: string, userId: string, resolution?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    const optimisticAlert = {
+      ...existing,
+      status: 'resolved' as AlertStatus,
+      resolved_at: new Date().toISOString(),
+      resolved_by_user_id: userId,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.map(a => a.id === id ? optimisticAlert : a),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'resolve',
+      timestamp: new Date().toISOString(),
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
+    try {
+      const resolved = await apiClient.resolve(tenantId, id, userId, resolution);
+      
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === id ? resolved : a),
+      }));
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
     }
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache]);
 
-    await refreshAlerts();
-  }, [tenantId, refreshAlerts]);
-
-  const escalateAlert = useCallback(async (alertId: string, userId: string, reason?: string) => {
-    const response = await fetch(`/api/alerts/${alertId}/escalate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tenantId, reason }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to escalate alert: ${response.statusText}`);
+  const escalateAlert = useCallback(async (id: string, userId: string, reason?: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    const optimisticAlert = {
+      ...existing,
+      escalation_level: existing.escalation_level + 1,
+      escalated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.map(a => a.id === id ? optimisticAlert : a),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'escalate',
+      timestamp: new Date().toISOString(),
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
+    try {
+      const escalated = await apiClient.escalate(tenantId, id, userId, reason);
+      
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === id ? escalated : a),
+      }));
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
     }
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache]);
 
-    await refreshAlerts();
-  }, [tenantId, refreshAlerts]);
-
-  const suppressAlert = useCallback(async (
-    alertId: string, 
-    userId: string, 
-    durationMinutes: number, 
-    reason: string
-  ) => {
-    const response = await fetch(`/api/alerts/${alertId}/suppress`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tenantId, durationMinutes, reason }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to suppress alert: ${response.statusText}`);
+  const suppressAlert = useCallback(async (id: string, userId: string, durationMinutes: number, reason: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    const existing = alerts.data.find(a => a.id === id);
+    if (!existing) throw new Error("Alert not found");
+    
+    const suppressedUntil = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+    const optimisticAlert = {
+      ...existing,
+      suppressed_until: suppressedUntil,
+      suppressed_by_user_id: userId,
+      suppression_reason: reason,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Optimistic UI update
+    setAlerts(prev => ({
+      ...prev,
+      data: prev.data.map(a => a.id === id ? optimisticAlert : a),
+    }));
+    
+    const update: OptimisticUpdate = {
+      id,
+      type: 'suppress',
+      timestamp: new Date().toISOString(),
+      rollbackData: existing,
+    };
+    addOptimisticUpdate(update);
+    
+    try {
+      const suppressed = await apiClient.suppress(tenantId, id, userId, durationMinutes, reason);
+      
+      setAlerts(prev => ({
+        ...prev,
+        data: prev.data.map(a => a.id === id ? suppressed : a),
+      }));
+      
+      removeOptimisticUpdate(id);
+      invalidateCache();
+      
+    } catch (error) {
+      rollbackOptimisticUpdate(id);
+      throw error;
     }
-
-    await refreshAlerts();
-  }, [tenantId, refreshAlerts]);
+  }, [tenantId, alerts.data, addOptimisticUpdate, removeOptimisticUpdate, rollbackOptimisticUpdate, apiClient, invalidateCache]);
 
   const correlateAlerts = useCallback(async (alertIds: string[], correlationRule: string) => {
-    const response = await fetch('/api/alerts/correlate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alertIds, correlationRule, tenantId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to correlate alerts: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    await refreshAlerts();
-    return result.correlationId;
-  }, [tenantId, refreshAlerts]);
-
-  const promoteToIncident = useCallback(async (alertId: string, userId: string) => {
-    const response = await fetch(`/api/alerts/${alertId}/promote-to-incident`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tenantId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to promote alert to incident: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    await refreshAlerts();
-    return result.incidentId;
-  }, [tenantId, refreshAlerts]);
-
-  // UI Helpers - Simple client-side filtering for responsiveness
-  const getFilteredAlerts = useCallback((filters: AlertUIFilters): Alert[] => {
-    const alerts = getDisplayData();
+    if (!tenantId) throw new Error("No tenant selected");
     
-    return alerts.filter(alert => {
-      // Status filter
-      if (filters.status?.length && !filters.status.includes(alert.status)) {
-        return false;
-      }
+    try {
+      const correlationId = await apiClient.correlate(tenantId, alertIds, correlationRule);
+      
+      // Refresh to get updated correlation data from backend
+      await refreshAlerts();
+      
+      return correlationId;
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, refreshAlerts]);
 
-      // Severity filter
-      if (filters.severity?.length && !filters.severity.includes(alert.severity)) {
-        return false;
-      }
+  const promoteToIncident = useCallback(async (id: string, userId: string) => {
+    if (!tenantId) throw new Error("No tenant selected");
+    
+    try {
+      const incidentId = await apiClient.promoteToIncident(tenantId, id, userId);
+      
+      // Refresh to get updated data from backend
+      await refreshAlerts();
+      
+      return incidentId;
+    } catch (error) {
+      throw error;
+    }
+  }, [tenantId, apiClient, refreshAlerts]);
 
-      // Source system filter
-      if (filters.sourceSystem?.length && !filters.sourceSystem.includes(alert.source_system)) {
-        return false;
-      }
-
-      // Business service filter
-      if (filters.businessService?.length && alert.business_service_id && 
-          !filters.businessService.includes(alert.business_service_id)) {
-        return false;
-      }
-
-      // Assigned to me filter (requires current user context)
-      if (filters.assignedToMe && (!alert.assigned_to_user_id)) {
-        // Would need current user context for proper filtering
-        return false;
-      }
-
-      // Team filter
-      if (filters.teamId && alert.assigned_to_team_id !== filters.teamId) {
-        return false;
-      }
-
-      // Tags filter
-      if (filters.tags?.length) {
-        const hasAllTags = filters.tags.every(tag => alert.tags.includes(tag));
-        if (!hasAllTags) return false;
-      }
-
-      // Date range filter
-      if (filters.dateRange) {
-        const alertDate = new Date(alert.created_at);
-        const startDate = new Date(filters.dateRange.start);
-        const endDate = new Date(filters.dateRange.end);
-        if (alertDate < startDate || alertDate > endDate) {
-          return false;
-        }
-      }
-
-      // Text search filter
-      if (filters.textSearch) {
-        const query = filters.textSearch.toLowerCase();
-        const searchableText = [
-          alert.title,
-          alert.description,
-          alert.source_system,
-          ...alert.tags,
-        ].join(' ').toLowerCase();
-        
-        if (!searchableText.includes(query)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [getDisplayData]);
-
+  // ---------------------------------
+  // Client-Side UI Helpers (No Business Logic)
+  // ---------------------------------
+  
+  const filterAlerts = useCallback((filters: AlertUIFilters): Alert[] => {
+    let filtered = [...alerts.data];
+    
+    if (filters.status?.length) {
+      filtered = filtered.filter(a => filters.status!.includes(a.status));
+    }
+    
+    if (filters.severity?.length) {
+      filtered = filtered.filter(a => filters.severity!.includes(a.severity));
+    }
+    
+    if (filters.sourceSystem?.length) {
+      filtered = filtered.filter(a => filters.sourceSystem!.includes(a.source_system));
+    }
+    
+    if (filters.businessService?.length) {
+      filtered = filtered.filter(a => a.business_service_id && filters.businessService!.includes(a.business_service_id));
+    }
+    
+    if (filters.teamId) {
+      filtered = filtered.filter(a => a.assigned_to_team_id === filters.teamId);
+    }
+    
+    if (filters.tags?.length) {
+      filtered = filtered.filter(a => filters.tags!.some(tag => a.tags.includes(tag)));
+    }
+    
+    if (filters.dateRange) {
+      const startDate = new Date(filters.dateRange.start);
+      const endDate = new Date(filters.dateRange.end);
+      filtered = filtered.filter(a => {
+        const alertDate = new Date(a.created_at);
+        return alertDate >= startDate && alertDate <= endDate;
+      });
+    }
+    
+    if (filters.searchQuery) {
+      const query = filters.searchQuery.toLowerCase();
+      filtered = filtered.filter(a =>
+        a.title.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query) ||
+        a.source_system.toLowerCase().includes(query) ||
+        a.tags.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+    
+    return filtered;
+  }, [alerts.data]);
+  
   const searchAlerts = useCallback((query: string): Alert[] => {
-    return getFilteredAlerts({ textSearch: query });
-  }, [getFilteredAlerts]);
-
-  const getSortedAlerts = useCallback((
-    sortBy: keyof Alert, 
-    direction: 'asc' | 'desc' = 'desc'
-  ): Alert[] => {
-    const alerts = [...getDisplayData()];
-    
-    return alerts.sort((a, b) => {
-      const aValue = a[sortBy];
-      const bValue = b[sortBy];
+    return filterAlerts({ searchQuery: query });
+  }, [filterAlerts]);
+  
+  const sortAlerts = useCallback((sortBy: keyof Alert, order: 'asc' | 'desc' = 'desc'): Alert[] => {
+    return [...alerts.data].sort((a, b) => {
+      const aVal = a[sortBy];
+      const bVal = b[sortBy];
       
-      if (aValue === bValue) return 0;
-      
-      let comparison = 0;
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        comparison = aValue.localeCompare(bValue);
-      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-        comparison = aValue - bValue;
-      } else if (aValue instanceof Date && bValue instanceof Date) {
-        comparison = aValue.getTime() - bValue.getTime();
-      } else {
-        comparison = String(aValue).localeCompare(String(bValue));
-      }
-      
-      return direction === 'asc' ? comparison : -comparison;
+      if (aVal === bVal) return 0;
+      const result = aVal > bVal ? 1 : -1;
+      return order === 'asc' ? result : -result;
     });
-  }, [getDisplayData]);
+  }, [alerts.data]);
 
-  // Quick access getters - simple client-side filtering
-  const openAlerts = useMemo(() => {
-    return getDisplayData().filter(alert => !['resolved', 'closed'].includes(alert.status));
-  }, [getDisplayData]);
-
-  const criticalAlerts = useMemo(() => {
-    return getDisplayData().filter(alert => alert.severity === 'critical');
-  }, [getDisplayData]);
-
-  const myAlerts = useMemo(() => {
-    // Would need current user context for proper filtering
-    return getDisplayData().filter(alert => alert.assigned_to_user_id);
-  }, [getDisplayData]);
-
-  const recentAlerts = useMemo(() => {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    return getDisplayData()
-      .filter(alert => new Date(alert.created_at) > oneDayAgo)
-      .slice(0, 20);
-  }, [getDisplayData]);
-
-  // Cache management
-  const clearCache = useCallback(() => {
-    setAlertsState({
-      data: [],
-      isLoading: false,
-      error: null,
-      lastFetch: null,
-      stale: true,
-    });
-    setOptimisticUpdates([]);
-    setCacheStats(prev => ({
-      ...prev,
-      size: 0,
-      lastCleared: new Date().toISOString(),
-    }));
-  }, []);
-
-  const invalidateCache = useCallback(() => {
-    setAlertsState(prev => ({
-      ...prev,
-      stale: true,
-    }));
-  }, []);
-
-  const getCacheStats = useCallback(() => cacheStats, [cacheStats]);
-
-  // Auto-refresh when data is stale
+  // ---------------------------------
+  // Initialization & Cleanup
+  // ---------------------------------
+  
   useEffect(() => {
-    if (tenantId && globalConfig && (alertsState.stale || !alertsState.data)) {
+    if (tenantId && globalConfig) {
       refreshAlerts();
     }
-  }, [tenantId, globalConfig, alertsState.stale, refreshAlerts]);
-
+  }, [tenantId, globalConfig, refreshAlerts]);
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearCache();
+      invalidateCache();
+      setOptimisticUpdates([]);
     };
-  }, [clearCache]);
+  }, [invalidateCache]);
 
   return (
     <AlertsContext.Provider
       value={{
-        alerts: {
-          ...alertsState,
-          data: getDisplayData(),
-          stale: alertsState.stale || isDataStale(),
-        },
-        createAlert,
+        alerts,
+        addAlert,
         updateAlert,
         deleteAlert,
-        refreshAlerts,
-        getAlert,
         acknowledgeAlert,
         resolveAlert,
         escalateAlert,
         suppressAlert,
         correlateAlerts,
         promoteToIncident,
-        getFilteredAlerts,
+        refreshAlerts,
+        getAlert,
+        filterAlerts,
         searchAlerts,
-        getSortedAlerts,
-        openAlerts,
-        criticalAlerts,
-        myAlerts,
-        recentAlerts,
-        config,
-        clearCache,
+        sortAlerts,
+        optimisticUpdates,
+        rollbackOptimisticUpdate,
         invalidateCache,
         getCacheStats,
+        config,
       }}
     >
       {children}
@@ -858,8 +1102,9 @@ export const AlertsProvider = ({ children }: { children: ReactNode }) => {
 };
 
 // ---------------------------------
-// 6. Hooks
+// 7. Hooks for Selective Subscriptions
 // ---------------------------------
+
 export const useAlerts = (): AlertsContextType => {
   const ctx = useContext(AlertsContext);
   if (!ctx) {
@@ -869,98 +1114,116 @@ export const useAlerts = (): AlertsContextType => {
 };
 
 /**
- * Hook for individual alert details with caching
+ * Performance-optimized hook for alert details with caching
  */
-export const useAlertDetails = (id: string): AlertDetails | undefined => {
-  const { alerts, getAlert } = useAlerts();
-  const [alertDetails, setAlertDetails] = useState<AlertDetails | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
-
+export const useAlertDetails = (id: string): {
+  alert: AlertDetails | undefined;
+  loading: boolean;
+  error: string | null;
+} => {
+  const { getAlert, alerts } = useAlerts();
+  const [state, setState] = useState<{
+    alert: AlertDetails | undefined;
+    loading: boolean;
+    error: string | null;
+  }>({
+    alert: undefined,
+    loading: false,
+    error: null,
+  });
+  
   useEffect(() => {
-    // First check cached data
-    const cachedAlert = alerts.data?.find((a) => a.id === id);
-    if (cachedAlert) {
-      setAlertDetails(cachedAlert as AlertDetails);
-      return;
-    }
-
-    // If not in cache, fetch from API
-    if (id && !isLoading) {
-      setIsLoading(true);
-      getAlert(id)
-        .then(alert => {
-          setAlertDetails(alert as AlertDetails);
-        })
-        .catch(error => {
-          console.error(`Failed to fetch alert details for ${id}:`, error);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    }
-  }, [id, alerts.data, getAlert, isLoading]);
-
-  return alertDetails;
+    let cancelled = false;
+    
+    const fetchAlert = async () => {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      try {
+        const alert = await getAlert(id);
+        if (!cancelled) {
+          setState({
+            alert: alert as AlertDetails,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            alert: undefined,
+            loading: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+    };
+    
+    fetchAlert();
+    
+    return () => { cancelled = true; };
+  }, [id, getAlert]);
+  
+  return state;
 };
 
 /**
- * Selective subscription hooks for performance
+ * Memoized hooks for specific alert queries
  */
+export const useAlertsByStatus = (status: AlertStatus) => {
+  const { filterAlerts } = useAlerts();
+  return useMemo(() => filterAlerts({ status: [status] }), [filterAlerts, status]);
+};
+
 export const useCriticalAlerts = () => {
-  const { criticalAlerts } = useAlerts();
-  return criticalAlerts;
+  const { filterAlerts } = useAlerts();
+  return useMemo(() => filterAlerts({ severity: ['critical'] }), [filterAlerts]);
 };
 
 export const useOpenAlerts = () => {
-  const { openAlerts } = useAlerts();
-  return openAlerts;
+  const { alerts } = useAlerts();
+  return useMemo(() => 
+    alerts.data.filter(a => !['resolved', 'closed'].includes(a.status)),
+    [alerts.data]
+  );
 };
 
-export const useAlertsByStatus = (status: AlertStatus) => {
-  const { getFilteredAlerts } = useAlerts();
-  
+export const useMyAlerts = (userId: string) => {
+  const { filterAlerts } = useAlerts();
+  return useMemo(() => 
+    filterAlerts({}).filter(a => a.assigned_to_user_id === userId),
+    [filterAlerts, userId]
+  );
+};
+
+export const useRecentAlerts = (hours: number = 24) => {
+  const { alerts } = useAlerts();
   return useMemo(() => {
-    return getFilteredAlerts({ status: [status] });
-  }, [getFilteredAlerts, status]);
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return alerts.data
+      .filter(a => new Date(a.created_at) > cutoff)
+      .slice(0, 20);
+  }, [alerts.data, hours]);
 };
 
-export const useMyAlerts = () => {
-  const { myAlerts } = useAlerts();
-  return myAlerts;
-};
-
-export const useRecentAlerts = () => {
-  const { recentAlerts } = useAlerts();
-  return recentAlerts;
+export const useAlertsBySourceSystem = (sourceSystem: string) => {
+  const { filterAlerts } = useAlerts();
+  return useMemo(() => filterAlerts({ sourceSystem: [sourceSystem] }), [filterAlerts, sourceSystem]);
 };
 
 /**
- * Hook for filtered alerts with memoization
+ * Hook for search with debouncing for better performance
  */
-export const useFilteredAlerts = (filters: AlertUIFilters) => {
-  const { getFilteredAlerts } = useAlerts();
-  
-  return useMemo(() => {
-    return getFilteredAlerts(filters);
-  }, [getFilteredAlerts, filters]);
-};
-
-/**
- * Hook for alert search with debouncing
- */
-export const useAlertSearch = (query: string, debounceMs: number = 300) => {
+export const useAlertSearch = (query: string, debounceMs = 300) => {
   const { searchAlerts } = useAlerts();
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, debounceMs);
-    
+    const timer = setTimeout(() => setDebouncedQuery(query), debounceMs);
     return () => clearTimeout(timer);
   }, [query, debounceMs]);
   
-  return useMemo(() => {
-    return debouncedQuery ? searchAlerts(debouncedQuery) : [];
-  }, [searchAlerts, debouncedQuery]);
+  return useMemo(() => 
+    debouncedQuery ? searchAlerts(debouncedQuery) : [],
+    [searchAlerts, debouncedQuery]
+  );
 };
