@@ -1,17 +1,18 @@
-// src/App.tsx - FIXED with proper provider integration
+// src/App.tsx - FIXED with proper imports and routing
 import './App.css';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppProviders } from "./providers/AppProviders";
 import { AppLayout } from "./layouts/AppLayout";
 import { TenantSetup } from "./components/setup/TenantSetup";
 import { useTenant } from "./providers/TenantProvider";
 
-// Placeholder pages (to be implemented)
-const Pulse = () => <div className="p-4">Pulse Dashboard</div>;
-const SmartQueue = () => <div className="p-4">SmartQueue</div>;
-const Schedule = () => <div className="p-4">Schedule</div>;
-const Intelligence = () => <div className="p-4">Intelligence Center</div>;
-const Notifications = () => <div className="p-4">Notifications</div>;
+// Import the actual page components
+import { Pulse } from "./pages/Pulse";
+import { SmartQueue } from "./pages/SmartQueue";
+import { Schedule } from "./pages/Schedule";  
+import { Intelligence } from "./pages/Intelligence";
+import { Notifications } from "./pages/Notifications";
 
 // Main App Component (inside providers)
 const AppContent = () => {
@@ -42,7 +43,10 @@ const AppContent = () => {
           <div className="text-red-500 text-xl mb-4">⚠️ Initialization Error</div>
           <p className="text-gray-700 mb-4">{error}</p>
           <button 
-            onClick={() => localStorage.removeItem('tenantId')} 
+            onClick={() => {
+              localStorage.removeItem('tenantId');
+              window.location.reload();
+            }} 
             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
           >
             Reset & Choose Different Tenant
@@ -68,17 +72,21 @@ const AppContent = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
-          <Route index element={<Navigate to="/pulse" />} />
+          <Route index element={<Navigate to="/pulse" replace />} />
           <Route path="pulse" element={<Pulse />} />
           <Route path="smartqueue" element={<SmartQueue />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="intelligence" element={<Intelligence />} />
           <Route path="notifications" element={<Notifications />} />
-          {/* WorkItem detail routes */}
-          <Route path="incidents/:id" element={<div>Incident Detail</div>} />
-          <Route path="problems/:id" element={<div>Problem Detail</div>} />
-          <Route path="changes/:id" element={<div>Change Detail</div>} />
-          <Route path="requests/:id" element={<div>Service Request Detail</div>} />
+          
+          {/* WorkItem detail routes - placeholder until detail pages are built */}
+          <Route path="incidents/:id" element={<div className="p-4">Incident Detail (Coming Soon)</div>} />
+          <Route path="problems/:id" element={<div className="p-4">Problem Detail (Coming Soon)</div>} />
+          <Route path="changes/:id" element={<div className="p-4">Change Detail (Coming Soon)</div>} />
+          <Route path="requests/:id" element={<div className="p-4">Service Request Detail (Coming Soon)</div>} />
+          
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/pulse" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
@@ -86,10 +94,12 @@ const AppContent = () => {
 };
 
 // Root App with Provider Wrapper
-export default function App() {
+const App: React.FC = () => {
   return (
     <AppProviders>
       <AppContent />
     </AppProviders>
   );
-}
+};
+
+export default App;

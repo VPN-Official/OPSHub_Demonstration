@@ -1,4 +1,4 @@
-// src/providers/TenantProvider.tsx
+// src/providers/TenantProvider.tsx - SIMPLIFIED without loadConfig dependency
 import React, {
   createContext,
   useContext,
@@ -9,12 +9,9 @@ import React, {
 } from "react";
 import { getDB, resetDB, reseedDB, healthCheck, invalidateCache } from "../db/dbClient";
 import { getQueueStats } from "../db/syncQueue";
-import { loadConfig } from "../config/loadConfig";
-import type { AIOpsConfig } from "../config/types";
 
 interface TenantContextType {
   tenantId: string | null;
-  config: AIOpsConfig | null;
   isInitialized: boolean;
   isLoading: boolean;
   error: string | null;
@@ -29,7 +26,6 @@ interface TenantContextType {
   getTenantHealth: () => Promise<{
     healthy: boolean;
     dbHealth: boolean;
-    configLoaded: boolean;
     syncQueueSize: number;
     error?: string;
   }>;
@@ -38,13 +34,12 @@ interface TenantContextType {
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 // ---------------------------------
-// Provider
+// Provider - SIMPLIFIED
 // ---------------------------------
 export const TenantProvider = ({ children }: { children: ReactNode }) => {
   const [tenantId, setTenantId] = useState<string | null>(
     localStorage.getItem("tenantId")
   );
-  const [config, setConfig] = useState<AIOpsConfig | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +47,6 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
   // Initialize tenant when tenantId changes
   useEffect(() => {
     if (!tenantId) {
-      setConfig(null);
       setIsInitialized(false);
       setError(null);
       return;
@@ -71,11 +65,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       // 1. Initialize database connection
       await getDB(newTenantId);
       
-      // 2. Load tenant configuration
-      const tenantConfig = await loadConfig(newTenantId);
-      setConfig(tenantConfig);
-      
-      // 3. Verify tenant health
+      // 2. Verify tenant health  
       const health = await healthCheck(newTenantId);
       if (!health.healthy) {
         throw new Error(`Tenant ${newTenantId} health check failed: ${health.error}`);
@@ -94,7 +84,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const setTenant = async (newTenantId: string) => {
+  const setTenant = useCallback(async (newTenantId: string) => {
     if (!newTenantId) {
       throw new Error("Tenant ID is required");
     }
@@ -115,7 +105,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem("tenantId", newTenantId);
     setTenantId(newTenantId);
     // initializeTenant will be called via useEffect
-  };
+  }, [tenantId]);
 
   const refreshTenant = useCallback(async () => {
     if (!tenantId) {
@@ -176,7 +166,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       console.log(`Reseeding tenant ${tenantId} with ${mode} data`);
       await reseedDB(tenantId, mode);
       
-      // Refresh tenant to reload config and verify health
+      // Refresh tenant to verify health
       await refreshTenant();
       
       console.log(`Tenant ${tenantId} reseed completed`);
@@ -194,7 +184,6 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       return {
         healthy: false,
         dbHealth: false,
-        configLoaded: false,
         syncQueueSize: 0,
         error: "No tenant selected"
       };
@@ -207,13 +196,9 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       // Check sync queue stats
       const queueStats = await getQueueStats(tenantId);
       
-      // Overall health assessment
-      const healthy = dbHealth.healthy && config !== null;
-      
       return {
-        healthy,
+        healthy: dbHealth.healthy,
         dbHealth: dbHealth.healthy,
-        configLoaded: config !== null,
         syncQueueSize: queueStats.total,
         error: dbHealth.error || error || undefined
       };
@@ -221,18 +206,16 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       return {
         healthy: false,
         dbHealth: false,
-        configLoaded: false,
         syncQueueSize: 0,
         error: err instanceof Error ? err.message : 'Health check failed'
       };
     }
-  }, [tenantId, config, error]);
+  }, [tenantId, error]);
 
   return (
     <TenantContext.Provider
       value={{
         tenantId,
-        config,
         isInitialized,
         isLoading,
         error,
@@ -263,11 +246,6 @@ export const useTenant = () => {
 export const useTenantId = () => {
   const { tenantId } = useTenant();
   return tenantId;
-};
-
-export const useTenantConfig = () => {
-  const { config } = useTenant();
-  return config;
 };
 
 export const useIsInitialized = () => {

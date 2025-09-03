@@ -1,4 +1,4 @@
-// src/providers/ConfigProvider.tsx
+// src/providers/ConfigProvider.tsx - SIMPLIFIED without loadConfig.ts
 import React, {
   createContext,
   useContext,
@@ -8,8 +8,8 @@ import React, {
   useCallback,
 } from "react";
 import { useTenant } from "./TenantProvider";
-import { loadConfig } from "../config/loadConfig";
 import type { AIOpsConfig, ConfigSection } from "../config/types";
+import defaultConfigData from "../config/default.json";
 
 interface ConfigContextType {
   // Core config sections
@@ -38,56 +38,52 @@ interface ConfigContextType {
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 // ---------------------------------
-// Provider
+// Provider - SIMPLIFIED  
 // ---------------------------------
 export const ConfigProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId, config: tenantConfig } = useTenant();
+  const { tenantId } = useTenant();
   
   const [config, setConfig] = useState<AIOpsConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // Load config when tenant changes or tenant config updates
+  // Load config when tenant changes
   useEffect(() => {
     if (tenantId) {
-      if (tenantConfig) {
-        // Use config from TenantProvider if available
-        setConfig(tenantConfig);
-        setLastUpdated(new Date().toISOString());
-        setError(null);
-      } else {
-        // Load config directly
-        refreshConfig();
-      }
+      loadConfigForTenant(tenantId);
     } else {
       // Clear config when no tenant selected
       setConfig(null);
       setError(null);
       setLastUpdated(null);
     }
-  }, [tenantId, tenantConfig]);
+  }, [tenantId]);
 
-  const refreshConfig = useCallback(async () => {
-    if (!tenantId) {
-      console.warn("Cannot refresh config: no tenant selected");
-      return;
-    }
-
+  // INLINE config loading - no separate file needed
+  const loadConfigForTenant = useCallback(async (tenantId: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
       console.log(`Loading config for tenant: ${tenantId}`);
-      const loadedConfig = await loadConfig(tenantId);
       
-      setConfig(loadedConfig);
+      // Use default config directly - no complex loading needed for MVP
+      const baseConfig = defaultConfigData as AIOpsConfig;
+      
+      // Validate basic structure
+      if (!baseConfig.statuses || !baseConfig.priorities) {
+        throw new Error('Invalid configuration structure');
+      }
+      
+      setConfig(baseConfig);
       setLastUpdated(new Date().toISOString());
       
       console.log("Config loaded successfully:", {
         tenant: tenantId,
-        sections: Object.keys(loadedConfig),
+        sections: Object.keys(baseConfig),
       });
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load configuration';
       console.error(`Config loading error for tenant ${tenantId}:`, errorMessage);
@@ -96,7 +92,15 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [tenantId]);
+  }, []);
+
+  const refreshConfig = useCallback(async () => {
+    if (!tenantId) {
+      console.warn("Cannot refresh config: no tenant selected");
+      return;
+    }
+    await loadConfigForTenant(tenantId);
+  }, [tenantId, loadConfigForTenant]);
 
   // Validation helper
   const validateEnum = useCallback((section: ConfigSection, value: string): boolean => {
@@ -139,7 +143,6 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     const sectionData = config[section];
     if (!sectionData) return null;
     
-    // Handle different section structures
     if (Array.isArray(sectionData)) {
       return sectionData.includes(value) ? value : null;
     } else if (typeof sectionData === 'object') {
@@ -151,7 +154,6 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
         return item.label;
       }
       
-      // Return the value itself as label
       return value;
     }
     
@@ -177,15 +179,11 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 
   // Get SLA target
   const getSLATarget = useCallback((entityType: string, priority: string): number | null => {
-    if (!config?.slas || !entityType || !priority) return null;
+    if (!config?.priorities || !priority) return null;
     
-    const entitySLAs = config.slas[entityType];
-    if (!entitySLAs || typeof entitySLAs !== 'object') return null;
-    
-    const prioritySLA = entitySLAs[priority];
-    if (typeof prioritySLA === 'number') return prioritySLA;
-    if (typeof prioritySLA === 'object' && 'target_minutes' in prioritySLA) {
-      return prioritySLA.target_minutes;
+    const priorityConfig = config.priorities[priority];
+    if (typeof priorityConfig === 'object' && 'sla_minutes' in priorityConfig) {
+      return priorityConfig.sla_minutes;
     }
     
     return null;
@@ -236,96 +234,13 @@ export const useConfig = () => {
   return ctx;
 };
 
-// Convenience hooks for specific config sections
+// Convenience hooks
 export const useStatuses = () => {
-  const { statuses, validateEnum, getEnumOptions } = useConfig();
-  return {
-    statuses,
-    validateStatus: (entityType: string, status: string) => 
-      validateEnum('statuses', status) && statuses?.[entityType]?.includes(status),
-    getStatusOptions: (entityType: string) => statuses?.[entityType] || [],
-    allStatusOptions: getEnumOptions('statuses'),
-  };
+  const { statuses } = useConfig();
+  return statuses;
 };
 
 export const usePriorities = () => {
-  const { priorities, validateEnum, getEnumOptions, getEnumLabel, getEnumColor } = useConfig();
-  return {
-    priorities,
-    validatePriority: (priority: string) => validateEnum('priorities', priority),
-    getPriorityOptions: () => getEnumOptions('priorities'),
-    getPriorityLabel: (priority: string) => getEnumLabel('priorities', priority),
-    getPriorityColor: (priority: string) => getEnumColor('priorities', priority),
-  };
-};
-
-export const useSeverities = () => {
-  const { severities, validateEnum, getEnumOptions, getEnumLabel, getEnumColor } = useConfig();
-  return {
-    severities,
-    validateSeverity: (severity: string) => validateEnum('severities', severity),
-    getSeverityOptions: () => getEnumOptions('severities'),
-    getSeverityLabel: (severity: string) => getEnumLabel('severities', severity),
-    getSeverityColor: (severity: string) => getEnumColor('severities', severity),
-  };
-};
-
-export const useTiers = () => {
-  const { tiers, validateEnum, getEnumOptions } = useConfig();
-  return {
-    tiers,
-    validateTier: (tier: string) => validateEnum('tiers', tier),
-    getTierOptions: () => getEnumOptions('tiers'),
-  };
-};
-
-export const useSLAs = () => {
-  const { slas, getSLATarget } = useConfig();
-  return {
-    slas,
-    getSLATarget,
-    hasSLA: (entityType: string) => Boolean(slas?.[entityType]),
-  };
-};
-
-export const useKPIs = () => {
-  const { kpis } = useConfig();
-  return {
-    kpis: kpis || [],
-    getKPIByType: (type: string) => kpis?.filter(kpi => kpi.type === type) || [],
-  };
-};
-
-// Validation hook for form validation
-export const useConfigValidation = () => {
-  const { validateEnum } = useConfig();
-  
-  return {
-    validateField: (section: ConfigSection, value: string) => {
-      if (!value) return { valid: false, message: 'Value is required' };
-      
-      const isValid = validateEnum(section, value);
-      return {
-        valid: isValid,
-        message: isValid ? '' : `Invalid ${section} value: ${value}`
-      };
-    },
-    
-    validateMultiple: (validations: Array<{ section: ConfigSection; value: string; field: string }>) => {
-      const errors: Record<string, string> = {};
-      
-      validations.forEach(({ section, value, field }) => {
-        if (!value) {
-          errors[field] = 'This field is required';
-        } else if (!validateEnum(section, value)) {
-          errors[field] = `Invalid ${section} value`;
-        }
-      });
-      
-      return {
-        isValid: Object.keys(errors).length === 0,
-        errors
-      };
-    }
-  };
+  const { priorities } = useConfig();
+  return priorities;
 };
