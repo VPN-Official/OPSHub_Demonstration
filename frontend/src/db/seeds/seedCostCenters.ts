@@ -3,69 +3,65 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
-  let centers: any[] = [];
+  let costCenters: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    centers = [
+    costCenters = [
       {
         id: `${tenantId}_cc01`,
-        tenantId: tenantId,
-        code: "DCN-OPS-01",
-        name: "Networking Operations",
-        created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_network`],
-        annual_budget: 5000000,
+        tenantId,
+        name: "Network Operations",
+        budget: 500000,
         currency: "USD",
-        tags: ["networking"],
-        health_status: "orange",
+        owner_team_id: `${tenantId}_team_noc`,
+        created_at: now,
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    centers = [
+    costCenters = [
       {
         id: `${tenantId}_cc01`,
-        tenantId: tenantId,
-        code: "STREAM-OPS-01",
-        name: "Streaming Operations",
-        created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_streaming`, `${tenantId}_svc_transcoding`],
-        annual_budget: 2000000,
+        tenantId,
+        name: "MediaOps Budget",
+        budget: 2000000,
         currency: "USD",
-        tags: ["streaming"],
-        health_status: "red",
+        owner_team_id: `${tenantId}_team_mediaops`,
+        created_at: now,
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    centers = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    costCenters = [
       {
         id: `${tenantId}_cc01`,
-        tenantId: tenantId,
-        code: "IT-OPS-01",
-        name: "IT Operations",
-        created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_email`, `${tenantId}_svc_vpn`, `${tenantId}_svc_hr_portal`, `${tenantId}_svc_sharepoint`],
-        annual_budget: 500000,
+        tenantId,
+        name: "Database & Reporting",
+        budget: 1200000,
         currency: "USD",
-        tags: ["itops"],
-        health_status: "yellow",
+        owner_team_id: `${tenantId}_team_dba`,
+        created_at: now,
+      },
+      {
+        id: `${tenantId}_cc02`,
+        tenantId,
+        name: "DataOps & Analytics",
+        budget: 2500000,
+        currency: "USD",
+        owner_team_id: `${tenantId}_team_dataops`,
+        created_at: now,
       },
     ];
   }
 
-  for (const cc of centers) {
+  for (const cc of costCenters) {
     await db.put("cost_centers", cc);
 
     await db.put("audit_logs", {
       id: `${cc.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "cost_center",
       entity_id: cc.id,
       action: "create",
@@ -76,16 +72,13 @@ export const seedCostCenters = async (tenantId: string, db: IDBPDatabase<AIOpsDB
 
     await db.put("activities", {
       id: `${cc.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "cost_center",
       entity_id: cc.id,
       action: "created",
-      description: `Cost Center "${cc.name}" seeded`,
+      description: `Cost center "${cc.name}" created with budget ${cc.budget} ${cc.currency}`,
       timestamp: now,
-      related_entity_ids: cc.business_service_ids.map((id: string) => ({
-        type: "business_service",
-        id,
-      })),
+      related_entity_ids: [{ type: "team", id: cc.owner_team_id }],
       tags: ["seed"],
     });
   }

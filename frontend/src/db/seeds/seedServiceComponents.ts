@@ -3,52 +3,27 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let components: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     components = [
       {
         id: `${tenantId}_comp_router01`,
-        tenantId: tenantId,
+        tenantId,
         name: "Core Router",
-        description: "Cisco core router in SJC-1.",
-        type: "infrastructure",
+        type: "network_device",
+        business_service_id: `${tenantId}_svc_network`,
         status: "operational",
         created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_network`,
-        asset_ids: [],
-        tags: ["router"],
-        health_status: "orange",
       },
       {
         id: `${tenantId}_comp_switch01`,
-        tenantId: tenantId,
-        name: "TOR Switch",
-        description: "Top of Rack switch in SJC-1.",
-        type: "infrastructure",
-        status: "degraded",
-        created_at: now,
-        updated_at: now,
+        tenantId,
+        name: "Top-of-Rack Switch",
+        type: "network_device",
         business_service_id: `${tenantId}_svc_network`,
-        asset_ids: [],
-        tags: ["switch"],
-        health_status: "orange",
-      },
-      {
-        id: `${tenantId}_comp_vpn01`,
-        tenantId: tenantId,
-        name: "VPN Gateway",
-        description: "Remote access VPN appliance.",
-        type: "infrastructure",
         status: "operational",
         created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_network`,
-        asset_ids: [],
-        tags: ["vpn"],
-        health_status: "yellow",
       },
     ];
   }
@@ -57,78 +32,44 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
     components = [
       {
         id: `${tenantId}_comp_edge01`,
-        tenantId: tenantId,
-        name: "Edge Node Pool",
-        description: "VMs serving video content at the edge.",
-        type: "application",
-        status: "degraded",
-        created_at: now,
-        updated_at: now,
+        tenantId,
+        name: "EU Edge Node",
+        type: "compute_node",
         business_service_id: `${tenantId}_svc_streaming`,
-        asset_ids: [],
-        tags: ["edge", "latency"],
-        health_status: "red",
+        status: "operational",
+        created_at: now,
       },
       {
         id: `${tenantId}_comp_gke_cluster01`,
-        tenantId: tenantId,
-        name: "Transcoding Cluster",
-        description: "Kubernetes cluster running video transcoding.",
-        type: "application",
+        tenantId,
+        name: "GKE Transcoding Cluster",
+        type: "kubernetes_cluster",
+        business_service_id: `${tenantId}_svc_transcoding`,
         status: "operational",
         created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_transcoding`,
-        asset_ids: [],
-        tags: ["gke", "transcoding"],
-        health_status: "orange",
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     components = [
       {
-        id: `${tenantId}_comp_exchange01`,
-        tenantId: tenantId,
-        name: "Exchange Server",
-        description: "Email messaging backend.",
-        type: "application",
-        status: "degraded",
-        created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_email`,
-        asset_ids: [],
-        tags: ["exchange"],
-        health_status: "red",
-      },
-      {
-        id: `${tenantId}_comp_vpn01`,
-        tenantId: tenantId,
-        name: "VPN Appliance",
-        description: "Cisco VPN concentrator.",
-        type: "infrastructure",
-        status: "degraded",
-        created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_vpn`,
-        asset_ids: [],
-        tags: ["vpn"],
-        health_status: "orange",
-      },
-      {
-        id: `${tenantId}_comp_ad01`,
-        tenantId: tenantId,
-        name: "Active Directory",
-        description: "Authentication and identity service.",
-        type: "middleware",
+        id: `${tenantId}_comp_reportingdb`,
+        tenantId,
+        name: "Reporting Database",
+        type: "database",
+        business_service_id: `${tenantId}_svc_fin_reporting`,
         status: "operational",
         created_at: now,
-        updated_at: now,
-        business_service_id: `${tenantId}_svc_hr_portal`,
-        asset_ids: [],
-        tags: ["ad"],
-        health_status: "yellow",
+      },
+      {
+        id: `${tenantId}_comp_datalake01`,
+        tenantId,
+        name: "Data Lake Ingestion Service",
+        type: "etl_pipeline",
+        business_service_id: `${tenantId}_svc_data_analytics`,
+        status: "operational",
+        created_at: now,
       },
     ];
   }
@@ -138,7 +79,7 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
 
     await db.put("audit_logs", {
       id: `${comp.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "service_component",
       entity_id: comp.id,
       action: "create",
@@ -149,13 +90,15 @@ export const seedServiceComponents = async (tenantId: string, db: IDBPDatabase<A
 
     await db.put("activities", {
       id: `${comp.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "service_component",
       entity_id: comp.id,
       action: "created",
-      description: `Service Component "${comp.name}" seeded`,
+      description: `Service component ${comp.name} created`,
       timestamp: now,
-      related_entity_ids: [{ type: "business_service", id: comp.business_service_id }],
+      related_entity_ids: [
+        { type: "business_service", id: comp.business_service_id },
+      ],
       tags: ["seed"],
     });
   }

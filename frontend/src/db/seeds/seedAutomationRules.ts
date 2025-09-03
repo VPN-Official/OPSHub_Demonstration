@@ -3,22 +3,18 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let rules: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     rules = [
       {
-        id: `${tenantId}_auto01`,
-        tenantId: tenantId,
-        name: "Auto-Restart Router Process",
-        type: "script",
-        status: "approved",
-        script: "restart-router.sh",
-        tags: ["router", "automation"],
+        id: `${tenantId}_rule01`,
+        tenantId,
+        name: "Auto-create Incident on CPU Alert",
+        condition: "alert.severity == 'critical' && alert.tags.includes('cpu')",
+        action: "create_incident",
         created_at: now,
-        updated_at: now,
-        health_status: "yellow",
+        tags: ["router", "automation"],
       },
     ];
   }
@@ -26,33 +22,45 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
   if (tenantId === "tenant_av_google") {
     rules = [
       {
-        id: `${tenantId}_auto01`,
-        tenantId: tenantId,
-        name: "Auto-Scale Edge Nodes",
-        type: "workflow",
-        status: "approved",
-        script: "gcloud scale edge",
-        tags: ["edge", "scaling"],
+        id: `${tenantId}_rule01`,
+        tenantId,
+        name: "Scale Edge Pool on Latency Breach",
+        condition: "metric.name == 'Streaming Latency EU Edge' && metric.value > 250",
+        action: "scale_out",
         created_at: now,
-        updated_at: now,
-        health_status: "green",
+        tags: ["streaming", "scaling"],
+      },
+      {
+        id: `${tenantId}_rule02`,
+        tenantId,
+        name: "Restart OOMKilled Pods",
+        condition: "alert.tags.includes('oom')",
+        action: "restart_pod",
+        created_at: now,
+        tags: ["gke", "oom"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     rules = [
       {
-        id: `${tenantId}_auto01`,
-        tenantId: tenantId,
-        name: "Reset VPN Tunnel",
-        type: "script",
-        status: "approved",
-        script: "reset-vpn.sh",
-        tags: ["vpn", "automation"],
+        id: `${tenantId}_rule01`,
+        tenantId,
+        name: "Alert DBA on Replication Lag",
+        condition: "metric.name == 'DB Replication Lag' && metric.value > 30",
+        action: "notify_team_dba",
         created_at: now,
-        updated_at: now,
-        health_status: "orange",
+        tags: ["database", "replication"],
+      },
+      {
+        id: `${tenantId}_rule02`,
+        tenantId,
+        name: "Retry ETL Job on Failure",
+        condition: "event.tags.includes('etl') && event.severity == 'major'",
+        action: "rerun_etl_job",
+        created_at: now,
+        tags: ["etl", "spark"],
       },
     ];
   }
@@ -62,7 +70,7 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
 
     await db.put("audit_logs", {
       id: `${rule.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "automation_rule",
       entity_id: rule.id,
       action: "create",
@@ -73,11 +81,11 @@ export const seedAutomationRules = async (tenantId: string, db: IDBPDatabase<AIO
 
     await db.put("activities", {
       id: `${rule.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "automation_rule",
       entity_id: rule.id,
-      action: "created",
-      description: `Automation Rule "${rule.name}" seeded`,
+      action: "published",
+      description: `Automation rule "${rule.name}" published`,
       timestamp: now,
       related_entity_ids: [],
       tags: ["seed"],

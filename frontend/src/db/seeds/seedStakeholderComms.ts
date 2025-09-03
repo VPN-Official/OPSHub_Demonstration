@@ -3,74 +3,84 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedStakeholderComms = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-  let stakeholderComms: any[] = [];
+  let comms: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    stakeholderComms = [
+    comms = [
       {
-        id: `${tenantId}_stakeholderComms01`,
-        tenantId: tenantId,
-        name: "StakeholderComms Example 1",
-        description: "Seeded StakeholderComms entity for DCN Meta.",
+        id: `${tenantId}_comm01`,
+        tenantId,
+        audience: "CIO",
+        message: "Planned TOR switch replacement scheduled for next week. No customer impact expected.",
+        channel: "email",
         created_at: now,
-        updated_at: now,
-        tags: ["meta", "stakeholderComms"],
-        health_status: "green",
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    stakeholderComms = [
+    comms = [
       {
-        id: `${tenantId}_stakeholderComms01`,
-        tenantId: tenantId,
-        name: "StakeholderComms Example 1",
-        description: "Seeded StakeholderComms entity for AV Google.",
+        id: `${tenantId}_comm01`,
+        tenantId,
+        audience: "VP MediaOps",
+        message: "Streaming latency SLA at EU edge breached 3 times this week. Root cause under review.",
+        channel: "slack",
         created_at: now,
-        updated_at: now,
-        tags: ["google", "stakeholderComms"],
-        health_status: "yellow",
+      },
+      {
+        id: `${tenantId}_comm02`,
+        tenantId,
+        audience: "Customer Success",
+        message: "New transcoding presets rollout planned for premium customers.",
+        channel: "email",
+        created_at: now,
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    stakeholderComms = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    comms = [
       {
-        id: `${tenantId}_stakeholderComms01`,
-        tenantId: tenantId,
-        name: "StakeholderComms Example 1",
-        description: "Seeded StakeholderComms entity for Gates Foundation.",
+        id: `${tenantId}_comm01`,
+        tenantId,
+        audience: "CFO",
+        message: "Financial reporting DB replication lag identified. ETA for fix: 2 hours.",
+        channel: "email",
         created_at: now,
-        updated_at: now,
-        tags: ["gates", "stakeholderComms"],
-        health_status: "orange",
+      },
+      {
+        id: `${tenantId}_comm02`,
+        tenantId,
+        audience: "Regulatory Affairs",
+        message: "SOX non-compliance detected in reporting controls. Remediation plan underway.",
+        channel: "portal",
+        created_at: now,
       },
     ];
   }
 
-  for (const entity of stakeholderComms) {
-    await db.put("stakeholderComms", entity);
+  for (const comm of comms) {
+    await db.put("stakeholder_comms", comm);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "stakeholderComms",
-      entity_id: entity.id,
-      action: "create",
+      id: `${comm.id}_audit01`,
+      tenantId,
+      entity_type: "stakeholder_comm",
+      entity_id: comm.id,
+      action: "send",
       timestamp: now,
-      hash: "hash_" + id,
+      immutable_hash: "hash_" + comm.id,
       tags: ["seed"],
     });
 
     await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "stakeholderComms",
-      entity_id: entity.id,
-      action: "created",
-      description: `StakeholderComms "${entity.name}" seeded`,
+      id: `${comm.id}_act01`,
+      tenantId,
+      type: "stakeholder_comm",
+      entity_id: comm.id,
+      action: "sent",
+      description: `Communication sent to ${comm.audience}: "${comm.message}"`,
       timestamp: now,
       related_entity_ids: [],
       tags: ["seed"],

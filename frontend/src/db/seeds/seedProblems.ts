@@ -3,31 +3,35 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let problems: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenantId: tenantId,
-        title: "Recurring Router CPU Spikes",
-        description: "Multiple incidents linked to core router overutilization.",
-        status: "analysis",
-        priority: "P2",
-        impact: "high",
-        urgency: "medium",
+        tenantId,
+        title: "High CPU utilization on core router",
+        description: "Router CPU spikes observed repeatedly. Linked to incident router01 (threshold breach).",
+        status: "open",
+        priority: "high",
         created_at: now,
         updated_at: now,
-        related_incident_ids: [`${tenantId}_inc01`, `${tenantId}_inc02`],
-        root_cause_summary: null,
-        root_cause_category: "hardware",
-        workaround_summary: "Restart router process clears CPU temporarily.",
-        business_impact: "Inter-DC packet loss observed.",
-        service_component_ids: [`${tenantId}_comp_router01`],
-        asset_ids: [`${tenantId}_asset_router01`],
-        tags: ["network", "router", "rca"],
-        health_status: "orange",
+        assigned_team_id: `${tenantId}_team_network`,
+        related_incident_ids: [`${tenantId}_inc01`],
+        tags: ["router", "performance"],
+      },
+      {
+        id: `${tenantId}_prob02`,
+        tenantId,
+        title: "Switch instability causing packet loss",
+        description: "TOR switch flapping across multiple incidents. RCA pending hardware diagnostics.",
+        status: "investigating",
+        priority: "medium",
+        created_at: now,
+        updated_at: now,
+        assigned_team_id: `${tenantId}_team_network`,
+        related_incident_ids: [`${tenantId}_inc02`],
+        tags: ["switch", "packetloss"],
       },
     ];
   }
@@ -36,62 +40,71 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenantId: tenantId,
-        title: "Transcoding Cluster Memory Leaks",
-        description: "Incidents show recurring OOM kills in transcoding pods.",
-        status: "root_cause_identified",
-        priority: "P2",
-        impact: "high",
-        urgency: "medium",
+        tenantId,
+        title: "EU edge node service degradation",
+        description: "Streaming latency issues tied to overloaded EU edge VM. Workaround: reroute traffic.",
+        status: "open",
+        priority: "high",
         created_at: now,
         updated_at: now,
-        related_incident_ids: [`${tenantId}_inc01`, `${tenantId}_inc02`],
-        root_cause_summary: "Bug in ffmpeg library memory handling.",
-        root_cause_category: "software",
-        workaround_summary: "Restart pods every 6 hours.",
-        business_impact: "Reduced video transcoding capacity during peak hours.",
-        service_component_ids: [`${tenantId}_comp_gke_cluster01`],
-        asset_ids: [`${tenantId}_asset_gke_node01`],
-        tags: ["transcoding", "memory", "rca"],
-        health_status: "orange",
+        assigned_team_id: `${tenantId}_team_sre`,
+        related_incident_ids: [`${tenantId}_inc01`],
+        tags: ["streaming", "latency", "edge"],
+      },
+      {
+        id: `${tenantId}_prob02`,
+        tenantId,
+        title: "GKE transcoding workload instability",
+        description: "OOM kills repeatedly observed in transcoding pods. Potential memory misconfiguration.",
+        status: "in_progress",
+        priority: "medium",
+        created_at: now,
+        updated_at: now,
+        assigned_team_id: `${tenantId}_team_mediaops`,
+        related_incident_ids: [`${tenantId}_inc02`],
+        tags: ["gke", "oom", "transcoding"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     problems = [
       {
         id: `${tenantId}_prob01`,
-        tenantId: tenantId,
-        title: "Recurring VPN Authentication Failures",
-        description: "VPN outage incidents traced to faulty RADIUS config.",
-        status: "analysis",
-        priority: "P3",
-        impact: "medium",
-        urgency: "medium",
+        tenantId,
+        title: "Database replication lag recurring",
+        description: "Replication lag spikes during reporting hours. Linked to high transaction load.",
+        status: "open",
+        priority: "high",
         created_at: now,
         updated_at: now,
+        assigned_team_id: `${tenantId}_team_dba`,
+        related_incident_ids: [`${tenantId}_inc01`],
+        tags: ["database", "replication", "lag"],
+      },
+      {
+        id: `${tenantId}_prob02`,
+        tenantId,
+        title: "ETL job reliability issues",
+        description: "Nightly ETL failures linked to unstable Spark cluster. RCA ongoing.",
+        status: "investigating",
+        priority: "medium",
+        created_at: now,
+        updated_at: now,
+        assigned_team_id: `${tenantId}_team_dataops`,
         related_incident_ids: [`${tenantId}_inc02`],
-        root_cause_summary: null,
-        root_cause_category: "process_gap",
-        workaround_summary: "Manual restart of RADIUS service restores access.",
-        business_impact: "Remote staff intermittently lose connectivity.",
-        service_component_ids: [`${tenantId}_comp_vpn01`],
-        asset_ids: [`${tenantId}_asset_vpn_appliance01`],
-        tags: ["vpn", "auth", "rca"],
-        health_status: "yellow",
+        tags: ["etl", "pipeline", "spark"],
       },
     ];
   }
 
-  // Insert into IndexedDB
   for (const prob of problems) {
     await db.put("problems", prob);
 
-    // Light Audit log
+    // Audit log
     await db.put("audit_logs", {
       id: `${prob.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "problem",
       entity_id: prob.id,
       action: "create",
@@ -100,14 +113,14 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
       tags: ["seed"],
     });
 
-    // Light Activity timeline
+    // Activity
     await db.put("activities", {
       id: `${prob.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "problem",
       entity_id: prob.id,
       action: "created",
-      description: `Problem "${prob.title}" seeded`,
+      description: `Problem "${prob.title}" created, linked to ${prob.related_incident_ids.length} incident(s)`,
       timestamp: now,
       related_entity_ids: prob.related_incident_ids.map((id: string) => ({
         type: "incident",

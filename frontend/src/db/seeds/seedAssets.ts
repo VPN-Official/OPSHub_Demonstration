@@ -3,38 +3,29 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let assets: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     assets = [
       {
         id: `${tenantId}_asset_router01`,
-        tenantId: tenantId,
-        name: "Router-SJC-01",
-        type: "network_device",
+        tenantId,
+        name: "Router R1",
+        type: "router",
+        location: "DCN Meta DC1",
+        service_component_id: `${tenantId}_comp_router01`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_router01`,
-        business_service_id: `${tenantId}_svc_network`,
-        location: "SJC-1 Datacenter",
-        tags: ["router", "network"],
-        health_status: "red",
       },
       {
         id: `${tenantId}_asset_switch01`,
-        tenantId: tenantId,
-        name: "Switch-TOR-42",
-        type: "network_device",
+        tenantId,
+        name: "Switch S1",
+        type: "switch",
+        location: "DCN Meta DC1",
+        service_component_id: `${tenantId}_comp_switch01`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_switch01`,
-        business_service_id: `${tenantId}_svc_network`,
-        location: "SJC-1 Datacenter",
-        tags: ["switch"],
-        health_status: "orange",
       },
     ];
   }
@@ -43,78 +34,48 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
     assets = [
       {
         id: `${tenantId}_asset_gce_vm01`,
-        tenantId: tenantId,
-        name: "VM-Edge-EU-01",
-        type: "vm",
+        tenantId,
+        name: "Edge VM EU1",
+        type: "gce_vm",
+        location: "Belgium Region",
+        service_component_id: `${tenantId}_comp_edge01`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_edge01`,
-        business_service_id: `${tenantId}_svc_streaming`,
-        location: "EU-West",
-        tags: ["gce", "edge"],
-        health_status: "red",
       },
       {
         id: `${tenantId}_asset_gke_node01`,
-        tenantId: tenantId,
-        name: "Node-Transcode-01",
-        type: "container",
+        tenantId,
+        name: "GKE Node n1",
+        type: "gke_node",
+        location: "Belgium Region",
+        service_component_id: `${tenantId}_comp_gke_cluster01`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_gke_cluster01`,
-        business_service_id: `${tenantId}_svc_transcoding`,
-        location: "US-East",
-        tags: ["gke", "transcoding"],
-        health_status: "orange",
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     assets = [
       {
-        id: `${tenantId}_asset_mx01`,
-        tenantId: tenantId,
-        name: "Exchange-Mail-01",
-        type: "server",
+        id: `${tenantId}_asset_db01`,
+        tenantId,
+        name: "Reporting DB Primary",
+        type: "postgresql_instance",
+        location: "AWS us-east-1",
+        service_component_id: `${tenantId}_comp_reportingdb`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_exchange01`,
-        business_service_id: `${tenantId}_svc_email`,
-        location: "HQ Datacenter",
-        tags: ["exchange"],
-        health_status: "red",
       },
       {
-        id: `${tenantId}_asset_vpn_appliance01`,
-        tenantId: tenantId,
-        name: "VPN-Appliance-01",
-        type: "network_device",
+        id: `${tenantId}_asset_etl01`,
+        tenantId,
+        name: "ETL Worker Cluster",
+        type: "spark_cluster",
+        location: "AWS us-east-1",
+        service_component_id: `${tenantId}_comp_datalake01`,
         status: "active",
         created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_vpn01`,
-        business_service_id: `${tenantId}_svc_vpn`,
-        location: "HQ Datacenter",
-        tags: ["vpn"],
-        health_status: "orange",
-      },
-      {
-        id: `${tenantId}_asset_ad_server01`,
-        tenantId: tenantId,
-        name: "AD-Server-01",
-        type: "server",
-        status: "active",
-        created_at: now,
-        updated_at: now,
-        service_component_id: `${tenantId}_comp_ad01`,
-        business_service_id: `${tenantId}_svc_hr_portal`,
-        location: "HQ Datacenter",
-        tags: ["ad"],
-        health_status: "yellow",
       },
     ];
   }
@@ -124,7 +85,7 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
 
     await db.put("audit_logs", {
       id: `${asset.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "asset",
       entity_id: asset.id,
       action: "create",
@@ -135,13 +96,15 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
 
     await db.put("activities", {
       id: `${asset.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "asset",
       entity_id: asset.id,
       action: "created",
-      description: `Asset "${asset.name}" seeded`,
+      description: `Asset ${asset.name} created`,
       timestamp: now,
-      related_entity_ids: [{ type: "service_component", id: asset.service_component_id }],
+      related_entity_ids: [
+        { type: "service_component", id: asset.service_component_id },
+      ],
       tags: ["seed"],
     });
   }

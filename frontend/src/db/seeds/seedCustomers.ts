@@ -3,21 +3,18 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let customers: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenantId: tenantId,
-        name: "Meta Internal Teams",
-        tier: "platinum",
+        tenantId,
+        name: "Meta Internal IT",
+        industry: "Technology",
+        region: "North America",
+        value_stream_id: `${tenantId}_vs01`,
         created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_network`],
-        tags: ["internal"],
-        health_status: "orange",
       },
     ];
   }
@@ -26,30 +23,44 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenantId: tenantId,
-        name: "YouTube Users",
-        tier: "gold",
+        tenantId,
+        name: "YouTube Events Team",
+        industry: "Media",
+        region: "Global",
+        value_stream_id: `${tenantId}_vs01`,
         created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_streaming`, `${tenantId}_svc_transcoding`],
-        tags: ["enduser"],
-        health_status: "red",
+      },
+      {
+        id: `${tenantId}_cust02`,
+        tenantId,
+        name: "Enterprise Broadcast Partner",
+        industry: "Broadcast",
+        region: "APAC",
+        value_stream_id: `${tenantId}_vs01`,
+        created_at: now,
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     customers = [
       {
         id: `${tenantId}_cust01`,
-        tenantId: tenantId,
-        name: "Gates Foundation Staff",
-        tier: "gold",
+        tenantId,
+        name: "Morningstar Finance Division",
+        industry: "Financial Services",
+        region: "US",
+        value_stream_id: `${tenantId}_vs01`,
         created_at: now,
-        updated_at: now,
-        business_service_ids: [`${tenantId}_svc_email`, `${tenantId}_svc_vpn`, `${tenantId}_svc_hr_portal`, `${tenantId}_svc_sharepoint`],
-        tags: ["staff"],
-        health_status: "yellow",
+      },
+      {
+        id: `${tenantId}_cust02`,
+        tenantId,
+        name: "Global Investment Clients",
+        industry: "Investment Management",
+        region: "Global",
+        value_stream_id: `${tenantId}_vs01`,
+        created_at: now,
       },
     ];
   }
@@ -57,9 +68,10 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
   for (const cust of customers) {
     await db.put("customers", cust);
 
+    // Audit log
     await db.put("audit_logs", {
       id: `${cust.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "customer",
       entity_id: cust.id,
       action: "create",
@@ -68,18 +80,18 @@ export const seedCustomers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
       tags: ["seed"],
     });
 
+    // Activity
     await db.put("activities", {
       id: `${cust.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "customer",
       entity_id: cust.id,
       action: "created",
-      description: `Customer "${cust.name}" seeded`,
+      description: `Customer "${cust.name}" onboarded into value stream ${cust.value_stream_id}`,
       timestamp: now,
-      related_entity_ids: cust.business_service_ids.map((id: string) => ({
-        type: "business_service",
-        id,
-      })),
+      related_entity_ids: [
+        { type: "value_stream", id: cust.value_stream_id },
+      ],
       tags: ["seed"],
     });
   }

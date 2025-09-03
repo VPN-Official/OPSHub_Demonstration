@@ -3,109 +3,75 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
-  let articles: any[] = [];
+  let kbArticles: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    articles = [
+    kbArticles = [
       {
         id: `${tenantId}_kb01`,
-        tenantId: tenantId,
-        title: "Router CPU Spike Troubleshooting",
-        type: "troubleshooting",
-        status: "published",
-        content: "Steps to diagnose and fix router CPU issues...",
-        related_incident_ids: [`${tenantId}_inc01`],
-        tags: ["router", "cpu"],
+        tenantId,
+        title: "Troubleshooting High CPU on Routers",
+        content: "Steps: 1) Verify process table. 2) Check BGP sessions. 3) Review firmware release notes.",
+        related_service_id: `${tenantId}_svc_network`,
         created_at: now,
-        updated_at: now,
-        health_status: "green",
-      },
-      {
-        id: `${tenantId}_kb02`,
-        tenantId: tenantId,
-        title: "Switch CRC Error SOP",
-        type: "sop",
-        status: "published",
-        content: "Procedure to handle CRC errors on TOR switches...",
-        related_incident_ids: [`${tenantId}_inc02`],
-        tags: ["switch", "sop"],
-        created_at: now,
-        updated_at: now,
-        health_status: "yellow",
+        tags: ["router", "cpu", "network"],
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    articles = [
+    kbArticles = [
       {
         id: `${tenantId}_kb01`,
-        tenantId: tenantId,
-        title: "Stream Latency Tuning Guide",
-        type: "how_to",
-        status: "published",
-        content: "How to adjust edge nodes for optimal latency...",
-        related_incident_ids: [`${tenantId}_inc01`],
-        tags: ["latency", "streaming"],
+        tenantId,
+        title: "Streaming Latency Mitigation",
+        content: "Steps: 1) Validate edge node load. 2) Scale GCE instances. 3) Apply CDN routing rules.",
+        related_service_id: `${tenantId}_svc_streaming`,
         created_at: now,
-        updated_at: now,
-        health_status: "green",
+        tags: ["streaming", "latency"],
       },
       {
         id: `${tenantId}_kb02`,
-        tenantId: tenantId,
-        title: "Transcoding Pod OOM Fix",
-        type: "troubleshooting",
-        status: "published",
-        content: "Steps to prevent OOM kills in transcoding workloads...",
-        related_incident_ids: [`${tenantId}_inc02`],
-        tags: ["gke", "oom"],
+        tenantId,
+        title: "OOM Kill in GKE Pods",
+        content: "Steps: 1) Review pod specs. 2) Increase memory requests/limits. 3) Apply horizontal pod autoscaler.",
+        related_service_id: `${tenantId}_svc_transcoding`,
         created_at: now,
-        updated_at: now,
-        health_status: "orange",
+        tags: ["gke", "oom", "kubernetes"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    articles = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    kbArticles = [
       {
         id: `${tenantId}_kb01`,
-        tenantId: tenantId,
-        title: "Exchange Mail Queue Troubleshooting",
-        type: "troubleshooting",
-        status: "published",
-        content: "Procedure to troubleshoot mail queue backlogs...",
-        related_incident_ids: [`${tenantId}_inc01`],
-        tags: ["exchange", "mail"],
+        tenantId,
+        title: "Database Replication Lag",
+        content: "Steps: 1) Check replica I/O thread. 2) Increase replication slots. 3) Monitor long-running queries.",
+        related_service_id: `${tenantId}_svc_fin_reporting`,
         created_at: now,
-        updated_at: now,
-        health_status: "red",
+        tags: ["database", "replication"],
       },
       {
         id: `${tenantId}_kb02`,
-        tenantId: tenantId,
-        title: "VPN Tunnel Drop SOP",
-        type: "sop",
-        status: "published",
-        content: "Steps to investigate VPN tunnel drops...",
-        related_incident_ids: [`${tenantId}_inc02`],
-        tags: ["vpn", "sop"],
+        tenantId,
+        title: "ETL Job Failure Troubleshooting",
+        content: "Steps: 1) Validate input data. 2) Check Spark executor logs. 3) Retry with checkpoint enabled.",
+        related_service_id: `${tenantId}_svc_data_analytics`,
         created_at: now,
-        updated_at: now,
-        health_status: "yellow",
+        tags: ["etl", "spark", "pipeline"],
       },
     ];
   }
 
-  for (const kb of articles) {
+  for (const kb of kbArticles) {
     await db.put("knowledge_base", kb);
 
     await db.put("audit_logs", {
       id: `${kb.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "knowledge",
+      tenantId,
+      entity_type: "knowledge_base",
       entity_id: kb.id,
       action: "create",
       timestamp: now,
@@ -115,16 +81,13 @@ export const seedKnowledgeBase = async (tenantId: string, db: IDBPDatabase<AIOps
 
     await db.put("activities", {
       id: `${kb.id}_act01`,
-      tenantId: tenantId,
-      type: "knowledge",
+      tenantId,
+      type: "knowledge_base",
       entity_id: kb.id,
-      action: "created",
-      description: `Knowledge Article "${kb.title}" seeded`,
+      action: "published",
+      description: `Knowledge article "${kb.title}" published`,
       timestamp: now,
-      related_entity_ids: kb.related_incident_ids.map((id: string) => ({
-        type: "incident",
-        id,
-      })),
+      related_entity_ids: [{ type: "business_service", id: kb.related_service_id }],
       tags: ["seed"],
     });
   }

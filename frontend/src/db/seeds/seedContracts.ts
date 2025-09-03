@@ -3,25 +3,19 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let contracts: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenantId: tenantId,
-        name: "Cisco Support SLA",
-        type: "vendor",
-        status: "active",
-        start_date: now,
-        created_at: now,
-        updated_at: now,
+        tenantId,
         vendor_id: `${tenantId}_vendor01`,
-        business_service_ids: [`${tenantId}_svc_network`],
-        penalty_per_breach: 10000,
-        tags: ["sla"],
-        health_status: "orange",
+        title: "Cisco Hardware Support SLA",
+        sla_hours: "24x7",
+        expiry_date: "2026-12-31",
+        status: "active",
+        created_at: now,
       },
     ];
   }
@@ -30,38 +24,38 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenantId: tenantId,
-        name: "GCP Service SLA",
-        type: "vendor",
-        status: "active",
-        start_date: now,
-        created_at: now,
-        updated_at: now,
+        tenantId,
         vendor_id: `${tenantId}_vendor01`,
-        business_service_ids: [`${tenantId}_svc_streaming`, `${tenantId}_svc_transcoding`],
-        penalty_per_breach: 5000,
-        tags: ["sla"],
-        health_status: "red",
+        title: "Google Cloud Enterprise Support",
+        sla_hours: "24x7",
+        expiry_date: "2025-12-31",
+        status: "active",
+        created_at: now,
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     contracts = [
       {
         id: `${tenantId}_contract01`,
-        tenantId: tenantId,
-        name: "Microsoft Enterprise Agreement",
-        type: "vendor",
-        status: "active",
-        start_date: now,
-        created_at: now,
-        updated_at: now,
+        tenantId,
         vendor_id: `${tenantId}_vendor01`,
-        business_service_ids: [`${tenantId}_svc_email`, `${tenantId}_svc_sharepoint`],
-        penalty_per_breach: 2000,
-        tags: ["ea"],
-        health_status: "yellow",
+        title: "AWS Enterprise Support",
+        sla_hours: "24x7",
+        expiry_date: "2026-06-30",
+        status: "active",
+        created_at: now,
+      },
+      {
+        id: `${tenantId}_contract02`,
+        tenantId,
+        vendor_id: `${tenantId}_vendor02`,
+        title: "Cloudera Platform Subscription",
+        sla_hours: "Business Hours",
+        expiry_date: "2025-09-30",
+        status: "active",
+        created_at: now,
       },
     ];
   }
@@ -71,7 +65,7 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("audit_logs", {
       id: `${contract.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "contract",
       entity_id: contract.id,
       action: "create",
@@ -82,16 +76,13 @@ export const seedContracts = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
 
     await db.put("activities", {
       id: `${contract.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "contract",
       entity_id: contract.id,
-      action: "created",
-      description: `Contract "${contract.name}" seeded`,
+      action: "signed",
+      description: `Contract "${contract.title}" created for vendor ${contract.vendor_id}`,
       timestamp: now,
-      related_entity_ids: contract.business_service_ids.map((id: string) => ({
-        type: "business_service",
-        id,
-      })),
+      related_entity_ids: [{ type: "vendor", id: contract.vendor_id }],
       tags: ["seed"],
     });
   }

@@ -3,195 +3,114 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
-  let srs: any[] = [];
+  let requests: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    srs = [
+    requests = [
       {
         id: `${tenantId}_sr01`,
-        tenantId: tenantId,
-        title: "Request VPN Access",
-        description: "Network engineer requires VPN access for remote work.",
-        status: "new",
+        tenantId,
+        title: "Request VPN access for contractor",
+        description: "New contractor requires VPN access to datacenter systems.",
+        status: "open",
         priority: "medium",
-        urgency: "medium",
-        request_type: "access",
-        category: "network",
-        subcategory: "vpn",
-        product_family: "Cisco",
+        requested_by: `${tenantId}_user_enduser01`,
+        assigned_team_id: `${tenantId}_team_network`,
+        business_service_id: `${tenantId}_svc_network`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_network`,
-        service_component_ids: [`${tenantId}_comp_vpn01`],
-        asset_ids: [`${tenantId}_asset_vpn_appliance01`],
-        requested_by_end_user_id: `${tenantId}_enduser01`,
-        approved_by_user_ids: [],
-        tasks: [
-          { id: "task1", title: "Create VPN account", status: "pending" },
-          { id: "task2", title: "Send credentials", status: "pending" },
-        ],
-        approval_required: true,
-        approval_workflow: [
-          { step: "net_mgr", approver_id: "user_net_mgr", status: "pending", timestamp: now },
-        ],
         tags: ["vpn", "access"],
-        health_status: "yellow",
       },
       {
         id: `${tenantId}_sr02`,
-        tenantId: tenantId,
-        title: "Hardware Request – New Switch",
-        description: "New TOR switch required for expansion.",
-        status: "approved",
-        priority: "low",
-        urgency: "low",
-        request_type: "hardware",
-        category: "network",
-        subcategory: "switch",
-        product_family: "Arista",
+        tenantId,
+        title: "Upgrade bandwidth for project servers",
+        description: "Project Delta requires additional bandwidth for testing workloads.",
+        status: "in_progress",
+        priority: "high",
+        requested_by: `${tenantId}_user_enduser02`,
+        assigned_team_id: `${tenantId}_team_noc`,
+        business_service_id: `${tenantId}_svc_network`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_network`,
-        service_component_ids: [],
-        asset_ids: [],
-        requested_by_end_user_id: `${tenantId}_enduser02`,
-        approved_by_user_ids: ["user_net_mgr"],
-        tasks: [{ id: "task1", title: "Procure hardware", status: "in_progress" }],
-        approval_required: true,
-        approval_workflow: [
-          { step: "finance", approver_id: "user_fin_mgr", status: "approved", timestamp: now },
-        ],
-        tags: ["hardware", "switch"],
-        health_status: "green",
+        tags: ["network", "bandwidth"],
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    srs = [
+    requests = [
       {
         id: `${tenantId}_sr01`,
-        tenantId: tenantId,
-        title: "Access Request – Transcoding Logs",
-        description: "Dev team member requests read access to GKE logs.",
-        status: "new",
-        priority: "low",
-        urgency: "low",
-        request_type: "access",
-        category: "application",
-        subcategory: "logging",
-        product_family: "GCP",
+        tenantId,
+        title: "New streaming channel setup",
+        description: "Marketing team requested setup of a new event streaming channel for APAC.",
+        status: "open",
+        priority: "high",
+        requested_by: `${tenantId}_user_enduser01`,
+        assigned_team_id: `${tenantId}_team_mediaops`,
+        business_service_id: `${tenantId}_svc_streaming`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_transcoding`,
-        service_component_ids: [`${tenantId}_comp_gke_cluster01`],
-        asset_ids: [`${tenantId}_asset_gke_node01`],
-        requested_by_end_user_id: `${tenantId}_enduser01`,
-        approved_by_user_ids: [],
-        tasks: [{ id: "task1", title: "Grant log access", status: "pending" }],
-        approval_required: true,
-        approval_workflow: [
-          { step: "sre_mgr", approver_id: "user_sre_mgr", status: "pending", timestamp: now },
-        ],
-        tags: ["logs", "access"],
-        health_status: "yellow",
+        tags: ["streaming", "channel"],
       },
       {
         id: `${tenantId}_sr02`,
-        tenantId: tenantId,
-        title: "Software Request – ffmpeg Upgrade",
-        description: "Developer requests upgraded ffmpeg binaries for testing.",
-        status: "fulfilled",
+        tenantId,
+        title: "Transcoding preset update",
+        description: "Request to add new 4K transcoding presets for premium content tier.",
+        status: "requested",
         priority: "medium",
-        urgency: "low",
-        request_type: "software",
-        category: "application",
-        subcategory: "transcoding",
-        product_family: "ffmpeg",
+        requested_by: `${tenantId}_user_enduser02`,
+        assigned_team_id: `${tenantId}_team_mediaops`,
+        business_service_id: `${tenantId}_svc_transcoding`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_transcoding`,
-        service_component_ids: [],
-        asset_ids: [],
-        requested_by_end_user_id: `${tenantId}_enduser02`,
-        approved_by_user_ids: ["user_app_mgr"],
-        tasks: [{ id: "task1", title: "Deploy binaries", status: "completed" }],
-        approval_required: true,
-        approval_workflow: [
-          { step: "app_mgr", approver_id: "user_app_mgr", status: "approved", timestamp: now },
-        ],
-        tags: ["software", "ffmpeg"],
-        health_status: "green",
+        tags: ["transcoding", "4k"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    srs = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    requests = [
       {
         id: `${tenantId}_sr01`,
-        tenantId: tenantId,
-        title: "Password Reset Request",
-        description: "Staff member unable to access HR portal.",
-        status: "in_progress",
-        priority: "low",
-        urgency: "low",
-        request_type: "access",
-        category: "account",
-        subcategory: "password",
-        product_family: "Active Directory",
+        tenantId,
+        title: "Access to reporting dashboard",
+        description: "Finance team member requested access to daily P&L reporting dashboard.",
+        status: "open",
+        priority: "medium",
+        requested_by: `${tenantId}_user_enduser01`,
+        assigned_team_id: `${tenantId}_team_dba`,
+        business_service_id: `${tenantId}_svc_fin_reporting`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_hr_portal`,
-        service_component_ids: [`${tenantId}_comp_ad01`],
-        asset_ids: [`${tenantId}_asset_ad_server01`],
-        requested_by_end_user_id: `${tenantId}_enduser01`,
-        approved_by_user_ids: [],
-        tasks: [{ id: "task1", title: "Reset password", status: "in_progress" }],
-        approval_required: false,
-        approval_workflow: [],
-        tags: ["password", "hr"],
-        health_status: "yellow",
+        tags: ["reporting", "access"],
       },
       {
         id: `${tenantId}_sr02`,
-        tenantId: tenantId,
-        title: "Access Request – SharePoint Site",
-        description: "Staff requests access to Finance SharePoint.",
+        tenantId,
+        title: "Provision sandbox analytics cluster",
+        description: "Data science team requested a sandbox Spark cluster for model training.",
         status: "approved",
-        priority: "medium",
-        urgency: "medium",
-        request_type: "access",
-        category: "collaboration",
-        subcategory: "sharepoint",
-        product_family: "Microsoft",
+        priority: "high",
+        requested_by: `${tenantId}_user_enduser02`,
+        assigned_team_id: `${tenantId}_team_dataops`,
+        business_service_id: `${tenantId}_svc_data_analytics`,
         created_at: now,
         updated_at: now,
-        business_service_id: `${tenantId}_svc_sharepoint`,
-        service_component_ids: [],
-        asset_ids: [],
-        requested_by_end_user_id: `${tenantId}_enduser02`,
-        approved_by_user_ids: ["user_it_mgr"],
-        tasks: [{ id: "task1", title: "Add to AD group", status: "completed" }],
-        approval_required: true,
-        approval_workflow: [
-          { step: "it_mgr", approver_id: "user_it_mgr", status: "approved", timestamp: now },
-        ],
-        tags: ["sharepoint", "access"],
-        health_status: "green",
+        tags: ["sandbox", "spark", "analytics"],
       },
     ];
   }
 
-  // Insert into IndexedDB
-  for (const sr of srs) {
+  for (const sr of requests) {
     await db.put("service_requests", sr);
 
-    // Light Audit log
+    // Audit log
     await db.put("audit_logs", {
       id: `${sr.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "service_request",
       entity_id: sr.id,
       action: "create",
@@ -200,16 +119,18 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       tags: ["seed"],
     });
 
-    // Light Activity timeline
+    // Activity
     await db.put("activities", {
       id: `${sr.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "service_request",
       entity_id: sr.id,
       action: "created",
-      description: `Service Request "${sr.title}" seeded`,
+      description: `Service request "${sr.title}" raised for ${sr.business_service_id}`,
       timestamp: now,
-      related_entity_ids: [],
+      related_entity_ids: [
+        { type: "business_service", id: sr.business_service_id },
+      ],
       tags: ["seed"],
     });
   }

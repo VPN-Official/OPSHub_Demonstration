@@ -7,72 +7,36 @@ export const seedSkills = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
 
   if (tenantId === "tenant_dcn_meta") {
     skills = [
-      {
-        id: `${tenantId}_skills01`,
-        tenantId: tenantId,
-        name: "Skills Example 1",
-        description: "Seeded Skills entity for DCN Meta.",
-        created_at: now,
-        updated_at: now,
-        tags: ["meta", "skills"],
-        health_status: "green",
-      },
+      { id: `${tenantId}_skill01`, tenantId, name: "BGP Troubleshooting", team_id: `${tenantId}_team_network`, created_at: now },
+      { id: `${tenantId}_skill02`, tenantId, name: "Firewall Config", team_id: `${tenantId}_team_noc`, created_at: now },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
     skills = [
-      {
-        id: `${tenantId}_skills01`,
-        tenantId: tenantId,
-        name: "Skills Example 1",
-        description: "Seeded Skills entity for AV Google.",
-        created_at: now,
-        updated_at: now,
-        tags: ["google", "skills"],
-        health_status: "yellow",
-      },
+      { id: `${tenantId}_skill01`, tenantId, name: "Kubernetes Tuning", team_id: `${tenantId}_team_mediaops`, created_at: now },
+      { id: `${tenantId}_skill02`, tenantId, name: "CDN Optimization", team_id: `${tenantId}_team_sre`, created_at: now },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     skills = [
-      {
-        id: `${tenantId}_skills01`,
-        tenantId: tenantId,
-        name: "Skills Example 1",
-        description: "Seeded Skills entity for Gates Foundation.",
-        created_at: now,
-        updated_at: now,
-        tags: ["gates", "skills"],
-        health_status: "orange",
-      },
+      { id: `${tenantId}_skill01`, tenantId, name: "Postgres Replication", team_id: `${tenantId}_team_dba`, created_at: now },
+      { id: `${tenantId}_skill02`, tenantId, name: "Spark Optimization", team_id: `${tenantId}_team_dataops`, created_at: now },
     ];
   }
 
-  for (const entity of skills) {
-    await db.put("skills", entity);
+  for (const skill of skills) {
+    await db.put("skills", skill);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "skills",
-      entity_id: entity.id,
+      id: `${skill.id}_audit01`,
+      tenantId,
+      entity_type: "skill",
+      entity_id: skill.id,
       action: "create",
       timestamp: now,
-      hash: "hash_" + id,
-      tags: ["seed"],
-    });
-
-    await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "skills",
-      entity_id: entity.id,
-      action: "created",
-      description: `Skills "${entity.name}" seeded`,
-      timestamp: now,
-      related_entity_ids: [],
+      immutable_hash: "hash_" + skill.id,
       tags: ["seed"],
     });
   }

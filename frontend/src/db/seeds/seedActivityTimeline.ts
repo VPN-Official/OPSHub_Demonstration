@@ -2,77 +2,62 @@ import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedActivityTimeline = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
-  const now = new Date().toISOString();
-  let activityTimelines: any[] = [];
+  const now = new Date();
+  let timeline: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    activityTimelines = [
+    timeline = [
       {
-        id: `${tenantId}_activityTimeline01`,
-        tenantId: tenantId,
-        name: "ActivityTimeline Example 1",
-        description: "Seeded ActivityTimeline entity for DCN Meta.",
-        created_at: now,
-        updated_at: now,
-        tags: ["meta", "activityTimeline"],
-        health_status: "green",
+        id: `${tenantId}_tl01`,
+        tenantId,
+        entity_id: `${tenantId}_inc01`,
+        entries: [
+          { timestamp: new Date(now.getTime() - 600000).toISOString(), action: "alert_triggered", detail: "Router CPU alert fired" },
+          { timestamp: new Date(now.getTime() - 300000).toISOString(), action: "incident_created", detail: "Incident INC01 logged" },
+        ],
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    activityTimelines = [
+    timeline = [
       {
-        id: `${tenantId}_activityTimeline01`,
-        tenantId: tenantId,
-        name: "ActivityTimeline Example 1",
-        description: "Seeded ActivityTimeline entity for AV Google.",
-        created_at: now,
-        updated_at: now,
-        tags: ["google", "activityTimeline"],
-        health_status: "yellow",
+        id: `${tenantId}_tl01`,
+        tenantId,
+        entity_id: `${tenantId}_prob01`,
+        entries: [
+          { timestamp: new Date(now.getTime() - 900000).toISOString(), action: "event_detected", detail: "Streaming Latency Event detected" },
+          { timestamp: new Date(now.getTime() - 600000).toISOString(), action: "problem_created", detail: "Problem logged" },
+        ],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    activityTimelines = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    timeline = [
       {
-        id: `${tenantId}_activityTimeline01`,
-        tenantId: tenantId,
-        name: "ActivityTimeline Example 1",
-        description: "Seeded ActivityTimeline entity for Gates Foundation.",
-        created_at: now,
-        updated_at: now,
-        tags: ["gates", "activityTimeline"],
-        health_status: "orange",
+        id: `${tenantId}_tl01`,
+        tenantId,
+        entity_id: `${tenantId}_chg01`,
+        entries: [
+          { timestamp: new Date(now.getTime() - 3600000).toISOString(), action: "change_requested", detail: "DB replication tuning change raised" },
+          { timestamp: new Date(now.getTime() - 1800000).toISOString(), action: "change_approved", detail: "Approved by DBA lead" },
+        ],
       },
     ];
   }
 
-  for (const entity of activityTimelines) {
-    await db.put("activityTimelines", entity);
+  for (const tl of timeline) {
+    await db.put("activity_timeline", tl);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "activityTimeline",
-      entity_id: entity.id,
+      id: `${tl.id}_audit01`,
+      tenantId,
+      entity_type: "activity_timeline",
+      entity_id: tl.id,
       action: "create",
-      timestamp: now,
-      hash: "hash_" + id,
-      tags: ["seed"],
-    });
-
-    await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "activityTimeline",
-      entity_id: entity.id,
-      action: "created",
-      description: `ActivityTimeline "${entity.name}" seeded`,
-      timestamp: now,
-      related_entity_ids: [],
+      timestamp: now.toISOString(),
+      immutable_hash: "hash_" + tl.id,
       tags: ["seed"],
     });
   }

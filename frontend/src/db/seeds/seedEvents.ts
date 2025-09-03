@@ -2,37 +2,24 @@ import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
-  const now = new Date().toISOString();
-
+  const now = new Date();
   let events: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     events = [
       {
-        id: `${tenantId}_event01`,
-        tenantId: tenantId,
-        source_system: "Syslog",
-        message: "Router process restarted automatically",
-        severity: "info",
-        captured_at: now,
+        id: `${tenantId}_evt01`,
+        tenantId,
+        title: "Network Degradation Detected",
+        description: "Aggregated alerts show router CPU and switch errors impacting datacenter traffic.",
+        severity: "major",
+        status: "active",
+        detected_at: now.toISOString(),
+        related_alert_ids: [`${tenantId}_alert01`, `${tenantId}_alert02`],
         asset_id: `${tenantId}_asset_router01`,
         service_component_id: `${tenantId}_comp_router01`,
         business_service_id: `${tenantId}_svc_network`,
-        tags: ["router", "restart"],
-        health_status: "yellow",
-      },
-      {
-        id: `${tenantId}_event02`,
-        tenantId: tenantId,
-        source_system: "Syslog",
-        message: "BGP session flaps detected on edge switch",
-        severity: "warning",
-        captured_at: now,
-        asset_id: `${tenantId}_asset_switch01`,
-        service_component_id: `${tenantId}_comp_switch01`,
-        business_service_id: `${tenantId}_svc_network`,
-        tags: ["bgp", "flap"],
-        health_status: "orange",
+        tags: ["network", "degradation"],
       },
     ];
   }
@@ -40,92 +27,98 @@ export const seedEvents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
   if (tenantId === "tenant_av_google") {
     events = [
       {
-        id: `${tenantId}_event01`,
-        tenantId: tenantId,
-        source_system: "GKE",
-        message: "Autoscaling triggered: 5 new pods added",
-        severity: "info",
-        captured_at: now,
-        asset_id: `${tenantId}_asset_gke_node01`,
-        service_component_id: `${tenantId}_comp_gke_cluster01`,
-        business_service_id: `${tenantId}_svc_transcoding`,
-        tags: ["autoscaling", "gke"],
-        health_status: "green",
-      },
-      {
-        id: `${tenantId}_event02`,
-        tenantId: tenantId,
-        source_system: "Datadog",
-        message: "High latency alert cleared after scaling",
-        severity: "info",
-        captured_at: now,
+        id: `${tenantId}_evt01`,
+        tenantId,
+        title: "Streaming Latency Event",
+        description: "Clustered metrics & alerts indicate degraded performance at EU edge node.",
+        severity: "critical",
+        status: "active",
+        detected_at: now.toISOString(),
+        related_alert_ids: [`${tenantId}_alert01`],
         asset_id: `${tenantId}_asset_gce_vm01`,
         service_component_id: `${tenantId}_comp_edge01`,
         business_service_id: `${tenantId}_svc_streaming`,
-        tags: ["latency", "resolved"],
-        health_status: "green",
+        tags: ["streaming", "latency", "edge"],
+      },
+      {
+        id: `${tenantId}_evt02`,
+        tenantId,
+        title: "Transcoding Workload Instability",
+        description: "Multiple pod OOM kills aggregated into a workload-level event.",
+        severity: "major",
+        status: "active",
+        detected_at: now.toISOString(),
+        related_alert_ids: [`${tenantId}_alert02`],
+        asset_id: `${tenantId}_asset_gke_node01`,
+        service_component_id: `${tenantId}_comp_gke_cluster01`,
+        business_service_id: `${tenantId}_svc_transcoding`,
+        tags: ["gke", "oom", "transcoding"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     events = [
       {
-        id: `${tenantId}_event01`,
-        tenantId: tenantId,
-        source_system: "Exchange Monitor",
-        message: "Database backup completed successfully",
-        severity: "info",
-        captured_at: now,
-        asset_id: `${tenantId}_asset_mx01`,
-        service_component_id: `${tenantId}_comp_exchange01`,
-        business_service_id: `${tenantId}_svc_email`,
-        tags: ["backup", "exchange"],
-        health_status: "green",
+        id: `${tenantId}_evt01`,
+        tenantId,
+        title: "Replication Lag Event",
+        description: "CloudWatch alerts + DB metrics correlated: replication lag > 40 min.",
+        severity: "critical",
+        status: "active",
+        detected_at: now.toISOString(),
+        related_alert_ids: [`${tenantId}_alert01`],
+        asset_id: `${tenantId}_asset_db01`,
+        service_component_id: `${tenantId}_comp_reportingdb`,
+        business_service_id: `${tenantId}_svc_fin_reporting`,
+        tags: ["database", "replication"],
       },
       {
-        id: `${tenantId}_event02`,
-        tenantId: tenantId,
-        source_system: "Cisco ASA",
-        message: "VPN configuration updated successfully",
-        severity: "info",
-        captured_at: now,
-        asset_id: `${tenantId}_asset_vpn_appliance01`,
-        service_component_id: `${tenantId}_comp_vpn01`,
-        business_service_id: `${tenantId}_svc_vpn`,
-        tags: ["vpn", "config"],
-        health_status: "green",
+        id: `${tenantId}_evt02`,
+        tenantId,
+        title: "ETL Pipeline Degradation",
+        description: "ETL failure rates above 20% flagged as service event.",
+        severity: "major",
+        status: "active",
+        detected_at: now.toISOString(),
+        related_alert_ids: [`${tenantId}_alert02`],
+        asset_id: `${tenantId}_asset_etl01`,
+        service_component_id: `${tenantId}_comp_datalake01`,
+        business_service_id: `${tenantId}_svc_data_analytics`,
+        tags: ["etl", "spark", "pipeline"],
       },
     ];
   }
 
-  for (const event of events) {
-    await db.put("events", event);
+  for (const evt of events) {
+    await db.put("events", evt);
 
-    // Light audit log
+    // Audit log
     await db.put("audit_logs", {
-      id: `${event.id}_audit01`,
-      tenantId: tenantId,
+      id: `${evt.id}_audit01`,
+      tenantId,
       entity_type: "event",
-      entity_id: event.id,
+      entity_id: evt.id,
       action: "create",
-      timestamp: now,
-      immutable_hash: "hash_" + event.id,
+      timestamp: now.toISOString(),
+      immutable_hash: "hash_" + evt.id,
       tags: ["seed"],
     });
 
-    // Light activity
+    // Activity
     await db.put("activities", {
-      id: `${event.id}_act01`,
-      tenantId: tenantId,
+      id: `${evt.id}_act01`,
+      tenantId,
       type: "event",
-      entity_id: event.id,
-      action: "collected",
-      description: `Event "${event.message}" seeded`,
-      timestamp: now,
-      related_entity_ids: event.asset_id
-        ? [{ type: "asset", id: event.asset_id }]
-        : [],
+      entity_id: evt.id,
+      action: "detected",
+      description: `Event "${evt.title}" detected with severity ${evt.severity}`,
+      timestamp: now.toISOString(),
+      related_entity_ids: [
+        { type: "asset", id: evt.asset_id },
+        { type: "service_component", id: evt.service_component_id },
+        { type: "business_service", id: evt.business_service_id },
+      ],
       tags: ["seed"],
     });
   }

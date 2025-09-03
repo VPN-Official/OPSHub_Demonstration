@@ -3,74 +3,59 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedSystemMetrics = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-  let systemMetrics: any[] = [];
+  let sysMetrics: any[] = [];
 
-  if (tenantId === "tenant_dcn_meta") {
-    systemMetrics = [
-      {
-        id: `${tenantId}_systemMetrics01`,
-        tenantId: tenantId,
-        name: "SystemMetrics Example 1",
-        description: "Seeded SystemMetrics entity for DCN Meta.",
-        created_at: now,
-        updated_at: now,
-        tags: ["meta", "systemMetrics"],
-        health_status: "green",
-      },
-    ];
-  }
+  sysMetrics = [
+    {
+      id: `${tenantId}_sys01`,
+      tenantId,
+      name: "Platform API Response Time",
+      value: 180,
+      unit: "ms",
+      measured_at: now,
+      tags: ["platform", "api"],
+    },
+    {
+      id: `${tenantId}_sys02`,
+      tenantId,
+      name: "Agent Availability",
+      value: 99.8,
+      unit: "%",
+      measured_at: now,
+      tags: ["agents", "availability"],
+    },
+    {
+      id: `${tenantId}_sys03`,
+      tenantId,
+      name: "Data Pipeline Throughput",
+      value: 4500,
+      unit: "records/sec",
+      measured_at: now,
+      tags: ["pipeline", "throughput"],
+    },
+  ];
 
-  if (tenantId === "tenant_av_google") {
-    systemMetrics = [
-      {
-        id: `${tenantId}_systemMetrics01`,
-        tenantId: tenantId,
-        name: "SystemMetrics Example 1",
-        description: "Seeded SystemMetrics entity for AV Google.",
-        created_at: now,
-        updated_at: now,
-        tags: ["google", "systemMetrics"],
-        health_status: "yellow",
-      },
-    ];
-  }
-
-  if (tenantId === "tenant_sd_gates") {
-    systemMetrics = [
-      {
-        id: `${tenantId}_systemMetrics01`,
-        tenantId: tenantId,
-        name: "SystemMetrics Example 1",
-        description: "Seeded SystemMetrics entity for Gates Foundation.",
-        created_at: now,
-        updated_at: now,
-        tags: ["gates", "systemMetrics"],
-        health_status: "orange",
-      },
-    ];
-  }
-
-  for (const entity of systemMetrics) {
-    await db.put("systemMetrics", entity);
+  for (const metric of sysMetrics) {
+    await db.put("system_metrics", metric);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "systemMetrics",
-      entity_id: entity.id,
-      action: "create",
+      id: `${metric.id}_audit01`,
+      tenantId,
+      entity_type: "system_metric",
+      entity_id: metric.id,
+      action: "record",
       timestamp: now,
-      hash: "hash_" + id,
+      immutable_hash: "hash_" + metric.id,
       tags: ["seed"],
     });
 
     await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "systemMetrics",
-      entity_id: entity.id,
-      action: "created",
-      description: `SystemMetrics "${entity.name}" seeded`,
+      id: `${metric.id}_act01`,
+      tenantId,
+      type: "system_metric",
+      entity_id: metric.id,
+      action: "recorded",
+      description: `System metric "${metric.name}" recorded at ${metric.value}${metric.unit}`,
       timestamp: now,
       related_entity_ids: [],
       tags: ["seed"],

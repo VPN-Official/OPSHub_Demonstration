@@ -3,24 +3,19 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-
   let agents: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenantId: tenantId,
-        name: "Router Triage Agent",
-        type: "incident_triage",
-        status: "active",
-        model_type: "LLM",
-        confidence_threshold: 0.8,
-        input_sources: ["metrics", "logs"],
-        tags: ["router", "ai"],
+        tenantId,
+        name: "NetOps Copilot",
+        description: "AI assistant for Network Operations Center. Suggests RCA, runbooks, and automations for network incidents.",
+        scope: ["incidents", "alerts", "knowledge_base", "runbooks"],
+        linked_team_id: `${tenantId}_team_noc`,
         created_at: now,
-        updated_at: now,
-        health_status: "yellow",
+        tags: ["network", "copilot", "ai"],
       },
     ];
   }
@@ -29,36 +24,48 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenantId: tenantId,
-        name: "Latency Reduction Agent",
-        type: "alert_correlation",
-        status: "active",
-        model_type: "ML model",
-        confidence_threshold: 0.75,
-        input_sources: ["metrics", "events"],
-        tags: ["latency", "ai"],
+        tenantId,
+        name: "Streaming SRE Copilot",
+        description: "Helps SREs optimize streaming latency and resolve edge node issues.",
+        scope: ["metrics", "events", "automation_rules", "knowledge_base"],
+        linked_team_id: `${tenantId}_team_sre`,
         created_at: now,
-        updated_at: now,
-        health_status: "red",
+        tags: ["sre", "streaming", "ai"],
+      },
+      {
+        id: `${tenantId}_agent02`,
+        tenantId,
+        name: "MediaOps Copilot",
+        description: "Specialized in diagnosing GKE transcoding workload issues and memory utilization anomalies.",
+        scope: ["incidents", "traces", "knowledge_base", "runbooks"],
+        linked_team_id: `${tenantId}_team_mediaops`,
+        created_at: now,
+        tags: ["mediaops", "transcoding", "gke", "ai"],
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     agents = [
       {
         id: `${tenantId}_agent01`,
-        tenantId: tenantId,
-        name: "Service Desk Assistant",
-        type: "knowledge_recommendation",
-        status: "active",
-        model_type: "LLM",
-        confidence_threshold: 0.7,
-        input_sources: ["knowledge", "incidents"],
-        tags: ["servicedesk", "ai"],
+        tenantId,
+        name: "DB Reliability Copilot",
+        description: "Assists DBAs in diagnosing replication lag and performance bottlenecks.",
+        scope: ["metrics", "events", "knowledge_base", "automation_rules"],
+        linked_team_id: `${tenantId}_team_dba`,
         created_at: now,
-        updated_at: now,
-        health_status: "green",
+        tags: ["database", "replication", "ai"],
+      },
+      {
+        id: `${tenantId}_agent02`,
+        tenantId,
+        name: "DataOps Copilot",
+        description: "Helps DataOps team with ETL failures, Spark optimization, and automation of retries.",
+        scope: ["incidents", "traces", "runbooks", "automation_rules"],
+        linked_team_id: `${tenantId}_team_dataops`,
+        created_at: now,
+        tags: ["etl", "spark", "ai"],
       },
     ];
   }
@@ -66,9 +73,10 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
   for (const agent of agents) {
     await db.put("ai_agents", agent);
 
+    // Audit log
     await db.put("audit_logs", {
       id: `${agent.id}_audit01`,
-      tenantId: tenantId,
+      tenantId,
       entity_type: "ai_agent",
       entity_id: agent.id,
       action: "create",
@@ -77,15 +85,16 @@ export const seedAiAgents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
       tags: ["seed"],
     });
 
+    // Activity
     await db.put("activities", {
       id: `${agent.id}_act01`,
-      tenantId: tenantId,
+      tenantId,
       type: "ai_agent",
       entity_id: agent.id,
-      action: "created",
-      description: `AI Agent "${agent.name}" seeded`,
+      action: "activated",
+      description: `AI Agent "${agent.name}" activated for team ${agent.linked_team_id}`,
       timestamp: now,
-      related_entity_ids: [],
+      related_entity_ids: [{ type: "team", id: agent.linked_team_id }],
       tags: ["seed"],
     });
   }

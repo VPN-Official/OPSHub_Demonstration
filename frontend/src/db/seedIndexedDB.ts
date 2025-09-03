@@ -35,7 +35,6 @@ import { seedAuditLogs } from "./seeds/seedAuditLogs";
 import { seedActivities } from "./seeds/seedActivities";
 import { seedActivityTimeline } from "./seeds/seedActivityTimeline";
 import { seedEndUsers } from "./seeds/seedEndUsers";
-import { seedMaintenance } from "./seeds/seedMaintenance";
 import { seedOnCall } from "./seeds/seedOnCall";
 import { seedPolicy } from "./seeds/seedPolicy";
 import { seedSkills } from "./seeds/seedSkills";

@@ -3,76 +3,61 @@ import { AIOpsDB } from "../seedIndexedDB";
 
 export const seedWorkNotes = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
-  let workNotes: any[] = [];
+  let notes: any[] = [];
 
   if (tenantId === "tenant_dcn_meta") {
-    workNotes = [
+    notes = [
       {
-        id: `${tenantId}_workNotes01`,
-        tenantId: tenantId,
-        name: "WorkNotes Example 1",
-        description: "Seeded WorkNotes entity for DCN Meta.",
+        id: `${tenantId}_wn01`,
+        tenantId,
+        entity_type: "incident",
+        entity_id: `${tenantId}_inc01`,
+        author: `${tenantId}_user_noc01`,
+        note: "CPU utilization confirmed >90%. Monitoring traffic patterns.",
         created_at: now,
-        updated_at: now,
-        tags: ["meta", "workNotes"],
-        health_status: "green",
       },
     ];
   }
 
   if (tenantId === "tenant_av_google") {
-    workNotes = [
+    notes = [
       {
-        id: `${tenantId}_workNotes01`,
-        tenantId: tenantId,
-        name: "WorkNotes Example 1",
-        description: "Seeded WorkNotes entity for AV Google.",
+        id: `${tenantId}_wn01`,
+        tenantId,
+        entity_type: "problem",
+        entity_id: `${tenantId}_prob01`,
+        author: `${tenantId}_user_devops01`,
+        note: "Latency spikes observed at EU edge nodes. Rerouting traffic as a workaround.",
         created_at: now,
-        updated_at: now,
-        tags: ["google", "workNotes"],
-        health_status: "yellow",
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
-    workNotes = [
+  if (tenantId === "tenant_cloud_morningstar") {
+    notes = [
       {
-        id: `${tenantId}_workNotes01`,
-        tenantId: tenantId,
-        name: "WorkNotes Example 1",
-        description: "Seeded WorkNotes entity for Gates Foundation.",
+        id: `${tenantId}_wn01`,
+        tenantId,
+        entity_type: "change_request",
+        entity_id: `${tenantId}_chg01`,
+        author: `${tenantId}_user_dataeng01`,
+        note: "DB config tuning applied in test environment. Awaiting results.",
         created_at: now,
-        updated_at: now,
-        tags: ["gates", "workNotes"],
-        health_status: "orange",
       },
     ];
   }
 
-  for (const entity of workNotes) {
-    await db.put("workNotes", entity);
+  for (const wn of notes) {
+    await db.put("work_notes", wn);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "workNotes",
-      entity_id: entity.id,
+      id: `${wn.id}_audit01`,
+      tenantId,
+      entity_type: "work_note",
+      entity_id: wn.id,
       action: "create",
       timestamp: now,
-      hash: "hash_" + id,
-      tags: ["seed"],
-    });
-
-    await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "workNotes",
-      entity_id: entity.id,
-      action: "created",
-      description: `WorkNotes "${entity.name}" seeded`,
-      timestamp: now,
-      related_entity_ids: [],
+      immutable_hash: "hash_" + wn.id,
       tags: ["seed"],
     });
   }

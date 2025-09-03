@@ -8,14 +8,22 @@ export const seedUsers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
   if (tenantId === "tenant_dcn_meta") {
     users = [
       {
-        id: `${tenantId}_users01`,
-        tenantId: tenantId,
-        name: "Users Example 1",
-        description: "Seeded Users entity for DCN Meta.",
+        id: `${tenantId}_user_monitoring`,
+        tenantId,
+        name: "Auto-Monitoring Bot",
+        email: "monitor@dcnmeta.com",
+        role: "system",
+        team_id: `${tenantId}_team_noc`,
         created_at: now,
-        updated_at: now,
-        tags: ["meta", "users"],
-        health_status: "green",
+      },
+      {
+        id: `${tenantId}_user_noc01`,
+        tenantId,
+        name: "Ravi Kumar",
+        email: "ravi.kumar@dcnmeta.com",
+        role: "network_engineer",
+        team_id: `${tenantId}_team_network`,
+        created_at: now,
       },
     ];
   }
@@ -23,56 +31,72 @@ export const seedUsers = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => 
   if (tenantId === "tenant_av_google") {
     users = [
       {
-        id: `${tenantId}_users01`,
-        tenantId: tenantId,
-        name: "Users Example 1",
-        description: "Seeded Users entity for AV Google.",
+        id: `${tenantId}_user_alerting`,
+        tenantId,
+        name: "Alerting System",
+        email: "alerts@googleav.com",
+        role: "system",
+        team_id: `${tenantId}_team_sre`,
         created_at: now,
-        updated_at: now,
-        tags: ["google", "users"],
-        health_status: "yellow",
+      },
+      {
+        id: `${tenantId}_user_devops01`,
+        tenantId,
+        name: "Maria Lopez",
+        email: "maria.lopez@googleav.com",
+        role: "devops_engineer",
+        team_id: `${tenantId}_team_mediaops`,
+        created_at: now,
       },
     ];
   }
 
-  if (tenantId === "tenant_sd_gates") {
+  if (tenantId === "tenant_cloud_morningstar") {
     users = [
       {
-        id: `${tenantId}_users01`,
-        tenantId: tenantId,
-        name: "Users Example 1",
-        description: "Seeded Users entity for Gates Foundation.",
+        id: `${tenantId}_user_monitor01`,
+        tenantId,
+        name: "Infra Monitor",
+        email: "monitor@morningstarcloud.com",
+        role: "system",
+        team_id: `${tenantId}_team_dba`,
         created_at: now,
-        updated_at: now,
-        tags: ["gates", "users"],
-        health_status: "orange",
+      },
+      {
+        id: `${tenantId}_user_dataeng01`,
+        tenantId,
+        name: "David Chen",
+        email: "david.chen@morningstarcloud.com",
+        role: "data_engineer",
+        team_id: `${tenantId}_team_dataops`,
+        created_at: now,
       },
     ];
   }
 
-  for (const entity of users) {
-    await db.put("users", entity);
+  for (const user of users) {
+    await db.put("users", user);
 
     await db.put("audit_logs", {
-      id: `${entity.id}_audit01`,
-      tenantId: tenantId,
-      entity_type: "users",
-      entity_id: entity.id,
+      id: `${user.id}_audit01`,
+      tenantId,
+      entity_type: "user",
+      entity_id: user.id,
       action: "create",
       timestamp: now,
-      hash: "hash_" + id,
+      immutable_hash: "hash_" + user.id,
       tags: ["seed"],
     });
 
     await db.put("activities", {
-      id: `${entity.id}_act01`,
-      tenantId: tenantId,
-      type: "users",
-      entity_id: entity.id,
+      id: `${user.id}_act01`,
+      tenantId,
+      type: "user",
+      entity_id: user.id,
       action: "created",
-      description: `Users "${entity.name}" seeded`,
+      description: `User ${user.name} created`,
       timestamp: now,
-      related_entity_ids: [],
+      related_entity_ids: [{ type: "team", id: user.team_id }],
       tags: ["seed"],
     });
   }

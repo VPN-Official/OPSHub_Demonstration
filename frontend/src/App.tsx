@@ -6,6 +6,7 @@ import { AppProviders } from "./providers/AppProviders";
 import { AppLayout } from "./layouts/AppLayout";
 import { TenantSetup } from "./components/setup/TenantSetup";
 import { useTenant } from "./providers/TenantProvider";
+import SeedDemo from "./pages/SeedDemo";
 
 // Import the actual page components
 import { Pulse } from "./pages/Pulse";
@@ -78,6 +79,7 @@ const AppContent = () => {
           <Route path="schedule" element={<Schedule />} />
           <Route path="intelligence" element={<Intelligence />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="/seed" element={<SeedDemo />} />
           
           {/* WorkItem detail routes - placeholder until detail pages are built */}
           <Route path="incidents/:id" element={<div className="p-4">Incident Detail (Coming Soon)</div>} />
