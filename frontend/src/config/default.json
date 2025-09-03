@@ -1,7 +1,7 @@
 {
   "statuses": {
     "incidents": ["new", "in_progress", "resolved", "closed", "cancelled"],
-    "problems": ["new", "in_analysis", "known_error", "mitigated", "closed"],
+    "problems": ["new", "in_analysis", "analysis", "known_error", "root_cause_identified", "mitigated", "closed"],
     "change_requests": ["draft", "submitted", "approved", "scheduled", "in_progress", "completed", "closed", "cancelled"],
     "service_requests": ["new", "approved", "in_progress", "fulfilled", "closed"],
     "maintenances": ["scheduled", "in_progress", "completed", "cancelled"],
@@ -86,6 +86,16 @@
       "label": "Emergency",
       "color": "#dc2626",
       "sla_minutes": 30
+    },
+    "critical": {
+      "label": "Critical Priority",
+      "color": "#991b1b",
+      "sla_minutes": 30,
+      "escalation_rules": {
+        "notify_after_minutes": 5,
+        "escalate_after_minutes": 15,
+        "escalation_path": ["manager", "director", "vp", "ceo"]
+      }
     }
   },
   "severities": {
@@ -208,6 +218,16 @@
         "target_minutes": 240,
         "warning_threshold": 75,
         "breach_threshold": 100
+      },
+      "emergency": {
+        "target_minutes": 60,
+        "warning_threshold": 70,
+        "breach_threshold": 100
+      },
+      "critical": {
+        "target_minutes": 30,
+        "warning_threshold": 65,
+        "breach_threshold": 100
       }
     },
     "change_requests": {
@@ -252,75 +272,36 @@
   },
   "kpis": [
     {
-      "id": "availability",
-      "name": "Service Availability",
-      "description": "Overall service uptime percentage",
-      "type": "availability",
+      "id": "mttr",
+      "name": "Mean Time To Resolve",
+      "description": "Average time to resolve incidents",
+      "type": "time",
+      "unit": "minutes",
+      "target_value": 240,
+      "target_operator": "lt",
+      "calculation_method": "avg(resolved_at - created_at)",
+      "data_source": "incidents",
+      "refresh_interval": 15,
+      "enabled": true
+    },
+    {
+      "id": "uptime",
+      "name": "Service Uptime",
+      "description": "Percentage of time services are available",
+      "type": "percentage",
       "unit": "%",
       "target_value": 99.9,
       "target_operator": "gte",
-      "calculation_method": "uptime_minutes / total_minutes * 100",
+      "calculation_method": "uptime_seconds / total_seconds * 100",
       "data_source": "monitoring_system",
       "refresh_interval": 5,
       "enabled": true
     },
     {
-      "id": "mttr",
-      "name": "Mean Time to Recovery",
-      "description": "Average time to resolve incidents",
-      "type": "performance",
-      "unit": "minutes",
-      "target_value": 240,
-      "target_operator": "lt",
-      "calculation_method": "sum(resolution_time) / count(incidents)",
-      "data_source": "incident_management",
-      "refresh_interval": 15,
-      "enabled": true
-    },
-    {
-      "id": "mtta",
-      "name": "Mean Time to Acknowledge",
-      "description": "Average time to acknowledge incidents",
-      "type": "performance",
-      "unit": "minutes",
-      "target_value": 15,
-      "target_operator": "lt",
-      "calculation_method": "sum(ack_time) / count(incidents)",
-      "data_source": "incident_management",
-      "refresh_interval": 15,
-      "enabled": true
-    },
-    {
-      "id": "customer_satisfaction",
-      "name": "Customer Satisfaction Score",
-      "description": "Average customer satisfaction rating",
-      "type": "quality",
-      "unit": "score",
-      "target_value": 4.5,
-      "target_operator": "gte",
-      "calculation_method": "sum(ratings) / count(ratings)",
-      "data_source": "customer_feedback",
-      "refresh_interval": 60,
-      "enabled": true
-    },
-    {
-      "id": "cost_per_transaction",
-      "name": "Cost per Transaction",
-      "description": "Average cost per business transaction",
-      "type": "cost",
-      "unit": "USD",
-      "target_value": 0.50,
-      "target_operator": "lt",
-      "calculation_method": "total_cost / transaction_count",
-      "data_source": "financial_system",
-      "refresh_interval": 1440,
-      "enabled": true
-    },
-    {
       "id": "response_time",
-      "name": "Average Response Time",
+      "name": "Response Time",
       "description": "Average API response time",
-      "type": "performance",
+      "type": "time",
       "unit": "ms",
       "target_value": 200,
       "target_operator": "lt",
@@ -403,78 +384,53 @@
           "type": "notify",
           "parameters": {
             "channels": ["email", "slack"],
-            "recipients": ["manager", "team_lead"],
-            "template": "sla_warning"
-          }
-        }
-      ],
-      "enabled": true
-    },
-    {
-      "id": "auto_resolve_known_issues",
-      "name": "Auto-resolve Known Issues",
-      "description": "Automatically resolve incidents that match known problem patterns",
-      "trigger_conditions": {
-        "entity_type": "incidents",
-        "has_matching_problem": true,
-        "problem_status": "known_error"
-      },
-      "actions": [
-        {
-          "type": "resolve",
-          "parameters": {
-            "resolution_template": "Applied known resolution from Problem #{problem_id}"
-          }
-        },
-        {
-          "type": "link_to_problem",
-          "parameters": {
-            "relationship_type": "resolved_by"
+            "recipients": ["manager", "stakeholders"],
+            "template": "sla_breach_warning"
           }
         }
       ],
       "enabled": true
     }
   ],
-  "ai_agents": [
+  "ai_models": [
     {
       "id": "incident_classifier",
-      "name": "Incident Classification Agent",
-      "description": "Uses ML to classify incident severity and category",
-      "type": "diagnostic",
+      "name": "Incident Classification",
+      "description": "Automatically classify incidents by category and priority",
+      "type": "classification",
       "model_config": {
-        "model_type": "classification",
-        "features": ["title", "description", "source_system", "affected_services"],
-        "algorithm": "random_forest",
-        "confidence_threshold": 0.8
+        "model_type": "text_classification",
+        "features": ["title", "description", "affected_systems"],
+        "algorithm": "transformer",
+        "model_path": "/models/incident_classifier_v1.pkl"
       },
       "triggers": ["incident_created", "incident_updated"],
-      "confidence_threshold": 0.7,
+      "confidence_threshold": 0.8,
       "enabled": true
     },
     {
       "id": "anomaly_detector",
-      "name": "Metric Anomaly Detection",
-      "description": "Detects anomalies in system metrics and creates alerts",
-      "type": "predictive",
+      "name": "System Anomaly Detection",
+      "description": "Detect anomalies in system metrics and performance data",
+      "type": "anomaly_detection",
       "model_config": {
-        "model_type": "anomaly_detection",
+        "model_type": "isolation_forest",
+        "features": ["cpu_usage", "memory_usage", "disk_io", "network_io"],
         "algorithm": "isolation_forest",
-        "sensitivity": 0.1,
-        "window_minutes": 15
+        "contamination": 0.1
       },
-      "triggers": ["metric_ingested"],
-      "confidence_threshold": 0.85,
+      "triggers": ["metric_data_received"],
+      "confidence_threshold": 0.7,
       "enabled": true
     },
     {
       "id": "root_cause_analyzer",
-      "name": "Root Cause Analysis Assistant",
-      "description": "Suggests potential root causes for problems based on historical data",
-      "type": "diagnostic",
+      "name": "Root Cause Analysis",
+      "description": "Analyze incidents and suggest potential root causes",
+      "type": "root_cause_analysis",
       "model_config": {
         "model_type": "correlation_analysis",
-        "features": ["symptoms", "affected_components", "recent_changes", "similar_problems"],
+        "features": ["incident_symptoms", "system_logs", "configuration_changes", "deployment_history"],
         "algorithm": "gradient_boosting",
         "lookback_days": 30
       },
@@ -534,7 +490,7 @@
         },
         "priority": {
           "type": "enum",
-          "enum_values": ["P1", "P2", "P3", "P4"]
+          "enum_values": ["P1", "P2", "P3", "P4", "critical", "high", "medium", "low"]
         },
         "status": {
           "type": "enum",
@@ -549,7 +505,17 @@
         },
         "priority": {
           "type": "enum", 
-          "enum_values": ["low", "medium", "high"]
+          "enum_values": ["low", "medium", "high", "emergency", "critical"]
+        }
+      },
+      "problems": {
+        "priority": {
+          "type": "enum",
+          "enum_values": ["P1", "P2", "P3", "P4", "critical", "high", "medium", "low"]
+        },
+        "status": {
+          "type": "enum",
+          "enum_values": ["new", "in_analysis", "analysis", "known_error", "root_cause_identified", "mitigated", "closed"]
         }
       }
     }
