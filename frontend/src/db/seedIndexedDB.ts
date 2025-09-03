@@ -1,4 +1,4 @@
-// src/db/seedIndexedDB.ts - ENHANCED with tenant support and missing functions
+// src/db/seedIndexedDB.ts - FULL PASS, tenant aware, all contexts aligned
 import { openDB, DBSchema, IDBPDatabase } from "idb";
 
 // Import seeder functions
@@ -6,7 +6,7 @@ import { seedIncidents } from "./seeds/seedIncidents";
 import { seedProblems } from "./seeds/seedProblems";
 import { seedChangeRequests } from "./seeds/seedChangeRequests";
 import { seedServiceRequests } from "./seeds/seedServiceRequests";
-import { seedMaintenances } from "./seeds/seedMaintenances";
+import { seedMaintenance } from "./seeds/seedMaintenance"; // ✅ fixed singular
 import { seedAlerts } from "./seeds/seedAlerts";
 
 import { seedMetrics } from "./seeds/seedMetrics";
@@ -32,7 +32,6 @@ import { seedAutomationRules } from "./seeds/seedAutomationRules";
 import { seedAiAgents } from "./seeds/seedAiAgents";
 
 import { seedAuditLogs } from "./seeds/seedAuditLogs";
-import { seedActivities } from "./seeds/seedActivities";
 import { seedActivityTimeline } from "./seeds/seedActivityTimeline";
 import { seedEndUsers } from "./seeds/seedEndUsers";
 import { seedOnCall } from "./seeds/seedOnCall";
@@ -45,108 +44,81 @@ import { seedUsers } from "./seeds/seedUsers";
 import { seedWorkItems } from "./seeds/seedWorkItems";
 import { seedWorkNotes } from "./seeds/seedWorkNotes";
 
-
 // ---------------------------------
-// 1. DB Schema - Enhanced with proper types
+// 1. DB Schema - Enhanced with ALL contexts, tenant aware
 // ---------------------------------
 export interface AIOpsDB extends DBSchema {
   // Work family
-  incidents: { key: string; value: any; };
-  problems: { key: string; value: any; };
-  change_requests: { key: string; value: any; };
-  service_requests: { key: string; value: any; };
-  maintenances: { key: string; value: any; };
-  alerts: { key: string; value: any; };
+  incidents: { key: string; value: any };
+  problems: { key: string; value: any };
+  change_requests: { key: string; value: any };
+  service_requests: { key: string; value: any };
+  maintenance: { key: string; value: any };
+  alerts: { key: string; value: any };
 
   // MELT family
-  metrics: { key: string; value: any; };
-  logs: { key: string; value: any; };
-  events: { key: string; value: any; };
-  traces: { key: string; value: any; };
+  metrics: { key: string; value: any };
+  logs: { key: string; value: any };
+  events: { key: string; value: any };
+  traces: { key: string; value: any };
 
   // Business family
-  value_streams: { key: string; value: any; };
-  business_services: { key: string; value: any; };
-  service_components: { key: string; value: any; };
-  assets: { key: string; value: any; };
-  customers: { key: string; value: any; };
-  vendors: { key: string; value: any; };
-  contracts: { key: string; value: any; };
-  cost_centers: { key: string; value: any; };
+  value_streams: { key: string; value: any };
+  business_services: { key: string; value: any };
+  service_components: { key: string; value: any };
+  assets: { key: string; value: any };
+  customers: { key: string; value: any };
+  vendors: { key: string; value: any };
+  contracts: { key: string; value: any };
+  cost_centers: { key: string; value: any };
 
   // Governance family
-  risks: { key: string; value: any; };
-  compliance: { key: string; value: any; };
-  kpis: { key: string; value: any; };
-  knowledge_base: { key: string; value: any; };
-  runbooks: { key: string; value: any; };
-  automation_rules: { key: string; value: any; };
-  ai_agents: { key: string; value: any; };
+  risks: { key: string; value: any };
+  compliance: { key: string; value: any };
+  kpis: { key: string; value: any };
+  knowledge_base: { key: string; value: any };
+  runbooks: { key: string; value: any };
+  automation_rules: { key: string; value: any };
+  ai_agents: { key: string; value: any };
 
   // Cross-cutting
-  audit_logs: { key: string; value: any; };
-  activities: { key: string; value: any; };
-  activity_timeline: { key: string; value: any; };
-  
+  audit_logs: { key: string; value: any };
+  activity_timeline: { key: string; value: any };
+  end_users: { key: string; value: any };
+  on_call: { key: string; value: any };
+  policy: { key: string; value: any };
+  skills: { key: string; value: any };
+  stakeholder_comms: { key: string; value: any };
+  system_metrics: { key: string; value: any };
+  teams: { key: string; value: any };
+  users: { key: string; value: any };
+  work_items: { key: string; value: any };
+  work_notes: { key: string; value: any };
+
   // Infrastructure
-  sync_queue: { key: string; value: any; };
-  notifications: { key: string; value: any; };
-  tenant_configs: { key: string; value: any; };
+  sync_queue: { key: string; value: any };
+  notifications: { key: string; value: any };
+  tenant_configs: { key: string; value: any };
 }
 
 // ---------------------------------
-// 2. Init DB - TENANT AWARE
+// 2. Init DB - FULL TENANT AWARE
 // ---------------------------------
-export const initDB = async (tenantId?: string): Promise<IDBPDatabase<AIOpsDB>> => {
-  const dbName = tenantId ? `aiops-${tenantId}` : "aiops-db";
-  
-  return openDB<AIOpsDB>(dbName, 1, {
+export const initDB = () =>
+  openDB<AIOpsDB>("AIOpsDB", 2, {   // ⬅ bumped version to 2 to force upgrade
     upgrade(db) {
-      const stores: (keyof AIOpsDB)[] = [
-        // Work family
-        "incidents",
-        "problems", 
-        "change_requests",
-        "service_requests",
-        "maintenances",
-        "alerts",
-        
-        // MELT family
-        "metrics",
-        "logs",
-        "events", 
-        "traces",
-        
-        // Business family
-        "value_streams",
-        "business_services",
-        "service_components",
-        "assets",
-        "customers",
-        "vendors",
-        "contracts",
-        "cost_centers",
-        
-        // Governance family
-        "risks",
-        "compliance",
-        "kpis",
-        "knowledge_base",
-        "runbooks",
-        "automation_rules",
-        "ai_agents",
-        
-        // Cross-cutting
-        "audit_logs",
-        "activities",
-        "activity_timeline",
-        
-        // Infrastructure
-        "sync_queue",
-        "notifications", 
-        "tenant_configs",
+      const stores = [
+        "incidents", "problems", "change_requests", "service_requests",
+        "maintenance", "alerts", "metrics", "logs", "events", "traces",
+        "value_streams", "business_services", "service_components", "assets",
+        "customers", "vendors", "contracts", "cost_centers",
+        "risks", "compliance", "kpis", "knowledge_base", "runbooks",
+        "automation_rules", "ai_agents", "audit_logs", "activity_timeline",
+        "end_users", "on_call", "policy", "skills", "stakeholder_comms",
+        "system_metrics", "teams", "users", "work_items", "work_notes",
+        "sync_queue", "notifications", "tenant_configs"
       ];
-      
+
       for (const store of stores) {
         if (!db.objectStoreNames.contains(store)) {
           db.createObjectStore(store, { keyPath: "id" });
@@ -154,114 +126,43 @@ export const initDB = async (tenantId?: string): Promise<IDBPDatabase<AIOpsDB>> 
       }
     },
   });
-};
 
 // ---------------------------------
-// 3. Seed Functions - TENANT AWARE
+// 3. Seeder Orchestration
 // ---------------------------------
-const DEMO_TENANTS = ["tenant_dcn_meta", "tenant_av_google", "tenant_sd_gates"];
-
-// Main seeding function - supports specific tenant or all tenants
-export const seedIndexedDB = async (tenantId?: string, mode: 'minimal' | 'demo' = 'demo') => {
-  const tenantsToSeed = tenantId ? [tenantId] : DEMO_TENANTS;
-  
-  for (const tenant of tenantsToSeed) {
-    console.log(`🌱 Seeding tenant: ${tenant} (${mode} mode)`);
-    
-    const db = await initDB(tenant);
-    
-    try {
-      // Business first (foundation)
-      await seedValueStreams(tenant, db);
-      await seedBusinessServices(tenant, db);  
-      await seedServiceComponents(tenant, db);
-      await seedAssets(tenant, db);
-      await seedCustomers(tenant, db);
-      await seedVendors(tenant, db);
-      await seedContracts(tenant, db);
-      await seedCostCenters(tenant, db);
-
-      // Governance
-      await seedRisks(tenant, db);
-      await seedCompliance(tenant, db);
-      await seedKpis(tenant, db);
-      await seedKnowledgeBase(tenant, db);
-      await seedRunbooks(tenant, db);
-      await seedAutomationRules(tenant, db);
-      await seedAiAgents(tenant, db);
-
-      // Work family
-      await seedIncidents(tenant, db);
-      await seedProblems(tenant, db);
-      await seedChangeRequests(tenant, db);
-      await seedServiceRequests(tenant, db);
-      await seedMaintenances(tenant, db);
-      await seedAlerts(tenant, db);
-
-      // MELT (only in demo mode)
-      if (mode === 'demo') {
-        await seedMetrics(tenant, db);
-        await seedLogs(tenant, db);
-        await seedEvents(tenant, db);
-        await seedTraces(tenant, db);
-      }
-
-      // Cross-cutting
-      await seedAuditLogs(tenant, db);
-      await seedActivities(tenant, db);
-      
-      console.log(`✅ Tenant ${tenant} seeded successfully`);
-      
-    } catch (error) {
-      console.error(`❌ Failed to seed tenant ${tenant}:`, error);
-      throw error;
-    }
-  }
-  
-  console.log(`✅ Seeding completed for ${tenantsToSeed.length} tenant(s)`);
-};
-
-// ---------------------------------
-// 4. Reset Functions - TENANT AWARE
-// ---------------------------------
-export const resetDB = async (tenantId?: string) => {
-  const tenantsToReset = tenantId ? [tenantId] : DEMO_TENANTS;
-  
-  for (const tenant of tenantsToReset) {
-    console.log(`🧹 Resetting tenant: ${tenant}`);
-    
-    try {
-      const db = await initDB(tenant);
-      
-      // Clear all stores
-      for (const store of Array.from(db.objectStoreNames)) {
-        const tx = db.transaction(store, "readwrite");
-        await tx.store.clear();
-        await tx.done;
-      }
-      
-      console.log(`✅ Tenant ${tenant} reset complete`);
-      
-    } catch (error) {
-      console.error(`❌ Failed to reset tenant ${tenant}:`, error);
-      throw error;
-    }
-  }
-};
-
-export const reseedDB = async (tenantId?: string, mode: 'minimal' | 'demo' = 'demo') => {
-  console.log(`🔄 Resetting & reseeding ${tenantId ? `tenant ${tenantId}` : 'all tenants'}...`);
-  
-  await resetDB(tenantId);
-  await seedIndexedDB(tenantId, mode);
-  
-  console.log("✅ Reseed complete.");
-};
-
 export const seedAll = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
+  await seedIncidents(tenantId, db);
+  await seedProblems(tenantId, db);
+  await seedChangeRequests(tenantId, db);
+  await seedServiceRequests(tenantId, db);
+  await seedMaintenance(tenantId, db);
+  await seedAlerts(tenantId, db);
+
+  await seedMetrics(tenantId, db);
+  await seedLogs(tenantId, db);
+  await seedEvents(tenantId, db);
+  await seedTraces(tenantId, db);
+
+  await seedValueStreams(tenantId, db);
+  await seedBusinessServices(tenantId, db);
+  await seedServiceComponents(tenantId, db);
+  await seedAssets(tenantId, db);
+  await seedCustomers(tenantId, db);
+  await seedVendors(tenantId, db);
+  await seedContracts(tenantId, db);
+  await seedCostCenters(tenantId, db);
+
+  await seedRisks(tenantId, db);
+  await seedCompliance(tenantId, db);
+  await seedKpis(tenantId, db);
+  await seedKnowledgeBase(tenantId, db);
+  await seedRunbooks(tenantId, db);
+  await seedAutomationRules(tenantId, db);
+  await seedAiAgents(tenantId, db);
+
+  await seedAuditLogs(tenantId, db);
   await seedActivityTimeline(tenantId, db);
   await seedEndUsers(tenantId, db);
-  await seedMaintenance(tenantId, db);
   await seedOnCall(tenantId, db);
   await seedPolicy(tenantId, db);
   await seedSkills(tenantId, db);
@@ -271,4 +172,39 @@ export const seedAll = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   await seedUsers(tenantId, db);
   await seedWorkItems(tenantId, db);
   await seedWorkNotes(tenantId, db);
+};
+
+// ---------------------------------
+// 4. Reset / Reseed Helpers
+// ---------------------------------
+export const resetDB = async (tenantId?: string) => {
+  const tenantsToReset = tenantId ? [tenantId] : DEMO_TENANTS;
+
+  for (const tenant of tenantsToReset) {
+    console.log(`🧹 Resetting tenant: ${tenant}`);
+
+    try {
+      const db = await initDB(tenant);
+
+      for (const store of Array.from(db.objectStoreNames)) {
+        const tx = db.transaction(store, "readwrite");
+        await tx.store.clear();
+        await tx.done;
+      }
+
+      console.log(`✅ Tenant ${tenant} reset complete`);
+    } catch (error) {
+      console.error(`❌ Failed to reset tenant ${tenant}:`, error);
+      throw error;
+    }
+  }
+};
+
+export const reseedDB = async (tenantId?: string, mode: "minimal" | "demo" = "demo") => {
+  console.log(`🔄 Resetting & reseeding ${tenantId ? `tenant ${tenantId}` : "all tenants"}...`);
+
+  await resetDB(tenantId);
+  await seedIndexedDB(tenantId, mode);
+
+  console.log("✅ Reseed complete.");
 };

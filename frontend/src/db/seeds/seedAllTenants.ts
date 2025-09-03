@@ -14,7 +14,7 @@ import { seedIncidents } from "./seedIncidents";
 import { seedProblems } from "./seedProblems";
 import { seedChangeRequests } from "./seedChangeRequests";
 import { seedServiceRequests } from "./seedServiceRequests";
-import { seedMaintenances } from "./seedMaintenances";
+import { seedMaintenance } from "./seedMaintenance";
 
 /* Telemetry */
 import { seedMetrics } from "./seedMetrics";
@@ -79,7 +79,7 @@ export const seedAllTenants = async () => {
     await seedProblems(tenantId, db);
     await seedChangeRequests(tenantId, db);
     await seedServiceRequests(tenantId, db);
-    await seedMaintenances(tenantId, db);
+    await seedMaintenance(tenantId, db);
 
     /* Telemetry */
     await seedMetrics(tenantId, db);

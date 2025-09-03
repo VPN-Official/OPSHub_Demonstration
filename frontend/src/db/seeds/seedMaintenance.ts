@@ -1,7 +1,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 
-export const seedMaintenances = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
+export const seedMaintenance = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date();
   const maintenances: any[] = [];
 
