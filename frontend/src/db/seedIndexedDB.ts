@@ -1,6 +1,13 @@
 // src/db/seedIndexedDB.ts - FULL PASS, tenant aware, all contexts aligned
 import { openDB, DBSchema, IDBPDatabase } from "idb";
 
+// Demo tenants
+export const DEMO_TENANTS = [
+  "tenant_dcn_meta",
+  "tenant_aws_financial", 
+  "tenant_ecommerce"
+];
+
 // Import seeder functions
 import { seedIncidents } from "./seeds/seedIncidents";
 import { seedProblems } from "./seeds/seedProblems";
@@ -43,6 +50,15 @@ import { seedTeams } from "./seeds/seedTeams";
 import { seedUsers } from "./seeds/seedUsers";
 import { seedWorkItems } from "./seeds/seedWorkItems";
 import { seedWorkNotes } from "./seeds/seedWorkNotes";
+
+// New context-specific seeders
+import { seedRealtimeEvents } from "./seeds/seedRealtimeEvents";
+import { seedEntityRelationships } from "./seeds/seedEntityRelationships";
+import { seedAIInsights } from "./seeds/seedAIInsights";
+import { seedBusinessImpact } from "./seeds/seedBusinessImpact";
+import { seedCollaboration } from "./seeds/seedCollaboration";
+import { seedMetricsAnalytics } from "./seeds/seedMetricsAnalytics";
+import { seedResourceOptimization } from "./seeds/seedResourceOptimization";
 
 // ---------------------------------
 // 1. DB Schema - Enhanced with ALL contexts, tenant aware
@@ -99,15 +115,57 @@ export interface AIOpsDB extends DBSchema {
   sync_queue: { key: string; value: any };
   notifications: { key: string; value: any };
   tenant_configs: { key: string; value: any };
+
+  // New Context-specific stores
+  // Realtime & Navigation
+  realtimeEvents: { key: string; value: any };
+  entityRelationships: { key: string; value: any };
+  navigationContexts: { key: string; value: any };
+  
+  // AI Insights
+  aiInsights: { key: string; value: any };
+  aiRecommendations: { key: string; value: any };
+  aiPredictions: { key: string; value: any };
+  aiScores: { key: string; value: any };
+  
+  // Business Impact
+  businessImpacts: { key: string; value: any };
+  slaStatuses: { key: string; value: any };
+  dependencyMaps: { key: string; value: any };
+  costImpacts: { key: string; value: any };
+  
+  // Collaboration
+  activeUsers: { key: string; value: any };
+  chatSessions: { key: string; value: any };
+  handoffs: { key: string; value: any };
+  approvals: { key: string; value: any };
+  teamActivity: { key: string; value: any };
+  assistanceRequests: { key: string; value: any };
+  
+  // Metrics Analytics
+  kpiMetrics: { key: string; value: any };
+  dashboards: { key: string; value: any };
+  analyticsReports: { key: string; value: any };
+  forecasts: { key: string; value: any };
+  anomalies: { key: string; value: any };
+  
+  // Resource Optimization
+  resourcePools: { key: string; value: any };
+  resourceAllocations: { key: string; value: any };
+  optimizationRecommendations: { key: string; value: any };
+  scalingPolicies: { key: string; value: any };
+  capacityForecasts: { key: string; value: any };
+  costOptimizations: { key: string; value: any };
 }
 
 // ---------------------------------
 // 2. Init DB - FULL TENANT AWARE
 // ---------------------------------
 export const initDB = () =>
-  openDB<AIOpsDB>("AIOpsDB", 2, {   // ⬅ bumped version to 2 to force upgrade
+  openDB<AIOpsDB>("AIOpsDB", 3, {   // ⬅ bumped version to 3 for new context stores
     upgrade(db) {
       const stores = [
+        // Original stores
         "incidents", "problems", "change_requests", "service_requests",
         "maintenance", "alerts", "metrics", "logs", "events", "traces",
         "value_streams", "business_services", "service_components", "assets",
@@ -116,7 +174,17 @@ export const initDB = () =>
         "automation_rules", "ai_agents", "audit_logs", "activity_timeline",
         "end_users", "on_call", "policy", "skills", "stakeholder_comms",
         "system_metrics", "teams", "users", "work_items", "work_notes",
-        "sync_queue", "notifications", "tenant_configs"
+        "sync_queue", "notifications", "tenant_configs",
+        
+        // New context stores
+        "realtimeEvents", "entityRelationships", "navigationContexts",
+        "aiInsights", "aiRecommendations", "aiPredictions", "aiScores",
+        "businessImpacts", "slaStatuses", "dependencyMaps", "costImpacts",
+        "activeUsers", "chatSessions", "handoffs", "approvals",
+        "teamActivity", "assistanceRequests",
+        "kpiMetrics", "dashboards", "analyticsReports", "forecasts", "anomalies",
+        "resourcePools", "resourceAllocations", "optimizationRecommendations",
+        "scalingPolicies", "capacityForecasts", "costOptimizations"
       ];
 
       for (const store of stores) {
@@ -172,6 +240,15 @@ export const seedAll = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   await seedUsers(tenantId, db);
   await seedWorkItems(tenantId, db);
   await seedWorkNotes(tenantId, db);
+
+  // Seed new context-specific data
+  await seedRealtimeEvents(tenantId, db);
+  await seedEntityRelationships(tenantId, db);
+  await seedAIInsights(tenantId, db);
+  await seedBusinessImpact(tenantId, db);
+  await seedCollaboration(tenantId, db);
+  await seedMetricsAnalytics(tenantId, db);
+  await seedResourceOptimization(tenantId, db);
 };
 
 // ---------------------------------
@@ -179,12 +256,12 @@ export const seedAll = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
 // ---------------------------------
 export const resetDB = async (tenantId?: string) => {
   const tenantsToReset = tenantId ? [tenantId] : DEMO_TENANTS;
+  const db = await initDB();
 
   for (const tenant of tenantsToReset) {
     console.log(`🧹 Resetting tenant: ${tenant}`);
 
     try {
-      const db = await initDB(tenant);
 
       for (const store of Array.from(db.objectStoreNames)) {
         const tx = db.transaction(store, "readwrite");
@@ -198,6 +275,42 @@ export const resetDB = async (tenantId?: string) => {
       throw error;
     }
   }
+};
+
+// Main seeding function
+export const seedIndexedDB = async (tenantId?: string, mode: "minimal" | "demo" = "demo") => {
+  const db = await initDB();
+  const tenantsToSeed = tenantId ? [tenantId] : DEMO_TENANTS;
+
+  console.log(`🌱 Seeding ${tenantsToSeed.length} tenant(s) in ${mode} mode...`);
+
+  for (const tenant of tenantsToSeed) {
+    console.log(`📦 Seeding tenant: ${tenant}`);
+    
+    try {
+      if (mode === "minimal") {
+        // Minimal seeding - just core entities
+        await seedIncidents(tenant, db);
+        await seedProblems(tenant, db);
+        await seedAlerts(tenant, db);
+        await seedBusinessServices(tenant, db);
+        await seedAssets(tenant, db);
+        await seedTeams(tenant, db);
+        await seedUsers(tenant, db);
+      } else {
+        // Full demo seeding
+        await seedAll(tenant, db);
+      }
+      
+      console.log(`✅ Tenant ${tenant} seeded successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to seed tenant ${tenant}:`, error);
+      throw error;
+    }
+  }
+
+  console.log("🎉 All tenants seeded successfully!");
+  return db;
 };
 
 export const reseedDB = async (tenantId?: string, mode: "minimal" | "demo" = "demo") => {
