@@ -166,7 +166,7 @@ export const seedWorkItems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
   // Insert work items with proper error handling
   for (const workItem of workItems) {
     try {
-      await db.put("workItem", workItem);
+      await db.put("work_items", workItem);
 
       // Create COMPLETE audit log entry
       await db.put("audit_logs", {
@@ -211,7 +211,7 @@ export const seedWorkItems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
         tenantId,
         timestamp: now,
         message: `Work item "${workItem.title}" created with ${workItem.priority} priority and assigned to ${workItem.assigned_team}`,
-        storeName: "workItem", // Required field for dbClient compatibility
+        storeName: "work_items", // Required field for dbClient compatibility
         recordId: workItem.id, // Required field for dbClient compatibility
         action: "create",
         userId: "system",
