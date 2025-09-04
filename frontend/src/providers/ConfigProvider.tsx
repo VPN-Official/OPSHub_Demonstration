@@ -1,4 +1,4 @@
-// src/providers/ConfigProvider.tsx - SIMPLIFIED without loadConfig.ts
+// src/providers/ConfigProvider.tsx - FIXED provider dependency waiting
 import React, {
   createContext,
   useContext,
@@ -37,36 +37,47 @@ interface ConfigContextType {
 
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
-// ---------------------------------
-// Provider - SIMPLIFIED  
-// ---------------------------------
+// ✅ CRITICAL FIX: ConfigProvider with proper dependency waiting
 export const ConfigProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId } = useTenant();
+  const { tenantId, isInitialized, isLoading: tenantLoading } = useTenant(); // ✅ Get all tenant state
   
   const [config, setConfig] = useState<AIOpsConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // Load config when tenant changes
+  // ✅ CRITICAL FIX: Only load config when tenant is fully initialized
   useEffect(() => {
-    if (tenantId) {
+    if (tenantId && isInitialized && !tenantLoading) {
       loadConfigForTenant(tenantId);
-    } else {
+    } else if (!tenantId) {
       // Clear config when no tenant selected
       setConfig(null);
       setError(null);
       setLastUpdated(null);
     }
-  }, [tenantId]);
+    // ✅ Reset loading state when tenant changes
+    if (!isInitialized && tenantId) {
+      setIsLoading(true);
+      setError(null);
+    }
+  }, [tenantId, isInitialized, tenantLoading]); // ✅ Watch all tenant dependencies
 
-  // INLINE config loading - no separate file needed
   const loadConfigForTenant = useCallback(async (tenantId: string) => {
+    // ✅ Double-check tenant is ready before loading
+    if (!tenantId || tenantLoading) {
+      console.log("ConfigProvider: Skipping config load - tenant not ready");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log(`Loading config for tenant: ${tenantId}`);
+      console.log(`ConfigProvider: Loading config for tenant: ${tenantId}`);
+      
+      // ✅ Small delay to ensure tenant DB is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Use default config directly - no complex loading needed for MVP
       const baseConfig = defaultConfigData as AIOpsConfig;
@@ -79,30 +90,30 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
       setConfig(baseConfig);
       setLastUpdated(new Date().toISOString());
       
-      console.log("Config loaded successfully:", {
+      console.log("ConfigProvider: Config loaded successfully:", {
         tenant: tenantId,
         sections: Object.keys(baseConfig),
       });
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load configuration';
-      console.error(`Config loading error for tenant ${tenantId}:`, errorMessage);
+      console.error(`ConfigProvider: Config loading error for tenant ${tenantId}:`, errorMessage);
       setError(errorMessage);
       setConfig(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [tenantLoading]);
 
   const refreshConfig = useCallback(async () => {
-    if (!tenantId) {
-      console.warn("Cannot refresh config: no tenant selected");
+    if (!tenantId || !isInitialized) {
+      console.warn("ConfigProvider: Cannot refresh config - tenant not ready");
       return;
     }
     await loadConfigForTenant(tenantId);
-  }, [tenantId, loadConfigForTenant]);
+  }, [tenantId, isInitialized, loadConfigForTenant]);
 
-  // Validation helper
+  // ✅ Validation helper with safety checks
   const validateEnum = useCallback((section: ConfigSection, value: string): boolean => {
     if (!config || !value) return false;
     
@@ -119,7 +130,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     return false;
   }, [config]);
 
-  // Get enum options
+  // ✅ Get enum options with safety checks
   const getEnumOptions = useCallback((section: ConfigSection): string[] => {
     if (!config) return [];
     
@@ -136,7 +147,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     return [];
   }, [config]);
 
-  // Get enum label
+  // ✅ Get enum label with safety checks
   const getEnumLabel = useCallback((section: ConfigSection, value: string): string | null => {
     if (!config || !value) return null;
     
@@ -147,100 +158,88 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
       return sectionData.includes(value) ? value : null;
     } else if (typeof sectionData === 'object') {
       const item = sectionData[value];
-      if (!item) return null;
-      
-      // Check if it's an object with a label property
-      if (typeof item === 'object' && 'label' in item) {
-        return item.label;
-      }
-      
-      return value;
+      return typeof item === 'object' && 'label' in item ? item.label : value;
     }
     
     return null;
   }, [config]);
 
-  // Get enum color
+  // ✅ Get enum color with safety checks
   const getEnumColor = useCallback((section: ConfigSection, value: string): string | null => {
     if (!config || !value) return null;
     
     const sectionData = config[section];
-    if (!sectionData || typeof sectionData !== 'object' || Array.isArray(sectionData)) {
-      return null;
-    }
+    if (!sectionData || Array.isArray(sectionData)) return null;
     
-    const item = sectionData[value];
-    if (typeof item === 'object' && 'color' in item) {
-      return item.color;
+    if (typeof sectionData === 'object') {
+      const item = sectionData[value];
+      return typeof item === 'object' && 'color' in item ? item.color : null;
     }
     
     return null;
   }, [config]);
 
-  // Get SLA target
+  // ✅ Get SLA target with safety checks
   const getSLATarget = useCallback((entityType: string, priority: string): number | null => {
-    if (!config?.priorities || !priority) return null;
+    if (!config || !config.priorities || !config.priorities[priority]) return null;
     
     const priorityConfig = config.priorities[priority];
-    if (typeof priorityConfig === 'object' && 'sla_minutes' in priorityConfig) {
-      return priorityConfig.sla_minutes;
-    }
-    
-    return null;
+    return priorityConfig?.sla_minutes || null;
   }, [config]);
 
-  // Convenience getters
-  const statuses = config?.statuses || null;
-  const priorities = config?.priorities || null;
-  const severities = config?.severities || null;
-  const tiers = config?.tiers || null;
-  const slas = config?.slas || null;
-  const kpis = config?.kpis || null;
+  // ✅ Memoized context value with proper dependency tracking
+  const contextValue: ConfigContextType = {
+    config,
+    isLoading,
+    error,
+    lastUpdated,
+    statuses: config?.statuses || null,
+    priorities: config?.priorities || null,
+    severities: config?.severities || null,
+    tiers: config?.tiers || null,
+    slas: config?.slas || null,
+    kpis: config?.kpis || null,
+    refreshConfig,
+    validateEnum,
+    getEnumOptions,
+    getEnumLabel,
+    getEnumColor,
+    getSLATarget,
+  };
 
   return (
-    <ConfigContext.Provider
-      value={{
-        config,
-        isLoading,
-        error,
-        lastUpdated,
-        statuses,
-        priorities,
-        severities,
-        tiers,
-        slas,
-        kpis,
-        refreshConfig,
-        validateEnum,
-        getEnumOptions,
-        getEnumLabel,
-        getEnumColor,
-        getSLATarget,
-      }}
-    >
+    <ConfigContext.Provider value={contextValue}>
       {children}
     </ConfigContext.Provider>
   );
 };
 
-// ---------------------------------
-// Hooks
-// ---------------------------------
 export const useConfig = () => {
-  const ctx = useContext(ConfigContext);
-  if (!ctx) {
-    throw new Error("useConfig must be used within ConfigProvider");
+  const context = useContext(ConfigContext);
+  if (!context) {
+    throw new Error('useConfig must be used within ConfigProvider');
   }
-  return ctx;
+  return context;
 };
 
-// Convenience hooks
-export const useStatuses = () => {
-  const { statuses } = useConfig();
-  return statuses;
+// ✅ Enhanced hooks with safety checks
+export const useConfigWithValidation = () => {
+  const { config, isLoading, error } = useConfig();
+  
+  return {
+    isReady: !isLoading && !error && !!config,
+    config,
+    isLoading,
+    error,
+  };
 };
 
-export const usePriorities = () => {
-  const { priorities } = useConfig();
-  return priorities;
+export const useValidatedEnum = (section: ConfigSection) => {
+  const { validateEnum, getEnumOptions, isLoading } = useConfig();
+  
+  return {
+    validate: validateEnum,
+    options: getEnumOptions(section),
+    isReady: !isLoading,
+  };
 };

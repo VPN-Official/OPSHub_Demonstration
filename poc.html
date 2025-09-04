@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google AV OpsHub — NYC</title>
+  <!-- Viz & Calendar -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b0c0f; --panel:#111317; --ink:#e7e9ee; --muted:#9aa3ad; --border:#1f232a; --info:#7aa2ff;
+      --success:#22c55e; --warning:#f59e0b; --error:#ef4444;
+    }
+    [data-theme="light"]{ --bg:#f7f7f8; --panel:#ffffff; --ink:#101318; --muted:#66707a; --border:#e5e7eb; --info:#2563eb; }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    a{color:var(--info);text-decoration:none}
+    .shell{display:grid;grid-template-columns:260px 1fr;grid-template-rows:56px 1fr;grid-template-areas:"topbar topbar" "sidebar main";height:100vh}
+    .topbar{grid-area:topbar;display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:50}
+    .sidebar{grid-area:sidebar;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--panel)}
+    .main{grid-area:main;overflow:auto}
+    .brand{padding:12px 14px;border-bottom:1px solid var(--border);font-weight:800}
+    .nav{display:flex;flex-direction:column;padding:8px}
+    .nav a{padding:10px;border-radius:12px;color:inherit;border:1px solid transparent}
+    .nav a.active{outline:2px solid var(--info)} .nav a:hover{border-color:var(--border)}
+    .btn{appearance:none;border:1px solid var(--border);background:transparent;color:var(--ink);padding:8px 10px;border-radius:10px;font-weight:600;cursor:pointer}
+    .input,select{border:1px solid var(--border);background:transparent;color:var(--ink);padding:8px 10px;border-radius:10px}
+    .page{padding:16px}
+    .grid{display:grid;gap:12px} .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))} .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))} .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:12px}
+    .kpi{display:flex;align-items:baseline;justify-content:space-between} .kpi strong{font-size:28px} .kpi small{color:var(--muted)}
+    .bar{height:10px;border-radius:6px;background:var(--border);overflow:hidden} .bar>i{display:block;height:100%}
+    .pill{display:inline-block;padding:3px 8px;border-radius:999px;border:1px solid var(--border)}
+    .pill.error{border-color:var(--error);color:var(--error)} .pill.success{border-color:var(--success);color:var(--success)} .pill.warning{border-color:var(--warning);color:var(--warning)}
+    .tablewrap{overflow:auto;border:1px solid var(--border);border-radius:14px;background:var(--panel)} table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
+    .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+    .pagination{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
+    .toastwrap{position:fixed;right:12px;bottom:12px;display:flex;flex-direction:column;gap:8px;z-index:100}
+    .toast{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--info);padding:10px;border-radius:12px;min-width:240px}
+    .drawer{position:fixed;right:0;top:56px;bottom:0;width:420px;max-width:90vw;background:var(--panel);border-left:1px solid var(--border);transform:translateX(100%);transition:transform .2s;z-index:70;display:flex;flex-direction:column}
+    .drawer.open{transform:none} .drawer header{padding:12px;border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;align-items:center}
+    .drawer .body{padding:12px;overflow:auto}
+    .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:10px}
+    .tab{padding:8px 10px;border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;background:var(--panel);cursor:pointer}
+    .tab.active{outline:2px solid var(--info)}
+    @media (max-width: 960px){
+      .shell{grid-template-columns:1fr;grid-template-areas:"topbar" "main"}
+      .sidebar{position:fixed;left:0;top:56px;bottom:0;transform:translateX(-100%);transition:transform .2s;z-index:60;width:78%;max-width:320px}
+      .sidebar.open{transform:translateX(0)}
+      .grid.cols-4{grid-template-columns:1fr 1fr}
+      .grid.cols-3{grid-template-columns:1fr 1fr}
+      .grid.cols-2{grid-template-columns:1fr}
+      .tablewrap{display:none}
+      .cards{display:grid;gap:10px}
+      .work-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
+      .work-card .row{display:flex;justify-content:space-between;margin:6px 0}
+      .pagination{justify-content:center}
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="app">
+    <div class="topbar">
+      <button class="btn" id="hamburger">Menu</button>
+      <strong>Google AV OpsHub — NYC</strong>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select id="roleSel" class="input" title="Role">
+          <option value="engineer">Engineer</option>
+          <option value="dispatcher">Dispatcher</option>
+          <option value="manager">Manager</option>
+          <option value="sre">Reliability</option>
+          <option value="sme">SME</option>
+          <option value="automation">Automation Eng</option>
+        </select>
+        <button class="btn" id="themeToggle">Theme</button>
+        <button class="btn" id="notifBtn">Notifications <span class="pill" id="notifBadge">0</span></button>
+      </div>
+    </div>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">One Hub for AV</div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+
+  <!-- Chat & Notifications Drawers -->
+  <aside class="drawer" id="chatDrawer" aria-label="Chat">
+    <header>Work Item Chat <button class="btn" id="chatClose">Close</button></header>
+    <div class="body">
+      <div id="chatFeed" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input id="chatInput" class="input" placeholder="Type a message" style="flex:1" />
+        <button class="btn" id="chatSend">Send</button>
+      </div>
+    </div>
+  </aside>
+  <aside class="drawer" id="notifDrawer" aria-label="Notifications">
+    <header>Notifications <button class="btn" id="notifClose">Close</button></header>
+    <div class="body">
+      <div class="tabs">
+        <button class="tab active" data-notif-filter="all">All</button>
+        <button class="tab" data-notif-filter="active">Active</button>
+        <button class="tab" data-notif-filter="dismissed">Dismissed</button>
+      </div>
+      <div id="notifList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+        <button class="btn" id="dismissAll">Dismiss all</button>
+      </div>
+      <small class="muted">Items auto-expire in 48 hours.</small>
+    </div>
+  </aside>
+
+  <div class="toastwrap" id="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    /* 1) CONFIG */
+    const CONFIG = {
+      statuses: ["Open","In Progress","Waiting","Resolved","Closed"],
+      priorities: ["P0","P1","P2","P3"],
+      slas: { P0:{targetHours:4}, P1:{targetHours:8}, P2:{targetHours:24}, P3:{targetHours:72} },
+      kpis: {
+        core: [
+          {key:"roomsOffline", label:"Rooms Offline"},
+          {key:"vipOK", label:"VIP Rooms OK"},
+          {key:"activeP0P1", label:"Active Incidents (P0/P1)"},
+          {key:"slaBreaches", label:"SLA Breaches"}
+        ]
+      }
+    };
+
+    /* 2) DATA — Google NY Office, AV Support */
+    const now = Date.now(); const DAYS = 86400000; const H = v=> v*3600000;
+    function tsAgo(days){return new Date(now - days*DAYS).toISOString()}
+
+    const DATA = {
+      tenants: [
+        {
+          id:"google-ny-av", name:"Google NY — AV Ops",
+          building:"111 8th Ave, New York",
+          businessServices:[
+            { id:"conf",   name:"Conference Rooms",  health:0.92, monthlyCost: 120000 },
+            { id:"techtalk",name:"Tech Talk Rooms",   health:0.86, monthlyCost: 65000 },
+            { id:"phone",  name:"Phone Rooms",       health:0.88, monthlyCost: 42000 },
+            { id:"kitchen",name:"Kitchens",          health:0.95, monthlyCost: 15000 },
+            { id:"vip",    name:"VIP Rooms",         health:0.81, monthlyCost: 80000 }
+          ],
+          rooms:[
+            { id:"R-23C", name:"23C — Hudson", type:"conf", capacity:10, devices:["Series One Bar","Logitech Tap","LG 86''","Shure MXA910"] },
+            { id:"R-23D", name:"23D — High Line", type:"conf", capacity:8, devices:["Series One Bar","Crestron DM NVX","NEC 75''","Shure MXA710"] },
+            { id:"R-BRD1", name:"Broadway — Tech Talk A", type:"techtalk", capacity:120, devices:["LED Wall 4K","QSC Core DSP","Sony PTZ","Shure ULX-D","Crestron Touch 10"] },
+            { id:"R-BRD2", name:"Broadway — Tech Talk B", type:"techtalk", capacity:80, devices:["Projector 10k","QSC Core DSP","Panasonic PTZ","Shure ULX-D"] },
+            { id:"R-PH-12", name:"Phone Room 12", type:"phone", capacity:1, devices:["Meet Compute","Jabra PanaCast","Dell 27''"] },
+            { id:"R-PH-18", name:"Phone Room 18", type:"phone", capacity:1, devices:["Meet Compute","Logitech Rally","HP 24''"] },
+            { id:"R-KIT-4", name:"Kitchen 4", type:"kitchen", capacity:20, devices:["Digital Signage","Chromecast" ] },
+            { id:"R-VIP-1", name:"VIP — Chelsea Boardroom", type:"vip", capacity:20, devices:["LED Wall 1.2mm","Biamp Tesira","Sony SRG-X120","Crestron CP4","Series One Kit"] }
+          ],
+          agents:[
+            { id:"triage", name:"AV Triage CoPilot", description:"Ranks, deduplicates, suggests next actions across Meet hardware, DSPs, PTZs.", training:["Correlate room heartbeat failures","Use firmware drift rules","Calendar sync heuristics"]}
+          ],
+          knowledge:[
+            { id:"k1", title:"SOP: Meet Hardware Reboot", tags:["meet","series-one"], lastUpdated: tsAgo(6), body:"Checklist: capture logs → reboot compute → validate peripherals → run test call."},
+            { id:"k2", title:"Guide: PTZ Camera Drift", tags:["ptz","sony"], lastUpdated: tsAgo(14), body:"Reset presets 1–3; recalibrate via VISCA; store home."},
+            { id:"k3", title:"Playbook: DSP Echo", tags:["qsc","biamp"], lastUpdated: tsAgo(3), body:"Run acoustic echo cancellation diagnostics; reduce gain; reprofile room."}
+          ],
+          automations:[
+            { id:"a1", name:"Reboot Meet Compute", category:"Meet HW", usageCount: 138, lastRun: tsAgo(0.1), run:(ctx)=>simulateRun(ctx, 1000) },
+            { id:"a2", name:"Resync Calendar (Room)", category:"Calendar", usageCount: 54, lastRun: tsAgo(1), run:(ctx)=>simulateRun(ctx, 800) },
+            { id:"a3", name:"Recalibrate Microphones", category:"Audio DSP", usageCount: 22, lastRun: tsAgo(2), run:(ctx)=>simulateRun(ctx, 1800, true) },
+            { id:"a4", name:"Reset Touch Panel", category:"Control", usageCount: 61, lastRun: tsAgo(0.5), run:(ctx)=>simulateRun(ctx, 900) },
+            { id:"a5", name:"Update Firmware (PTZ)", category:"Camera", usageCount: 17, lastRun: tsAgo(5), run:(ctx)=>simulateRun(ctx, 2500, true) }
+          ],
+          nudges:[
+            { id:"n1", title:"Stage firmware to off-hours", detail:"Shift PTZ updates to 02:00–04:00 to cut live-room impact by 32%" },
+            { id:"n2", title:"Spare Kits Stocking", detail:"Add 2 Series One spare bars on 23rd floor to reduce MTTR by 1.4h" }
+          ],
+          schedule:{
+            shifts:[
+              { id:"s1", user:"Ava", start: tsAgo(0), end: tsAgo(-1) },
+              { id:"s2", user:"Noah", start: tsAgo(-1), end: tsAgo(-2) },
+              { id:"s3", user:"Maya", start: tsAgo(-2), end: tsAgo(-3) }
+            ],
+            changes:[
+              { id:"c1", title:"LED Wall Firmware", room:"R-BRD1", start: tsAgo(-3), end: tsAgo(-3) },
+              { id:"c2", title:"DSP Profile Refresh", room:"R-VIP-1", start: tsAgo(-1), end: tsAgo(-1) }
+            ],
+            maintenances:[
+              { id:"m1", title:"Meet HW Patch", room:"R-23C", start: tsAgo(-6), end: tsAgo(-6) }
+            ]
+          },
+          users:[
+            { id:"u1", name:"Ava", team:"av-noc" }, { id:"u2", name:"Noah", team:"field" }, { id:"u3", name:"Maya", team:"field" }, { id:"u4", name:"Leo", team:"av-noc" }
+          ],
+          workItems: (()=>{
+            const out=[]; const rooms=["R-23C","R-23D","R-BRD1","R-BRD2","R-PH-12","R-PH-18","R-KIT-4","R-VIP-1"];
+            const types=["Incident","Request","Change","Maintenance"]; const owners=["Ava","Noah","Maya","Leo"];
+            const svc=["conf","techtalk","phone","kitchen","vip"]; let id=1;
+            const titles=[
+              "Series One camera offline","No audio from ceiling mics","Touch panel unresponsive","LED wall not syncing","Projector lamp warning",
+              "Room calendar out of sync","Echo reported by participants","Chromecast signage frozen","PTZ presets lost",
+              "VIP room — HDMI input dead","Network jitter detected","Meet compute overheating"
+            ];
+            for(let i=0;i<42;i++){
+              const type = types[i%types.length]; const room = rooms[i%rooms.length]; const pri = ["P0","P1","P2"][i%3];
+              const status = CONFIG.statuses[i%CONFIG.statuses.length]; const assignee = owners[i%owners.length];
+              const created = new Date(now - (i*6+2)*3600*1000); const dueHrs = CONFIG.slas[pri].targetHours; const due = new Date(created.getTime()+dueHrs*3600*1000);
+              const service = svc[i%svc.length]; const score = Math.max(10, Math.min(99, 70 + (pri==='P0'?20:pri==='P1'?8:0) + (service==='vip'?8:0) - i%9));
+              out.push({ id:`AV-${1000+id++}`, type, priority:pri, status, title:`${titles[i%titles.length]} (${room})`,
+                businessService:service, room, assignedTo:assignee, group:(assignee==="Ava"||assignee==="Leo"?"av-noc":"field"),
+                createdAt: created.toISOString(), dueAt: due.toISOString(), tenant:"google-ny-av",
+                smart:{score, why:[ pri==='P0'?"P0: user-impacting":null, service==='vip'?"VIP room":null, /calendar/i.test(titles[i%titles.length])?"Calendar desync":null ].filter(Boolean)},
+                insights:{ recommendations:["Collect Meet logs","Run device reboot","Validate DSP profile"], nudges:["Apply a1","Apply a2"], knowledge:["k1","k3"], automations:["a1","a4"] },
+                logs:{ activity:[{at: tsAgo(i/3), by:"system", text:"Ticket created via monitoring"}], system:[{at: tsAgo(i/3), level:"info", text:"Signals correlated: 4"}], comms:[{at: tsAgo(i/4), by:"Ava", text:"Investigating"}] }
+              });
+            }
+            return out;
+          })()
+        }
+      ]
+    };
+
+    /* 3) STATE */
+    const State = {
+      route: location.hash.slice(1) || "",
+      role: localStorage.getItem("role") || "engineer",
+      tenant: localStorage.getItem("tenant") || DATA.tenants[0].id,
+      theme: localStorage.getItem("theme") || "light",
+      notifications: loadNotifications(), chatFor: null
+    };
+    function loadNotifications(){ try{ const s=JSON.parse(localStorage.getItem("notifications")||"[]"); const keep=s.filter(n=> Date.now()-new Date(n.at).getTime() < 48*3600*1000); if(keep.length!==s.length) localStorage.setItem("notifications", JSON.stringify(keep)); return keep; }catch{ return [] } }
+    function saveNotifications(){ localStorage.setItem("notifications", JSON.stringify(State.notifications)); }
+
+    /* 4) NAV/ROUTER */
+    const NAV_ITEMS=[ {key:"pulse",label:"Pulse"},{key:"smartqueue",label:"SmartQueue"},{key:"schedule",label:"Schedule"},{key:"intelligence",label:"Intelligence"},{key:"notifications",label:"Notifications"} ];
+    function roleDefaultRoute(role){ switch(role){ case"engineer":return"smartqueue?filter=my"; case"dispatcher":return"smartqueue?filter=team"; case"manager":return"pulse"; case"sre":return"smartqueue?filter=all"; case"sme":return"intelligence#knowledge"; case"automation":return"intelligence#automations"; default:return"pulse"; } }
+    function setRoute(r){ location.hash = r.startsWith('#')? r : '#'+r; }
+    function tenant(){ return DATA.tenants.find(t=>t.id===State.tenant); }
+
+    function initNav(){ const nav=document.getElementById('nav'); nav.innerHTML = NAV_ITEMS.map(i=>`<a href="#${i.key}" data-key="${i.key}">${i.label}</a>`).join(""); }
+    function highlightNav(){ const key=(State.route.split('?')[0]||'').split('/')[0]; document.querySelectorAll('.nav a').forEach(n=> n.classList.toggle('active', n.getAttribute('data-key')===key)); }
+    window.addEventListener('hashchange', ()=>{ State.route=location.hash.slice(1); render(); });
+
+    /* 5) UTILS */
+    function fmt(n){ return new Intl.NumberFormat().format(n); }
+    function untilHours(a){ return Math.round((new Date(a)-new Date())/3600000); }
+    function classByStatus(s){ if(["Open","In Progress"].includes(s)) return "warning"; if(["Resolved","Closed"].includes(s)) return "success"; return ""; }
+    function slaState(item){ const left=untilHours(item.dueAt); if(left<0) return {label:`Breach ${Math.abs(left)}h`, cls:"error"}; if(left<=2) return {label:`Due ${left}h`, cls:"warning"}; return {label:`${left}h left`, cls:"success"}; }
+    function toast(kind, msg){ const tw=document.getElementById('toasts'); const el=document.createElement('div'); el.className=`toast ${kind||''}`; el.textContent=msg; tw.appendChild(el); setTimeout(()=>{el.remove()}, 3500); }
+    function openModal(title, contentHTML, onOK){ /* omitted for brevity in this demo */ }
+    function openDrawer(id, open=true){ document.getElementById(id).classList.toggle('open', open); }
+    function updateNotifBadge(){ const active=State.notifications.filter(n=>!n.dismissed).length; document.getElementById('notifBadge').textContent=active; }
+    function addNotification(type, title, detail){ const n={id:Math.random().toString(36).slice(2), type, title, detail, at:new Date().toISOString(), dismissed:false}; State.notifications.unshift(n); saveNotifications(); updateNotifBadge(); }
+    function simulateRun(ctx, ms=1000, mayFail=false){ return new Promise((res,rej)=> setTimeout(()=>{ const fail=mayFail && Math.random()<0.25; fail? rej(new Error('fail')):res({ok:true}); }, ms)); }
+
+    /* 6) PAGES */
+    function pagePulse(){
+      const t=tenant();
+      const items=t.workItems; const p01=items.filter(w=> (w.priority==='P0'||w.priority==='P1') && !['Resolved','Closed'].includes(w.status)).length;
+      const breaches=items.filter(w=> untilHours(w.dueAt)<0 && !['Resolved','Closed'].includes(w.status)).length;
+      const vipRooms=t.rooms.filter(r=>r.type==='vip').map(r=>r.id); const vipActive=items.filter(w=> vipRooms.includes(w.room) && !['Resolved','Closed'].includes(w.status)).length;
+      const offlineRooms=new Set(items.filter(w=>/offline|unresponsive|not syncing/i.test(w.title) && !['Resolved','Closed'].includes(w.status)).map(w=>w.room));
+
+      const page=document.createElement('div'); page.className='page';
+      page.innerHTML=`
+        <h2>PULSE — ${t.name}</h2>
+        <div class="grid cols-4">
+          <div class="card kpi"><h3>Rooms Offline</h3><strong class="pill ${offlineRooms.size? 'error':''}">${offlineRooms.size}</strong></div>
+          <div class="card kpi"><h3>VIP Rooms OK</h3><strong class="pill ${vipActive? 'warning':'success'}">${vipActive? 'Issues':'All Good'}</strong></div>
+          <div class="card kpi"><h3>Active Incidents (P0/P1)</h3><strong>${p01}</strong></div>
+          <div class="card kpi"><h3>SLA Breaches</h3><strong class="pill ${breaches? 'error':''}">${breaches}</strong></div>
+        </div>
+        <div class="grid cols-2" style="margin-top:12px">
+          <div class="card"><h3>Service Health</h3><div id="ech_health" style="height:240px"></div></div>
+          <div class="card"><h3>Room Utilization (14d)</h3><div id="ech_util" style="height:240px"></div></div>
+        </div>
+        <div class="grid cols-3" style="margin-top:12px">
+          <div class="card"><h3>Automation Runs by Category</h3><div id="ech_auto" style="height:220px"></div></div>
+          <div class="card"><h3>Queue Mix by Type</h3><div id="ech_queue" style="height:220px"></div></div>
+          <div class="card"><h3>Knowledge Freshness</h3><div id="ech_kn" style="height:220px"></div></div>
+        </div>`;
+
+      setTimeout(()=> renderPulseCharts(t), 0);
+      return page;
+    }
+
+    function renderPulseCharts(t){ if(!echarts?.init) return; const DAYS=86400000;
+      // Service Health
+      const chartH=echarts.init(document.getElementById('ech_health'));
+      chartH.setOption({ grid:{left:90,right:20,top:20,bottom:20}, xAxis:{type:'value',max:100,axisLabel:{formatter:'{value}%'}}, yAxis:{type:'category',data:t.businessServices.map(s=>s.name)}, series:[{type:'bar',data:t.businessServices.map(s=>Math.round(s.health*100))}]});
+      // Utilization trend
+      const util=echarts.init(document.getElementById('ech_util'));
+      const days=[...Array(14)].map((_,i)=>{const d=new Date(Date.now()-(13-i)*DAYS); return `${d.getMonth()+1}/${d.getDate()}`});
+      util.setOption({ xAxis:{type:'category',data:days}, yAxis:{type:'value',name:'%'}, series:[{type:'line',smooth:true,data:days.map((_,i)=> 55+Math.round(Math.sin(i/2)*15)+Math.round(Math.random()*6))}]});
+      // Automation usage
+      const cats={}; t.automations.forEach(a=> cats[a.category]=(cats[a.category]||0)+a.usageCount);
+      const auto=echarts.init(document.getElementById('ech_auto'));
+      auto.setOption({ xAxis:{type:'category',data:Object.keys(cats)}, yAxis:{type:'value'}, series:[{type:'bar',data:Object.values(cats)}]});
+      // Queue mix
+      const byType={}; t.workItems.forEach(w=> byType[w.type]=(byType[w.type]||0)+1);
+      const q=echarts.init(document.getElementById('ech_queue')); q.setOption({ series:[{type:'pie',radius:['45%','70%'],data:Object.entries(byType).map(([k,v])=>({name:k,value:v}))}]});
+      // Knowledge freshness
+      const k=echarts.init(document.getElementById('ech_kn')); k.setOption({ xAxis:{type:'category',data:t.knowledge.map(x=>x.title)}, yAxis:{type:'value',name:'days'}, series:[{type:'bar',data:t.knowledge.map(x=> Math.round((Date.now()-Date.parse(x.lastUpdated))/DAYS))}]});
+    }
+
+    function pageSmartQueue(params){
+      const t=tenant(); const me='Ava'; let scope=params.get('filter')|| (State.role==='engineer'? 'my' : State.role==='dispatcher'? 'team':'all');
+      let list=t.workItems.slice(); if(scope==='my') list=list.filter(w=>w.assignedTo===me); else if(scope==='team') list=list.filter(w=> w.group===(t.users.find(u=>u.name===me)?.team||'av-noc'));
+      let currentPage=1; const pageSize=10;
+      const wrap=document.createElement('div'); wrap.className='page';
+      wrap.innerHTML=`<h2>SmartQueue</h2>
+        <div class="filters">
+          <select id="fScope" class="input"><option value="my" ${scope==='my'?'selected':''}>Assigned to me</option><option value="team" ${scope==='team'?'selected':''}>My group</option><option value="all" ${scope==='all'?'selected':''}>All</option></select>
+          <select id="fType" class="input"><option value="">Type</option><option>Incident</option><option>Request</option><option>Change</option><option>Maintenance</option></select>
+          <select id="fStatus" class="input"><option value="">Status</option>${CONFIG.statuses.map(s=>`<option>${s}</option>`).join('')}</select>
+          <select id="fSvc" class="input"><option value="">Room Type</option>${tenant().businessServices.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+          <input id="fSearch" class="input" placeholder="Search title or ID" style="flex:1;min-width:160px" />
+        </div>
+        <div class="tablewrap"><table><thead><tr><th>Score</th><th>Type</th><th>ID</th><th>Title</th><th>Priority</th><th>Status</th><th>SLA</th><th>Room Type</th><th>Owner</th><th>Actions</th></tr></thead><tbody id="tbody"></tbody></table></div>
+        <div class="cards" id="cards"></div>
+        <div class="pagination"><button class="btn" id="prev">Prev</button><span id="pageInfo"></span><button class="btn" id="next">Next</button></div>`;
+
+      function applyFilters(){
+        const fType=wrap.querySelector('#fType').value; const fStatus=wrap.querySelector('#fStatus').value; const fSvc=wrap.querySelector('#fSvc').value; const fSearch=wrap.querySelector('#fSearch').value.toLowerCase();
+        let rows=list.slice(); if(fType) rows=rows.filter(r=>r.type===fType); if(fStatus) rows=rows.filter(r=>r.status===fStatus); if(fSvc) rows=rows.filter(r=>r.businessService===fSvc); if(fSearch) rows=rows.filter(r=> r.title.toLowerCase().includes(fSearch)||r.id.toLowerCase().includes(fSearch));
+        rows.sort((a,b)=> b.smart.score-a.smart.score); currentPage=1; renderRows(rows);
+      }
+      function slaBadge(r){ const left=untilHours(r.dueAt); if(left<0) return `<span class="pill error">Breach ${Math.abs(left)}h</span>`; if(left<=2) return `<span class="pill warning">Due ${left}h</span>`; return `<span class="pill success">${left}h left</span>`; }
+      function renderRows(rows){
+        const total=rows.length, pages=Math.max(1, Math.ceil(total/pageSize)); if(currentPage>pages) currentPage=pages; const start=(currentPage-1)*pageSize; const pageRows=rows.slice(start,start+pageSize);
+        const tb=wrap.querySelector('#tbody');
+        tb.innerHTML = pageRows.length? pageRows.map(r=> `<tr>
+            <td><button class="btn" title="${r.smart.why.join('\n')}">${r.smart.score}</button></td>
+            <td>${r.type}</td><td><a class="link" href="#workitem/${r.id}">${r.id}</a></td><td>${r.title}</td>
+            <td class="pill ${r.priority==='P0'?'error':r.priority==='P1'?'warning':''}">${r.priority}</td>
+            <td><span class="pill ${classByStatus(r.status)}">${r.status}</span></td>
+            <td>${slaBadge(r)}</td>
+            <td>${tenant().businessServices.find(s=>s.id===r.businessService)?.name||r.businessService}</td>
+            <td>${r.assignedTo}</td>
+            <td>
+              <button class="btn" data-action="assign" data-id="${r.id}">Reassign</button>
+              <button class="btn" data-action="run" data-id="${r.id}">Automation</button>
+              <button class="btn" data-action="chat" data-id="${r.id}">Chat</button>
+            </td>
+          </tr>`).join('') : `<tr><td colspan="10" style="text-align:center;color:var(--muted)">No items match your filters.</td></tr>`;
+        // mobile cards
+        const cards=wrap.querySelector('#cards');
+        cards.innerHTML = pageRows.length? pageRows.map(r=> {
+            const sla=slaState(r); const svc=tenant().businessServices.find(s=>s.id===r.businessService)?.name;
+            return `<div class="work-card" data-open="${r.id}">
+              <div class="row"><strong class="link" data-open-link="${r.id}">${r.title}</strong><span class="pill ${r.priority==='P0'?'error':r.priority==='P1'?'warning':''}">${r.priority}</span></div>
+              <div class="row"><span>${r.id} • ${r.type}</span><span class="pill ${classByStatus(r.status)}">${r.status}</span></div>
+              <div class="row"><span>${svc}</span><span class="pill ${sla.cls}">${sla.label}</span></div>
+              <div class="row"><span>Owner: ${r.assignedTo}</span><span>Score: ${r.smart.score}</span></div>
+              <div style="display:flex;gap:8px;margin-top:6px">
+                <button class="btn" data-action="assign" data-id="${r.id}">Reassign</button>
+                <button class="btn" data-action="run" data-id="${r.id}">Automation</button>
+                <button class="btn" data-action="chat" data-id="${r.id}">Chat</button>
+              </div>
+            </div>`
+          }).join('') : `<div class="card" style="text-align:center;color:var(--muted)">No items match your filters.</div>`;
+        // interactions
+        wrap.querySelectorAll('[data-action]').forEach(b=> b.onclick=onRowAction);
+        wrap.querySelectorAll('[data-open]').forEach(el=> el.onclick=(ev)=>{ if(ev.target.closest('[data-action]')) return; setRoute(`workitem/${el.getAttribute('data-open')}`); });
+        wrap.querySelectorAll('[data-open-link]').forEach(el=> el.onclick=(ev)=>{ ev.stopPropagation(); setRoute(`workitem/${el.getAttribute('data-open-link')}`); });
+        wrap.querySelector('#pageInfo').textContent=`Page ${currentPage} of ${pages}`;
+        wrap.querySelector('#prev').onclick=()=>{ if(currentPage>1){ currentPage--; renderRows(rows);} };
+        wrap.querySelector('#next').onclick=()=>{ if(currentPage<pages){ currentPage++; renderRows(rows);} };
+      }
+      function onRowAction(e){ const id=e.currentTarget.getAttribute('data-id'); const action=e.currentTarget.getAttribute('data-action'); const item=tenant().workItems.find(w=>w.id===id); if(action==='assign') toast('',`Reassign ${id}`); if(action==='run') openRun(item); if(action==='chat') openChat(item); }
+      function openRun(item){ const t=tenant(); const available=(item.insights.automations||[]).map(a=> t.automations.find(x=>x.id===a)).filter(Boolean); if(!available.length){ toast('','No automations');return;} const a=available[0]; a.run({item}).then(()=>{ a.usageCount++; a.lastRun=new Date().toISOString(); addNotification('success', `${a.name} completed`, item.id); render(); }).catch(()=>{ addNotification('error', `${a.name} failed`, item.id); render(); }); }
+      function openChat(item){ State.chatFor=item.id; document.getElementById('chatFeed').innerHTML=(item.logs.comms||[]).map(c=>`<div><strong>${c.by}</strong> <small style=\"color:var(--muted)\">${c.at}</small><div>${c.text}</div></div>`).join(''); openDrawer('chatDrawer', true); }
+      wrap.querySelector('#fScope').onchange=(e)=> setRoute(`smartqueue?filter=${e.target.value}`);
+      wrap.querySelectorAll('#fType,#fStatus,#fSvc,#fSearch').forEach(el=> el.oninput=applyFilters);
+      applyFilters(); return wrap;
+    }
+
+    function pageWorkItem(id){ const t=tenant(); const item=t.workItems.find(w=>w.id===id); if(!item){ const d=document.createElement('div'); d.className='page'; d.textContent='Not found'; return d; }
+      const meta=`<div class="card" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+          <div><small>Title</small><div><strong>${item.title}</strong></div></div>
+          <div><small>Room</small><div>${item.room}</div></div>
+          <div><small>Priority</small><div><span class="pill ${item.priority==='P0'?'error':item.priority==='P1'?'warning':''}">${item.priority}</span></div></div>
+          <div><small>Status</small><div><span class="pill ${classByStatus(item.status)}">${item.status}</span></div></div>
+          <div><small>SLA</small><div><span class="pill ${slaState(item).cls}">${slaState(item).label}</span></div></div>
+          <div><small>Type</small><div>${item.type}</div></div>
+        </div>`;
+      const actions=`<div class="card" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="wiAssign">Reassign</button><button class="btn" id="wiRun">Trigger Automation</button><button class="btn" id="wiChat">Chat</button></div>`;
+      const insights=`<div class="card"><h3>AI Insights</h3><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+            <div><small>Recommendations</small><ul>${(item.insights.recommendations||[]).map(x=>`<li>${x}</li>`).join('')}</ul></div>
+            <div><small>Nudges</small><ul>${(item.insights.nudges||[]).map(x=>`<li>${x}</li>`).join('')}</ul></div>
+            <div><small>Related Knowledge</small><ul>${(item.insights.knowledge||[]).map(k=>{const ko=tenant().knowledge.find(x=>x.id===k); return ko? `<li><a class="link" href="#knowledge/${ko.id}">${ko.title}</a></li>`:''; }).join('')}</ul></div>
+            <div><small>Suggested Automations</small><ul>${(item.insights.automations||[]).map(a=>{const ao=tenant().automations.find(x=>x.id===a); return ao? `<li><a class="link" href="#automation/${ao.id}">${ao.name}</a></li>`:''; }).join('')}</ul></div>
+          </div></div>`;
+      const tabs=`<div class="tabs"><button class="tab active" data-tab="activity">Activity Log</button><button class="tab" data-tab="system">System Logs</button><button class="tab" data-tab="comms">Communications</button></div><div id="tabContent" class="card"></div>`;
+      const trace=`<div class="card"><h3>Traceability</h3>
+          <div>Agents → ${tenant().agents.map(ag=>`<a class="link" href="#agent/${ag.id}">${ag.name}</a>`).join(' , ')}</div>
+          <div>Alerts → <a class="link" href="#notifications">View</a></div>
+        </div>`;
+      const page=document.createElement('div'); page.className='page';
+      page.innerHTML=`<h2><a class="link" href="#smartqueue">Back</a> · ${item.id}</h2>${meta}${actions}${insights}${tabs}${trace}`;
+      // tab renderers
+      function renderTab(which){ const el=page.querySelector('#tabContent'); if(which==='activity') el.innerHTML=(item.logs.activity||[]).map(l=>`<div><small style=\"color:var(--muted)\">${l.at}</small> – ${l.text}</div>`).join(''); if(which==='system') el.innerHTML=(item.logs.system||[]).map(l=>`<div><small style=\"color:var(--muted)\">${l.at}</small> – ${l.level.toUpperCase()} – ${l.text}</div>`).join(''); if(which==='comms') el.innerHTML=(item.logs.comms||[]).map(l=>`<div><strong>${l.by}</strong> <small style=\"color:var(--muted)\">${l.at}</small><div>${l.text}</div></div>`).join(''); }
+      renderTab('activity'); page.querySelectorAll('.tab').forEach(t=> t.onclick=()=>{ page.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderTab(t.getAttribute('data-tab')); });
+      // action handlers
+      page.querySelector('#wiAssign').onclick=()=>{ toast('', 'Reassign (demo)'); };
+      page.querySelector('#wiRun').onclick=()=>{ const t=tenant(); const available=(item.insights.automations||[]).map(a=> t.automations.find(x=>x.id===a)).filter(Boolean); const a=available[0]; if(!a) return toast('', 'No automation'); a.run({item}).then(()=>{ addNotification('success', `${a.name} completed`, item.id); render(); }).catch(()=> addNotification('error', `${a.name} failed`, item.id)); };
+      page.querySelector('#wiChat').onclick=()=>{ openDrawer('chatDrawer', true); State.chatFor=item.id; document.getElementById('chatFeed').innerHTML=(item.logs.comms||[]).map(c=>`<div><strong>${c.by}</strong> <small style=\"color:var(--muted)\">${c.at}</small><div>${c.text}</div></div>`).join(''); };
+      return page;
+    }
+
+    function pageAutomationDetail(id){ const t=tenant(); const a=t.automations.find(x=>x.id===id); const d=document.createElement('div'); d.className='page'; if(!a){ d.textContent='Automation not found'; return d; }
+      d.innerHTML=`<h2><a class='link' href='#intelligence'>Back</a> · ${a.name}</h2><div class='card'>
+        <div><small>Category</small><div>${a.category}</div></div>
+        <div><small>Usage</small><div>${a.usageCount}</div></div>
+        <div><small>Last Run</small><div>${a.lastRun}</div></div>
+        <div style='margin-top:8px'><button class='btn' id='runAuto'>Run Automation</button></div>
+        <div style='margin-top:8px'><div id='autoChart' style='height:200px'></div></div>
+      </div>`; setTimeout(()=>{ if(echarts?.init){ const c=echarts.init(d.querySelector('#autoChart')); const arr=[...Array(14)].map(()=> Math.round(Math.random()*6)); c.setOption({xAxis:{type:'category',data:arr.map((_,i)=>`D-${13-i}`)},yAxis:{type:'value',name:'runs'},series:[{type:'bar',data:arr}]}); } },0);
+      d.querySelector('#runAuto').onclick=async()=>{ try{ await a.run({}); toast('', `${a.name} completed`); addNotification('success', `${a.name} completed`);}catch{ toast('error', `${a.name} failed`); addNotification('error', `${a.name} failed`);} render(); };
+      return d; }
+
+    function pageKnowledgeDetail(id){ const t=tenant(); const k=t.knowledge.find(x=>x.id===id); const d=document.createElement('div'); d.className='page'; if(!k){ d.textContent='Article not found'; return d; }
+      d.innerHTML=`<h2><a class='link' href='#intelligence#knowledge'>Back</a> · ${k.title}</h2><div class='card'><div><small>Tags</small> ${k.tags.join(', ')}</div><div><small>Last Updated</small> ${k.lastUpdated}</div><details style='margin-top:8px'><summary>View steps</summary><div style='margin-top:6px'>${k.body}</div></details></div>`; return d; }
+
+    function pageAgentDetail(id){ const t=tenant(); const g=t.agents.find(x=>x.id===id); const d=document.createElement('div'); d.className='page'; if(!g){ d.textContent='Agent not found'; return d; }
+      d.innerHTML=`<h2><a class='link' href='#intelligence#agents'>Back</a> · ${g.name}</h2><div class='card'><div>${g.description}</div><div style='margin-top:8px'><small>Training</small><ul>${g.training.map(x=>`<li>${x}</li>`).join('')}</ul></div></div>`; return d; }
+
+    function renderNotifications(filter='all'){ const list=document.getElementById('notifList'); let rows=State.notifications.slice(); if(filter==='active') rows=rows.filter(n=>!n.dismissed); if(filter==='dismissed') rows=rows.filter(n=>n.dismissed); list.innerHTML= rows.map(n=>`<div class='card' style='display:flex;justify-content:space-between;gap:8px;align-items:center'><div><div><strong>${n.title}</strong> <small style='color:var(--muted)'>${n.at}</small></div><div>${n.detail||''}</div></div><div><span class='pill ${n.type==='error'?'error':n.type==='success'?'success':n.type==='warning'?'warning':''}'>${n.type}</span> <button class='btn' data-dismiss='${n.id}'>${n.dismissed? 'Undismiss':'Dismiss'}</button></div></div>`).join(''); list.querySelectorAll('[data-dismiss]').forEach(b=> b.onclick=()=>{ const n=State.notifications.find(x=>x.id===b.getAttribute('data-dismiss')); n.dismissed=!n.dismissed; saveNotifications(); updateNotifBadge(); renderNotifications(filter); }); }
+
+    function pageSchedule(){ const t=tenant(); const page=document.createElement('div'); page.className='page'; page.innerHTML=`<h2>Schedule</h2><div class='tabs'><button class='tab active' data-v='day'>Daily</button><button class='tab' data-v='week'>Weekly</button><button class='tab' data-v='month'>Monthly</button></div><div class='card'><div id='fc'></div></div>`; const fcTarget=page.querySelector('#fc'); const events=[]; t.schedule.shifts.forEach(s=> events.push({ title:`Shift • ${s.user}`, start:s.start, end:s.end })); t.schedule.changes.forEach(c=> events.push({ title:`Change • ${c.title}`, start:c.start, end:c.end })); t.schedule.maintenances.forEach(m=> events.push({ title:`Maintenance • ${m.title}`, start:m.start, end:m.end })); function renderFC(defaultView){ try{ if(!(window.FullCalendar && window.FullCalendar.Calendar)) throw new Error('FC missing'); fcTarget.innerHTML=''; const calendar=new FullCalendar.Calendar(fcTarget,{ initialView: defaultView==='day'?'timeGridDay': defaultView==='week'?'timeGridWeek':'dayGridMonth', height:600, nowIndicator:true, headerToolbar:{ left:'prev,next today', center:'title', right:'dayGridMonth,timeGridWeek,timeGridDay' }, events }); calendar.render(); }catch{ fcTarget.innerHTML='<div style="padding:8px;color:var(--muted)">Calendar unavailable.</div>'; } } page.querySelectorAll('.tab').forEach(tbtn=> tbtn.onclick=()=>{ page.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); tbtn.classList.add('active'); renderFC(tbtn.getAttribute('data-v')); }); renderFC('day'); return page; }
+
+    function pageIntelligence(){ const t=tenant(); const page=document.createElement('div'); page.className='page'; page.innerHTML=`<h2>Intelligence Center</h2><div class='tabs'><button class='tab active' data-tab='automations'>Automations</button><button class='tab' data-tab='agents'>Agents</button><button class='tab' data-tab='knowledge'>Knowledge</button><button class='tab' data-tab='nudges'>Nudges</button></div><div id='intel' class='card'></div>`; function renderTab(which){ const el=page.querySelector('#intel'); if(which==='automations'){ el.innerHTML=t.automations.map(a=>`<div style='display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:6px 0'><div><strong><a class='link' href='#automation/${a.id}'>${a.name}</a></strong><div><small>${a.category}</small></div></div><div>Used: ${a.usageCount} · <small>Last: ${a.lastRun}</small></div><div><button class='btn' data-run='${a.id}'>Run</button></div></div>`).join(''); el.querySelectorAll('[data-run]').forEach(b=> b.onclick=async()=>{ const a=t.automations.find(x=>x.id===b.getAttribute('data-run')); try{ await a.run({}); toast('', `${a.name} completed`); addNotification('success', `${a.name} completed`);}catch{ toast('error', `${a.name} failed`); addNotification('error', `${a.name} failed`);} render(); }); }
+        if(which==='agents'){ el.innerHTML=t.agents.map(g=>`<div style='border-top:1px solid var(--border);padding:6px 0'><div><strong><a class='link' href='#agent/${g.id}'>${g.name}</a></strong></div><div>${g.description}</div><div><small>Training:</small> <ul>${g.training.map(x=>`<li>${x}</li>`).join('')}</ul></div></div>`).join(''); }
+        if(which==='knowledge'){ el.innerHTML=t.knowledge.map(k=>`<div style='border-top:1px solid var(--border);padding:6px 0'><div><strong><a class='link' href='#knowledge/${k.id}'>${k.title}</a></strong> <small style='color:var(--muted)'>Updated ${k.lastUpdated}</small></div><div><small>Tags:</small> ${k.tags.join(', ')}</div></div>`).join(''); }
+        if(which==='nudges'){ el.innerHTML=t.nudges.map(n=>`<div style='display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:6px 0'><div><strong>${n.title}</strong><div>${n.detail}</div></div><div><button class='btn' data-apply='${n.id}'>Apply</button></div></div>`).join(''); el.querySelectorAll('[data-apply]').forEach(b=> b.onclick=()=>{ toast('success','Nudge applied'); addNotification('success','Nudge applied', b.getAttribute('data-apply')); }); }
+      }
+      page.querySelectorAll('.tab').forEach(t=> t.onclick=()=>{ page.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderTab(t.getAttribute('data-tab')); }); renderTab('automations'); return page; }
+
+    function pageNotifications(){ openDrawer('notifDrawer',true); const page=document.createElement('div'); page.className='page'; page.innerHTML='<h2>Notifications</h2><p>Drawer opened.</p>'; return page; }
+
+    /* 7) RENDER */
+    function render(){ document.documentElement.setAttribute('data-theme', State.theme); highlightNav(); updateNotifBadge(); const main=document.getElementById('main'); main.innerHTML=''; const [path,query]=State.route.split('?'); const params=new URLSearchParams(query||''); if(path?.startsWith('workitem/')) main.appendChild(pageWorkItem(path.split('/')[1])); else if(path==='smartqueue') main.appendChild(pageSmartQueue(params)); else if(path==='schedule') main.appendChild(pageSchedule()); else if(path==='intelligence') main.appendChild(pageIntelligence()); else if(path==='notifications') main.appendChild(pageNotifications()); else if(path?.startsWith('automation/')) main.appendChild(pageAutomationDetail(path.split('/')[1])); else if(path?.startsWith('knowledge/')) main.appendChild(pageKnowledgeDetail(path.split('/')[1])); else if(path?.startsWith('agent/')) main.appendChild(pageAgentDetail(path.split('/')[1])); else main.appendChild(pagePulse()); }
+
+    /* 8) INIT */
+    function init(){ initNav(); document.getElementById('themeToggle').onclick=()=>{ State.theme= State.theme==='light'? 'dark':'light'; localStorage.setItem('theme', State.theme); render(); };
+      document.getElementById('hamburger').onclick=()=>{ document.getElementById('sidebar').classList.toggle('open'); };
+      const roleSel=document.getElementById('roleSel'); roleSel.value=State.role; roleSel.onchange=()=>{ State.role=roleSel.value; localStorage.setItem('role', State.role); setRoute(roleDefaultRoute(State.role)); };
+      document.getElementById('notifBtn').onclick=()=>{ openDrawer('notifDrawer',true); renderNotifications('all'); };
+      document.getElementById('notifClose').onclick=()=> openDrawer('notifDrawer',false);
+      document.getElementById('chatClose').onclick=()=> openDrawer('chatDrawer',false);
+      document.querySelectorAll('[data-notif-filter]').forEach(t=> t.onclick=()=>{ document.querySelectorAll('[data-notif-filter]').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderNotifications(t.getAttribute('data-notif-filter')); });
+      document.getElementById('dismissAll').onclick=()=>{ State.notifications.forEach(n=> n.dismissed=true); saveNotifications(); updateNotifBadge(); renderNotifications('all'); };
+      // default route
+      if(!State.route){ setRoute(roleDefaultRoute(State.role)); }
+      render();
+      // seed demo notifications
+      if(State.notifications.length===0){ addNotification('warning','Calendar desync detected','3 rooms impacted'); addNotification('success','Morning checks complete','All Meet HW responded'); saveNotifications(); }
+    }
+    init();
+  </script>
+</body>
+</html>

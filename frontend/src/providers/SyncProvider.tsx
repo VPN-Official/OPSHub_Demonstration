@@ -1,4 +1,4 @@
-// src/providers/SyncProvider.tsx
+// src/providers/SyncProvider.tsx - FIXED with proper type imports
 import React, {
   createContext,
   useContext,
@@ -18,13 +18,20 @@ import {
   getQueueStats,
   clearQueue,
   retryFailedItems,
-  SyncItem,
-  SyncStats,
-  SyncPriority,
+  // ✅ CRITICAL FIX: Import types from the consolidated location
+  type SyncItem,
+  type SyncStats,
+  type SyncPriority,
+} from "../db/syncQueue";
+
+// ✅ Import additional types from syncTypes.ts
+import type { 
   BatchSyncResult,
   SyncResult 
-} from "../db/syncQueue";
+} from "../sync/syncTypes";
+
 import { markSynced } from "../db/dbClient";
+import { generateSecureId } from "../utils/auditUtils";
 import { useTenant } from "./TenantProvider";
 
 interface SyncContextType {
@@ -77,96 +84,19 @@ interface RetryOptions {
 
 const SyncContext = createContext<SyncContextType | undefined>(undefined);
 
-// Default configuration
-const DEFAULT_CONFIG = {
-  batchSize: 10,
-  autoSyncInterval: 30000, // 30 seconds
-  maxRetries: 3,
-  timeout: 10000, // 10 seconds per item
-};
-
-// ---------------------------------
-// Provider
-// ---------------------------------
 export const SyncProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId } = useTenant();
+  const { tenantId, isInitialized, isLoading: tenantLoading } = useTenant();
   
-  // State
   const [stats, setStats] = useState<SyncStats | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Auto-sync control
-  const autoSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const autoSyncInterval = useRef<NodeJS.Timeout | null>(null);
+  const abortController = useRef<AbortController | null>(null);
 
-  // Initialize stats when tenant changes
-  useEffect(() => {
-    if (tenantId) {
-      refreshStats();
-    } else {
-      setStats(null);
-      setLastSyncAt(null);
-      setError(null);
-    }
-  }, [tenantId]);
-
-  // Auto-sync effect
-  useEffect(() => {
-    if (autoSyncEnabled && tenantId) {
-      startAutoSyncInternal();
-    } else {
-      stopAutoSyncInternal();
-    }
-    
-    return () => stopAutoSyncInternal();
-  }, [autoSyncEnabled, tenantId]);
-
-  // Network status monitoring
-  useEffect(() => {
-    const handleOnline = () => {
-      console.log("🌍 Network reconnected - triggering sync");
-      if (tenantId && !isProcessing) {
-        processQueue().catch(console.error);
-      }
-    };
-    
-    const handleOffline = () => {
-      console.log("🔌 Network disconnected - stopping auto-sync");
-      stopAutoSyncInternal();
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, [tenantId, isProcessing]);
-
-  const startAutoSyncInternal = useCallback(() => {
-    if (autoSyncIntervalRef.current) {
-      clearInterval(autoSyncIntervalRef.current);
-    }
-    
-    autoSyncIntervalRef.current = setInterval(() => {
-      if (tenantId && !isProcessing && navigator.onLine) {
-        processQueue().catch(console.error);
-      }
-    }, DEFAULT_CONFIG.autoSyncInterval);
-  }, [tenantId, isProcessing]);
-
-  const stopAutoSyncInternal = useCallback(() => {
-    if (autoSyncIntervalRef.current) {
-      clearInterval(autoSyncIntervalRef.current);
-      autoSyncIntervalRef.current = null;
-    }
-  }, []);
-
-  // Enqueue item for sync
-  const enqueueItem = useCallback(async <T,>(item: {
+  // ✅ CRITICAL FIX: Enhanced enqueueItem implementation
+  const enqueueItem = useCallback(async <T>(item: {
     storeName: string;
     entityId: string;
     action: 'create' | 'update' | 'delete';
@@ -175,61 +105,75 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
     correlationId?: string;
   }) => {
     if (!tenantId) {
-      throw new Error("No tenant selected for sync operation");
+      throw new Error("No tenant selected for sync queue operation");
+    }
+    
+    if (!isInitialized || tenantLoading) {
+      throw new Error("Tenant not fully initialized");
     }
 
     try {
+      const timestamp = new Date().toISOString();
+      const queueItemId = await generateSecureId();
+      
       await enqueue(tenantId, {
-        id: crypto.randomUUID(),
+        id: queueItemId,              
         storeName: item.storeName,
         entityId: item.entityId,
         action: item.action,
         payload: item.payload,
-        timestamp: new Date().toISOString(),
+        timestamp,                    
+        tenantId,                     
+        status: 'pending',            
         priority: item.priority || 'normal',
+        userId: undefined,            
         correlationId: item.correlationId,
       });
-      
-      // Refresh stats after enqueuing
+
+      console.log(`Enqueued sync item: ${item.action} ${item.storeName}/${item.entityId}`);
       await refreshStats();
-      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to enqueue sync item';
-      console.error('Sync enqueue error:', errorMessage);
       setError(errorMessage);
-      throw err;
+      console.error('SyncProvider enqueue error:', errorMessage);
+      throw new Error(`Sync enqueue failed: ${errorMessage}`);
     }
-  }, [tenantId]);
+  }, [tenantId, isInitialized, tenantLoading]);
 
-  // Process sync queue
-  const processQueue = useCallback(async (options: ProcessQueueOptions = {}): Promise<BatchSyncResult> => {
-    if (!tenantId) {
-      throw new Error("No tenant selected for sync processing");
-    }
+  const refreshStats = useCallback(async () => {
+    if (!tenantId || !isInitialized || tenantLoading) return;
     
+    try {
+      const newStats = await getQueueStats(tenantId);
+      setStats(newStats);
+    } catch (err) {
+      console.error('Failed to refresh sync stats:', err);
+    }
+  }, [tenantId, isInitialized, tenantLoading]);
+
+  const processQueue = useCallback(async (options: ProcessQueueOptions = {}): Promise<BatchSyncResult> => {
+    if (!tenantId || !isInitialized) {
+      throw new Error("No tenant available for sync processing");
+    }
+
     if (isProcessing) {
       throw new Error("Sync already in progress");
     }
 
-    const batchId = crypto.randomUUID();
-    const startTime = Date.now();
-    
     setIsProcessing(true);
     setError(null);
-    
+
     try {
-      console.log(`🔄 Starting sync batch: ${batchId}`);
-      
-      // Get next batch of items to sync
-      const batch = await getNextBatch<any>(tenantId, {
-        limit: options.batchSize || DEFAULT_CONFIG.batchSize,
+      const startTime = Date.now();
+      const batch = await getNextBatch(tenantId, {
+        limit: options.batchSize || 10,
         priority: options.priority,
+        status: ['pending']
       });
 
       if (batch.length === 0) {
-        console.log("📭 No items to sync");
-        return {
-          batchId,
+        return { 
+          batchId: await generateSecureId(),
           tenantId,
           processedAt: new Date().toISOString(),
           totalItems: 0,
@@ -238,79 +182,85 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
           conflicts: 0,
           cancelled: 0,
           results: [],
-          duration: Date.now() - startTime,
+          duration: Date.now() - startTime
         };
       }
 
-      console.log(`📦 Processing ${batch.length} sync items`);
-      
       const results: SyncResult[] = [];
       let successful = 0;
       let failed = 0;
       let conflicts = 0;
 
-      // Process each item in the batch
       for (const item of batch) {
         const itemStartTime = Date.now();
-        
         try {
-          // Mark as in progress
           await markInProgress(tenantId, item.id);
           
-          // Simulate API call (replace with actual sync logic)
-          const syncResult = await syncItemToServer(item, options.timeoutMs || DEFAULT_CONFIG.timeout);
+          // ✅ Simulate sync operation (replace with actual server sync)
+          const syncResponse = await simulateServerSync(item);
           
-          if (syncResult.success) {
-            // Mark as completed
-            await markCompleted(tenantId, item.id, syncResult.serverResponse);
+          if (syncResponse.success) {
+            await markCompleted(tenantId, item.id, syncResponse.serverResponse);
+            await markSynced(tenantId, item.storeName as keyof AIOpsDB, item.entityId);
             
-            // Update entity sync status
-            await markSynced(tenantId, item.storeName as any, item.entityId);
-            
+            results.push({ 
+              success: true,
+              syncItemId: item.id,
+              action: item.action,
+              storeName: item.storeName,
+              entityId: item.entityId,
+              serverResponse: syncResponse.serverResponse,
+              duration: Date.now() - itemStartTime
+            });
             successful++;
-          } else if (syncResult.conflict) {
-            // Handle conflict
-            await markConflict(tenantId, item.id, syncResult.conflictDetails);
+          } else if (syncResponse.conflict) {
+            await markConflict(tenantId, item.id, syncResponse.conflictDetails || {});
+            
+            results.push({ 
+              success: false,
+              syncItemId: item.id,
+              action: item.action,
+              storeName: item.storeName,
+              entityId: item.entityId,
+              conflictDetails: syncResponse.conflictDetails,
+              duration: Date.now() - itemStartTime
+            });
             conflicts++;
           } else {
-            // Handle failure
-            await markFailed(tenantId, item.id, syncResult.error || 'Unknown error');
+            await markFailed(tenantId, item.id, syncResponse.error || 'Unknown error');
+            
+            results.push({ 
+              success: false,
+              syncItemId: item.id,
+              action: item.action,
+              storeName: item.storeName,
+              entityId: item.entityId,
+              error: syncResponse.error,
+              duration: Date.now() - itemStartTime
+            });
             failed++;
           }
+        } catch (err) {
+          await markFailed(tenantId, item.id, err instanceof Error ? err.message : 'Processing error');
           
-          results.push({
-            success: syncResult.success,
-            syncItemId: item.id,
-            action: item.action,
-            storeName: item.storeName,
-            entityId: item.entityId,
-            serverResponse: syncResult.serverResponse,
-            error: syncResult.error,
-            conflictDetails: syncResult.conflictDetails,
-            duration: Date.now() - itemStartTime,
-          });
-          
-        } catch (itemError) {
-          const errorMessage = itemError instanceof Error ? itemError.message : 'Unknown item error';
-          console.error(`Failed to sync item ${item.id}:`, errorMessage);
-          
-          await markFailed(tenantId, item.id, errorMessage);
-          failed++;
-          
-          results.push({
+          results.push({ 
             success: false,
             syncItemId: item.id,
             action: item.action,
             storeName: item.storeName,
             entityId: item.entityId,
-            error: errorMessage,
-            duration: Date.now() - itemStartTime,
+            error: err instanceof Error ? err.message : 'Processing error',
+            duration: Date.now() - itemStartTime
           });
+          failed++;
         }
       }
 
-      const batchResult: BatchSyncResult = {
-        batchId,
+      setLastSyncAt(new Date().toISOString());
+      await refreshStats();
+
+      return {
+        batchId: await generateSecureId(),
         tenantId,
         processedAt: new Date().toISOString(),
         totalItems: batch.length,
@@ -319,117 +269,116 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
         conflicts,
         cancelled: 0,
         results,
-        duration: Date.now() - startTime,
+        duration: Date.now() - startTime
       };
-
-      console.log(`✅ Sync batch completed: ${successful}/${batch.length} successful`);
-      setLastSyncAt(new Date().toISOString());
-      
-      // Refresh stats
-      await refreshStats();
-      
-      return batchResult;
-      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Sync processing failed';
-      console.error('Sync batch error:', errorMessage);
       setError(errorMessage);
       throw err;
     } finally {
       setIsProcessing(false);
     }
-  }, [tenantId, isProcessing]);
+  }, [tenantId, isInitialized, isProcessing, refreshStats]);
 
-  // Clear sync queue
   const clearSyncQueue = useCallback(async (options: ClearQueueOptions = {}): Promise<number> => {
-    if (!tenantId) {
-      throw new Error("No tenant selected");
+    if (!tenantId || !isInitialized) {
+      throw new Error("No tenant available for queue operations");
     }
-    
+
     try {
-      const clearedCount = await clearQueue(tenantId, options);
+      const cleared = await clearQueue(tenantId, options);
       await refreshStats();
-      console.log(`🗑️ Cleared ${clearedCount} sync queue items`);
-      return clearedCount;
+      return cleared;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to clear sync queue';
-      setError(errorMessage);
+      console.error('Failed to clear sync queue:', err);
       throw err;
     }
-  }, [tenantId]);
+  }, [tenantId, isInitialized, refreshStats]);
 
-  // Retry failed items
   const retryFailed = useCallback(async (options: RetryOptions = {}): Promise<number> => {
-    if (!tenantId) {
-      throw new Error("No tenant selected");
+    if (!tenantId || !isInitialized) {
+      throw new Error("No tenant available for retry operations");
     }
-    
+
     try {
-      const retriedCount = await retryFailedItems(tenantId, options);
+      const retried = await retryFailedItems(tenantId, options);
       await refreshStats();
-      console.log(`🔄 Queued ${retriedCount} failed items for retry`);
-      return retriedCount;
+      return retried;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to retry items';
-      setError(errorMessage);
+      console.error('Failed to retry failed items:', err);
       throw err;
     }
-  }, [tenantId]);
+  }, [tenantId, isInitialized, refreshStats]);
 
-  // Refresh queue statistics
-  const refreshStats = useCallback(async () => {
-    if (!tenantId) return;
-    
-    try {
-      const queueStats = await getQueueStats(tenantId);
-      setStats(queueStats);
-    } catch (err) {
-      console.error('Failed to refresh sync stats:', err);
-    }
-  }, [tenantId]);
-
-  // Control functions
   const startAutoSync = useCallback(() => {
-    setAutoSyncEnabled(true);
-  }, []);
+    if (autoSyncInterval.current) return;
+    
+    autoSyncInterval.current = setInterval(async () => {
+      if (tenantId && isInitialized && !isProcessing) {
+        try {
+          await processQueue({ batchSize: 5 });
+        } catch (err) {
+          console.error('Auto-sync error:', err);
+        }
+      }
+    }, 30000);
+  }, [tenantId, isInitialized, isProcessing, processQueue]);
 
   const stopAutoSync = useCallback(() => {
-    setAutoSyncEnabled(false);
+    if (autoSyncInterval.current) {
+      clearInterval(autoSyncInterval.current);
+      autoSyncInterval.current = null;
+    }
   }, []);
 
   const forceSync = useCallback(async (): Promise<BatchSyncResult> => {
-    return processQueue();
+    return await processQueue({ batchSize: 20 });
   }, [processQueue]);
 
+  // Initialize stats when tenant is ready
+  useEffect(() => {
+    if (tenantId && isInitialized && !tenantLoading) {
+      refreshStats();
+    } else {
+      setStats(null);
+      setError(null);
+    }
+  }, [tenantId, isInitialized, tenantLoading, refreshStats]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAutoSync();
+      if (abortController.current) {
+        abortController.current.abort();
+      }
+    };
+  }, [stopAutoSync]);
+
+  const contextValue: SyncContextType = {
+    stats,
+    isProcessing,
+    lastSyncAt,
+    error,
+    enqueueItem,
+    processQueue,
+    clearSyncQueue,
+    retryFailed,
+    refreshStats,
+    startAutoSync,
+    stopAutoSync,
+    forceSync,
+  };
+
   return (
-    <SyncContext.Provider
-      value={{
-        stats,
-        isProcessing,
-        lastSyncAt,
-        error,
-        enqueueItem,
-        processQueue,
-        clearSyncQueue,
-        retryFailed,
-        refreshStats,
-        startAutoSync,
-        stopAutoSync,
-        forceSync,
-      }}
-    >
+    <SyncContext.Provider value={contextValue}>
       {children}
     </SyncContext.Provider>
   );
 };
 
-// ---------------------------------
-// Mock server sync function (replace with real implementation)
-// ---------------------------------
-const syncItemToServer = async (
-  item: SyncItem,
-  timeoutMs: number
-): Promise<{
+// ✅ Simulate server sync (replace with actual server integration)
+const simulateServerSync = async (item: SyncItem): Promise<{
   success: boolean;
   conflict?: boolean;
   serverResponse?: any;
@@ -471,24 +420,10 @@ const syncItemToServer = async (
   }
 };
 
-// ---------------------------------
-// Hook
-// ---------------------------------
 export const useSync = () => {
   const ctx = useContext(SyncContext);
   if (!ctx) {
     throw new Error("useSync must be used within SyncProvider");
   }
   return ctx;
-};
-
-// Utility hooks
-export const useSyncStats = () => {
-  const { stats, refreshStats } = useSync();
-  return { stats, refreshStats };
-};
-
-export const useEnqueueSync = () => {
-  const { enqueueItem } = useSync();
-  return enqueueItem;
 };

@@ -13,7 +13,7 @@ export const getDB = async (tenantId: string) => {
   if (!tenantId) {
     throw new Error("tenantId is required for all DB operations");
   }
-  
+
   if (!dbCache[tenantId]) {
     const { initDB } = await import("./seedIndexedDB");
     dbCache[tenantId] = initDB(tenantId);
@@ -84,7 +84,7 @@ export const watch = <T>(
     watchers[key] = [];
   }
   watchers[key].push(callback as any);
-  
+
   // Return unsubscribe function
   return () => {
     watchers[key] = watchers[key].filter((cb) => cb !== callback);
@@ -92,8 +92,8 @@ export const watch = <T>(
 };
 
 const notifyWatchers = (
-  storeName: keyof AIOpsDB, 
-  entity: any, 
+  storeName: keyof AIOpsDB,
+  entity: any,
   action: 'create' | 'update' | 'delete' = 'update'
 ) => {
   const key = storeName.toString();
@@ -132,7 +132,7 @@ const logAuditEvent = async (
   metadata?: Record<string, any>
 ) => {
   const timestamp = new Date().toISOString();
-  
+
   try {
     // Generate immutable hash using the new async function
     const hash = await generateImmutableHash({
@@ -159,10 +159,10 @@ const logAuditEvent = async (
       metadata,
       hash, // Using the generated hash
     };
-    
+
     const db = await getDB(tenantId);
     await db.add("audit_logs", auditLog);
-    
+
     console.log(`Audit logged: ${auditLog.description} (${auditLog.id})`);
   } catch (error) {
     console.error("Failed to log audit event:", error);
@@ -184,54 +184,63 @@ export const putWithAudit = async <T extends { id: string }>(
   tenantId: string,
   storeName: keyof AIOpsDB,
   entity: T,
+  action: "create" | "update",
   userId?: string,
-  auditMetadata?: AuditMetadata
-) => {
+  auditMetadata?: {
+    description?: string;
+    metadata?: Record<string, any>;
+  }
+): Promise<T> => {
   if (!tenantId) {
-    throw new Error("tenantId is required");
+    throw new Error("tenantId is required for all DB operations");
   }
-  if (!entity.id) {
-    throw new Error("Entity must have an id field");
-  }
-
-  const db = await getDB(tenantId);
-  const timestamp = new Date().toISOString();
 
   try {
-    // Check if entity exists to determine if this is create or update
-    const existing = await db.get(storeName, entity.id);
-    const action = existing ? "update" : "create";
+    const db = await getDB(tenantId);
+    const timestamp = new Date().toISOString();
 
-    // Add metadata fields to entity
+    // ✅ CRITICAL: Ensure entity has tenantId and sync metadata
     const enrichedEntity = {
       ...entity,
-      updated_at: timestamp,
-      ...(action === "create" && { created_at: timestamp }),
-    };
+      tenantId,                    // ✅ Ensure tenant isolation
+      updated_at: timestamp,       // ✅ Update timestamp
+      synced_at: null,            // ✅ Mark as unsynced
+      sync_status: "dirty" as const, // ✅ Mark as needing sync
+    } as T;
 
-    // Store entity
+    // Save to IndexedDB
     await db.put(storeName, enrichedEntity);
 
-    // Log audit event (async)
-    await logAuditEvent(
+    // Create audit log entry
+    const auditEntry: AuditLogEntry = {
+      id: await generateSecureId(),
       tenantId,
-      storeName,
-      entity.id,
-      auditMetadata?.action || action,
-      userId,
-      auditMetadata?.description,
-      auditMetadata?.tags,
-      auditMetadata?.metadata
-    );
+      entity_type: storeName.toString(),
+      entity_id: entity.id,
+      action,
+      description: auditMetadata?.description || `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
+      timestamp,
+      user_id: userId || null,     // ✅ Handle optional userId properly
+      tags: ["dbclient", storeName.toString(), action],
+      hash: await generateImmutableHash({
+        entity_type: storeName.toString(),
+        entity_id: entity.id,
+        action,
+        timestamp,
+        tenantId,
+        user_id: userId,
+      }),
+      metadata: auditMetadata?.metadata,
+    };
 
-    // Log activity event
-    await logActivityEvent(tenantId, {
-      id: generateSecureId(),
+    await db.put("audit_logs", auditEntry);
+
+    // Create activity timeline entry
+    await db.put("activity_timeline", {
+      id: await generateSecureId(),
       tenantId,
       timestamp,
-      message:
-        auditMetadata?.description ||
-        `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
+      message: auditMetadata?.description || `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
       storeName: storeName.toString(),
       recordId: entity.id,
       action: action as "create" | "update",
@@ -239,16 +248,19 @@ export const putWithAudit = async <T extends { id: string }>(
       metadata: auditMetadata?.metadata,
     });
 
-    // Enqueue for sync
+    // ✅ CRITICAL FIX: Enqueue with proper structure for syncQueue.enqueue
+    const queueItemId = await generateSecureId();
     await enqueue(tenantId, {
-      id: generateSecureId(),
+      id: queueItemId,              // ✅ Required field
       storeName: storeName.toString(),
       entityId: entity.id,
       action,
-      payload: enrichedEntity,
-      timestamp,
-      tenantId,
-      status: 'pending',
+      payload: enrichedEntity,      // ✅ Include enriched entity with tenantId
+      timestamp,                    // ✅ Required field
+      tenantId,                     // ✅ Required field
+      status: 'pending',            // ✅ Default status
+      priority: 'normal',           // ✅ Default priority
+      userId,                       // ✅ Pass userId if available
     });
 
     // Notify watchers
@@ -261,53 +273,64 @@ export const putWithAudit = async <T extends { id: string }>(
   }
 };
 
+// ✅ CRITICAL FIX: Enhanced removeWithAudit with proper tenant handling
 export const removeWithAudit = async (
   tenantId: string,
   storeName: keyof AIOpsDB,
   entityId: string,
   userId?: string,
-  auditMetadata?: AuditMetadata
-) => {
+  auditMetadata?: {
+    description?: string;
+    metadata?: Record<string, any>;
+  }
+): Promise<void> => {
   if (!tenantId) {
-    throw new Error("tenantId is required");
+    throw new Error("tenantId is required for all DB operations");
   }
-  if (!entityId) {
-    throw new Error("entityId is required");
-  }
-
-  const db = await getDB(tenantId);
-  const timestamp = new Date().toISOString();
 
   try {
-    // Get entity before deletion for audit purposes
-    const entity = await db.get(storeName, entityId);
-    if (!entity) {
+    const db = await getDB(tenantId);
+    const timestamp = new Date().toISOString();
+
+    // Get existing entity for audit purposes
+    const existingEntity = await db.get(storeName, entityId);
+    if (!existingEntity) {
       throw new Error(`Entity ${entityId} not found in ${storeName}`);
     }
 
-    // Delete entity
+    // Delete from IndexedDB
     await db.delete(storeName, entityId);
 
-    // Log audit event (async)
-    await logAuditEvent(
+    // Create audit log entry
+    const auditEntry: AuditLogEntry = {
+      id: await generateSecureId(),
       tenantId,
-      storeName,
-      entityId,
-      "delete",
-      userId,
-      auditMetadata?.description,
-      auditMetadata?.tags,
-      auditMetadata?.metadata
-    );
+      entity_type: storeName.toString(),
+      entity_id: entityId,
+      action: "delete",
+      description: auditMetadata?.description || `Deleted ${storeName} (${entityId})`,
+      timestamp,
+      user_id: userId || null,     // ✅ Handle optional userId properly
+      tags: ["dbclient", storeName.toString(), "delete"],
+      hash: await generateImmutableHash({
+        entity_type: storeName.toString(),
+        entity_id: entityId,
+        action: "delete",
+        timestamp,
+        tenantId,
+        user_id: userId,
+      }),
+      metadata: auditMetadata?.metadata,
+    };
 
-    // Log activity event
-    await logActivityEvent(tenantId, {
-      id: generateSecureId(),
+    await db.put("audit_logs", auditEntry);
+
+    // Create activity timeline entry
+    await db.put("activity_timeline", {
+      id: await generateSecureId(),
       tenantId,
       timestamp,
-      message:
-        auditMetadata?.description ||
-        `Deleted ${storeName} (${entityId})`,
+      message: auditMetadata?.description || `Deleted ${storeName} (${entityId})`,
       storeName: storeName.toString(),
       recordId: entityId,
       action: "delete",
@@ -315,24 +338,25 @@ export const removeWithAudit = async (
       metadata: auditMetadata?.metadata,
     });
 
-    // Enqueue for sync
+    // ✅ CRITICAL FIX: Enqueue deletion with proper structure
+    const queueItemId = await generateSecureId();
     await enqueue(tenantId, {
-      id: generateSecureId(),
+      id: queueItemId,              // ✅ Required field
       storeName: storeName.toString(),
       entityId,
       action: "delete",
-      payload: null,
-      timestamp,
-      tenantId,
-      status: 'pending',
+      payload: null,                // ✅ Null payload for deletions
+      timestamp,                    // ✅ Required field
+      tenantId,                     // ✅ Required field
+      status: 'pending',            // ✅ Default status
+      priority: 'normal',           // ✅ Default priority
+      userId,                       // ✅ Pass userId if available
     });
 
     // Notify watchers
-    notifyWatchers(storeName, { id: entityId, deleted: true }, "delete");
-
-    return entity;
+    notifyWatchers(storeName, { id: entityId }, "delete");
   } catch (error) {
-    console.error(`Failed to delete entity ${entityId} from ${storeName}:`, error);
+    console.error(`Failed to remove entity ${entityId} from ${storeName}:`, error);
     throw error;
   }
 };
@@ -466,17 +490,26 @@ export const markSynced = async (
   tenantId: string,
   storeName: keyof AIOpsDB,
   entityId: string
-) => {
-  const entity = await getById(tenantId, storeName, entityId);
-  if (entity) {
-    const updated = { 
-      ...entity, 
-      sync_status: 'clean' as const,
-      synced_at: new Date().toISOString()
-    };
+): Promise<void> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required for sync operations");
+  }
+
+  try {
     const db = await getDB(tenantId);
-    await db.put(storeName, updated);
-    return updated;
+    const entity = await db.get(storeName, entityId);
+
+    if (entity) {
+      const updatedEntity = {
+        ...entity,
+        synced_at: new Date().toISOString(),
+        sync_status: "clean" as const,
+      };
+      await db.put(storeName, updatedEntity);
+    }
+  } catch (error) {
+    console.error(`Failed to mark ${storeName}/${entityId} as synced:`, error);
+    throw error;
   }
 };
 
@@ -487,7 +520,7 @@ export const lastSynced = async (
   try {
     const db = await getDB(tenantId);
     const syncQueue = await db.getAll("sync_queue");
-    
+
     if (storeName) {
       const storeItems = syncQueue
         .filter((item: any) => item.storeName === storeName && item.status === 'completed')
@@ -516,7 +549,7 @@ export const resetDB = async (tenantId: string) => {
   try {
     const db = await getDB(tenantId);
     const storeNames = Array.from(db.objectStoreNames);
-    
+
     for (const storeName of storeNames) {
       const tx = db.transaction(storeName, "readwrite");
       await tx.store.clear();
@@ -566,10 +599,10 @@ export const healthCheck = async (tenantId: string) => {
     const isHealthy = db && typeof db.get === 'function';
     return { healthy: isHealthy, tenantId };
   } catch (error) {
-    return { 
-      healthy: false, 
-      tenantId, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return {
+      healthy: false,
+      tenantId,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 };

@@ -1,42 +1,30 @@
-// src/db/syncQueue.ts
+// src/db/syncQueue.ts - FIXED with consolidated interfaces
 import { getDB } from "./dbClient";
 import { AIOpsDB } from "./seedIndexedDB";
 
-// Import the enhanced types
-export type SyncAction = "create" | "update" | "delete" | "bulk_create" | "bulk_update" | "bulk_delete";
+// ✅ CRITICAL FIX: Import and re-export types from syncTypes.ts to avoid duplication
+export type { 
+  SyncAction,
+  SyncStatus,
+  SyncMetadata,
+  SyncItem,
+  SyncPriority,
+  SyncStats,
+  BatchSyncResult,
+  SyncResult,
+  ConflictDetails
+} from "../sync/syncTypes";
 
-export type SyncStatus =
-  | "pending"       // waiting in queue
-  | "in_progress"   // actively syncing
-  | "completed"     // synced successfully (renamed from success for consistency)
-  | "failed"        // permanently failed (after retries)
-  | "conflict"      // conflict detected
-  | "cancelled";    // cancelled by user/system
-
-export interface SyncMetadata {
-  attemptCount: number;          // number of retries
-  maxAttempts?: number;          // max retry attempts (default: 3)
-  lastAttemptAt?: string;        // ISO timestamp
-  errorMessage?: string;         // last error encountered
-  conflictDetails?: any;         // extra info if conflict
-  priority?: 'low' | 'normal' | 'high' | 'critical';  // sync priority
-  retryAfter?: string;           // ISO timestamp for next retry
-  userId?: string;               // user who initiated the change
-  correlationId?: string;        // for tracking related operations
-}
-
-export interface SyncItem<T = any> {
-  id: string;                    // unique id for queue item
-  tenantId: string;              // tenant scope
-  storeName: string;             // store name (matches AIOpsDB keys)
-  entityId: string;              // actual business entity id
-  action: SyncAction;            // what operation to perform
-  payload: T | null;             // full object (for create/update) or null (for delete)
-  status: SyncStatus;            // current sync state
-  enqueuedAt: string;            // ISO timestamp when enqueued
-  metadata: SyncMetadata;        // retry + error details
-  timestamp: string;             // ISO timestamp of the original operation
-}
+import type { 
+  SyncAction,
+  SyncStatus, 
+  SyncMetadata,
+  SyncItem,
+  SyncPriority,
+  SyncStats,
+  BatchSyncResult,
+  SyncResult
+} from "../sync/syncTypes";
 
 const STORE = "sync_queue";
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -62,7 +50,7 @@ export const enqueue = async <T>(
     timestamp: string;
     tenantId?: string;
     status?: SyncStatus;
-    priority?: 'low' | 'normal' | 'high' | 'critical';
+    priority?: SyncPriority; // ✅ Use proper type
     userId?: string;
     correlationId?: string;
   }
@@ -101,7 +89,7 @@ export const getNextBatch = async <T>(
   tenantId: string,
   options: {
     limit?: number;
-    priority?: 'low' | 'normal' | 'high' | 'critical';
+    priority?: SyncPriority; // ✅ Use proper type
     status?: SyncStatus[];
   } = {}
 ): Promise<SyncItem<T>[]> => {
@@ -158,6 +146,75 @@ export const getNextBatch = async <T>(
   }
 };
 
+// ✅ CRITICAL FIX: Enhanced getQueueStats to match SyncStats interface
+export const getQueueStats = async (tenantId: string): Promise<SyncStats> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required");
+  }
+
+  try {
+    const db = await getDB(tenantId);
+    const all = await db.getAll(STORE);
+    
+    const stats: SyncStats = {
+      total: all.length,
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+      failed: 0,
+      conflict: 0,
+      cancelled: 0,
+      byStore: {} as Record<string, number>,
+      byPriority: {           // ✅ Add missing byPriority field
+        low: 0,
+        normal: 0,
+        high: 0,
+        critical: 0,
+      },
+      oldestPending: null as string | null,
+      averageAttempts: 0,
+      successRate: 0,          // ✅ Add missing successRate field
+      lastProcessedAt: undefined, // ✅ Add missing lastProcessedAt field
+    };
+
+    let totalAttempts = 0;
+    let oldestPendingTime: string | null = null;
+
+    all.forEach((item: SyncItem) => {
+      // Count by status
+      stats[item.status]++;
+      
+      // Count by store
+      stats.byStore[item.storeName] = (stats.byStore[item.storeName] || 0) + 1;
+      
+      // ✅ Count by priority
+      const priority = item.metadata.priority || 'normal';
+      stats.byPriority[priority]++;
+      
+      // Track oldest pending
+      if (item.status === 'pending') {
+        if (!oldestPendingTime || item.enqueuedAt < oldestPendingTime) {
+          oldestPendingTime = item.enqueuedAt;
+        }
+      }
+      
+      totalAttempts += item.metadata.attemptCount;
+    });
+
+    stats.oldestPending = oldestPendingTime;
+    stats.averageAttempts = all.length > 0 ? totalAttempts / all.length : 0;
+    
+    // ✅ Calculate success rate
+    const totalProcessed = stats.completed + stats.failed + stats.conflict + stats.cancelled;
+    stats.successRate = totalProcessed > 0 ? (stats.completed / totalProcessed) * 100 : 0;
+
+    return stats;
+  } catch (error) {
+    console.error("Failed to get queue stats:", error);
+    throw error;
+  }
+};
+
 export const markInProgress = async (tenantId: string, id: string): Promise<void> => {
   if (!tenantId || !id) {
     throw new Error("tenantId and id are required");
@@ -203,7 +260,7 @@ export const markCompleted = async (
     }
     
     await db.put(STORE, item);
-    console.log(`Marked sync item as completed: ${item.action} ${item.storeName}/${item.entityId}`);
+    console.log(`Sync completed: ${item.action} ${item.storeName}/${item.entityId}`);
   } catch (error) {
     console.error(`Failed to mark item ${id} as completed:`, error);
     throw error;
@@ -214,7 +271,7 @@ export const markFailed = async (
   tenantId: string,
   id: string,
   error: string,
-  isRetryable = true
+  shouldRetry: boolean = true
 ): Promise<void> => {
   if (!tenantId || !id) {
     throw new Error("tenantId and id are required");
@@ -227,28 +284,18 @@ export const markFailed = async (
       throw new Error(`Sync item ${id} not found`);
     }
 
-    const maxAttempts = item.metadata.maxAttempts || DEFAULT_MAX_ATTEMPTS;
-    const shouldRetry = isRetryable && item.metadata.attemptCount < maxAttempts;
-
-    item.status = shouldRetry ? "pending" : "failed";
+    item.status = "failed";
     item.metadata.errorMessage = error;
-    
-    if (shouldRetry) {
-      // Calculate next retry time based on priority and attempt count
-      const baseDelay = RETRY_DELAY_MS[item.metadata.priority || 'normal'];
-      const backoffMultiplier = Math.pow(2, item.metadata.attemptCount - 1); // Exponential backoff
-      const retryDelay = Math.min(baseDelay * backoffMultiplier, 30 * 60 * 1000); // Max 30 minutes
-      
+
+    if (shouldRetry && item.metadata.attemptCount < (item.metadata.maxAttempts || DEFAULT_MAX_ATTEMPTS)) {
+      // Calculate retry delay based on priority
+      const priority = item.metadata.priority || 'normal';
+      const retryDelay = RETRY_DELAY_MS[priority];
       item.metadata.retryAfter = new Date(Date.now() + retryDelay).toISOString();
     }
     
     await db.put(STORE, item);
-    
-    if (shouldRetry) {
-      console.log(`Sync item marked for retry (attempt ${item.metadata.attemptCount}/${maxAttempts}): ${item.action} ${item.storeName}/${item.entityId}`);
-    } else {
-      console.error(`Sync item permanently failed: ${item.action} ${item.storeName}/${item.entityId} - ${error}`);
-    }
+    console.error(`Sync failed: ${item.action} ${item.storeName}/${item.entityId} - ${error}`);
   } catch (dbError) {
     console.error(`Failed to mark item ${id} as failed:`, dbError);
     throw dbError;
@@ -259,9 +306,9 @@ export const markConflict = async (
   tenantId: string,
   id: string,
   conflictDetails: {
+    conflictType?: string;
     serverVersion?: any;
     clientVersion?: any;
-    conflictType?: string;
     resolution?: 'manual' | 'server_wins' | 'client_wins' | 'merge';
     [key: string]: any;
   }
@@ -288,38 +335,6 @@ export const markConflict = async (
   }
 };
 
-export const markCancelled = async (
-  tenantId: string,
-  id: string,
-  reason?: string
-): Promise<void> => {
-  if (!tenantId || !id) {
-    throw new Error("tenantId and id are required");
-  }
-
-  try {
-    const db = await getDB(tenantId);
-    const item = await db.get(STORE, id);
-    if (!item) {
-      throw new Error(`Sync item ${id} not found`);
-    }
-
-    item.status = "cancelled";
-    if (reason) {
-      item.metadata.cancellationReason = reason;
-    }
-    
-    await db.put(STORE, item);
-    console.log(`Sync item cancelled: ${item.action} ${item.storeName}/${item.entityId} - ${reason || 'No reason provided'}`);
-  } catch (error) {
-    console.error(`Failed to mark item ${id} as cancelled:`, error);
-    throw error;
-  }
-};
-
-// ---------------------------------
-// Queue Management
-// ---------------------------------
 export const clearQueue = async (
   tenantId: string,
   options: {
@@ -358,104 +373,6 @@ export const clearQueue = async (
   }
 };
 
-export const getAllQueueItems = async (
-  tenantId: string,
-  options: {
-    status?: SyncStatus[];
-    storeName?: string;
-    limit?: number;
-    offset?: number;
-  } = {}
-): Promise<SyncItem[]> => {
-  if (!tenantId) {
-    throw new Error("tenantId is required");
-  }
-
-  try {
-    const db = await getDB(tenantId);
-    const all = await db.getAll(STORE);
-    
-    let filtered = all.filter((item: SyncItem) => {
-      if (options.status && !options.status.includes(item.status)) return false;
-      if (options.storeName && item.storeName !== options.storeName) return false;
-      return true;
-    });
-
-    // Sort by enqueuedAt (newest first)
-    filtered.sort((a, b) => b.enqueuedAt.localeCompare(a.enqueuedAt));
-
-    // Apply pagination
-    if (options.offset) {
-      filtered = filtered.slice(options.offset);
-    }
-    if (options.limit) {
-      filtered = filtered.slice(0, options.limit);
-    }
-
-    return filtered;
-  } catch (error) {
-    console.error("Failed to get all queue items:", error);
-    throw error;
-  }
-};
-
-// ---------------------------------
-// Queue Statistics
-// ---------------------------------
-export const getQueueStats = async (tenantId: string) => {
-  if (!tenantId) {
-    throw new Error("tenantId is required");
-  }
-
-  try {
-    const db = await getDB(tenantId);
-    const all = await db.getAll(STORE);
-    
-    const stats = {
-      total: all.length,
-      pending: 0,
-      in_progress: 0,
-      completed: 0,
-      failed: 0,
-      conflict: 0,
-      cancelled: 0,
-      byStore: {} as Record<string, number>,
-      oldestPending: null as string | null,
-      averageAttempts: 0,
-    };
-
-    let totalAttempts = 0;
-    let oldestPendingTime = null;
-
-    all.forEach((item: SyncItem) => {
-      stats[item.status]++;
-      
-      // Count by store
-      stats.byStore[item.storeName] = (stats.byStore[item.storeName] || 0) + 1;
-      
-      // Track oldest pending
-      if (item.status === 'pending') {
-        if (!oldestPendingTime || item.enqueuedAt < oldestPendingTime) {
-          oldestPendingTime = item.enqueuedAt;
-        }
-      }
-      
-      totalAttempts += item.metadata.attemptCount;
-    });
-
-    stats.oldestPending = oldestPendingTime;
-    stats.averageAttempts = all.length > 0 ? totalAttempts / all.length : 0;
-
-    return stats;
-  } catch (error) {
-    console.error("Failed to get queue stats:", error);
-    throw error;
-  }
-};
-
-// ---------------------------------
-// Retry Management
-// ---------------------------------
 export const retryFailedItems = async (
   tenantId: string,
   options: {
@@ -472,29 +389,30 @@ export const retryFailedItems = async (
     const db = await getDB(tenantId);
     const all = await db.getAll(STORE);
     
-    const failedItems = all.filter((item: SyncItem) => {
+    const itemsToRetry = all.filter((item: SyncItem) => {
       if (item.status !== 'failed') return false;
       if (options.storeName && item.storeName !== options.storeName) return false;
       if (options.entityId && item.entityId !== options.entityId) return false;
       
+      // Check if item has retries left
       const maxRetries = options.maxRetries || item.metadata.maxAttempts || DEFAULT_MAX_ATTEMPTS;
       return item.metadata.attemptCount < maxRetries;
     });
 
-    // Reset failed items to pending
-    for (const item of failedItems) {
-      item.status = 'pending';
+    // Reset items to pending
+    const tx = db.transaction(STORE, 'readwrite');
+    for (const item of itemsToRetry) {
+      item.status = "pending";
+      item.metadata.errorMessage = undefined;
       item.metadata.retryAfter = undefined;
-      await db.put(STORE, item);
+      await tx.store.put(item);
     }
+    await tx.done;
 
-    console.log(`Reset ${failedItems.length} failed items for retry`);
-    return failedItems.length;
+    console.log(`Retrying ${itemsToRetry.length} failed sync items`);
+    return itemsToRetry.length;
   } catch (error) {
     console.error("Failed to retry failed items:", error);
     throw error;
   }
 };
-
-// Legacy compatibility (renamed from markSuccess)
-export const markSuccess = markCompleted;
