@@ -1,0 +1,62 @@
+/* Tailwind CSS v4 configuration */
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Enable dark mode variant */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* Dark mode utilities */
+@layer utilities {
+  .dark\:bg-gray-900 {
+    background-color: rgb(17 24 39);
+  }
+  
+  .dark\:bg-gray-800 {
+    background-color: rgb(31 41 55);
+  }
+  
+  .dark\:bg-gray-700 {
+    background-color: rgb(55 65 81);
+  }
+  
+  .dark\:text-white {
+    color: rgb(255 255 255);
+  }
+  
+  .dark\:text-gray-300 {
+    color: rgb(209 213 219);
+  }
+  
+  .dark\:text-gray-400 {
+    color: rgb(156 163 175);
+  }
+  
+  .dark\:border-gray-700 {
+    border-color: rgb(55 65 81);
+  }
+  
+  .dark\:border-gray-600 {
+    border-color: rgb(75 85 99);
+  }
+  
+  .dark\:hover\:bg-gray-800:hover {
+    background-color: rgb(31 41 55);
+  }
+  
+  .dark\:hover\:text-white:hover {
+    color: rgb(255 255 255);
+  }
+  
+  .dark\:bg-blue-900 {
+    background-color: rgb(30 58 138);
+  }
+  
+  .dark\:text-blue-300 {
+    color: rgb(147 197 253);
+  }
+}

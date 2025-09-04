@@ -9,7 +9,10 @@ import React, {
 } from "react";
 import { getAll, putWithAudit } from "../db/dbClient";
 import { useTenant } from "./TenantProvider";
+import { useConfig } from "./ConfigProvider";
 import { useSync } from "./SyncProvider";
+import { useNotification } from "./NotificationProvider";
+import { useAuditLogs } from "./AuditLogsProvider";
 
 // ---------------------------------
 // 1. Types
@@ -97,22 +100,44 @@ const ActivityTimelineContext = createContext<ActivityTimelineContextType | unde
 // 2. Provider
 // ---------------------------------
 export const ActivityTimelineProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId } = useTenant();
-  const { enqueueItem } = useSync();
+  const { tenantId, isInitialized, isLoading: tenantLoading, error: tenantError } = useTenant();
+  const { config, isLoading: configLoading, error: configError } = useConfig();
+  const { enqueueItem, error: syncError } = useSync();
+  const { error: notificationError } = useNotification();
+  const { error: auditError } = useAuditLogs();
   
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load activities when tenant changes
+  // ✅ Propagate parent errors
   useEffect(() => {
-    if (tenantId) {
-      refreshActivities();
-    } else {
+    if (tenantError) {
+      setError(`Tenant error: ${tenantError}`);
       setActivities([]);
-      setError(null);
+    } else if (configError) {
+      setError(`Config error: ${configError}`);
+      setActivities([]);
+    } else if (syncError) {
+      setError(`Sync error: ${syncError}`);
+    } else if (notificationError) {
+      setError(`Notification error: ${notificationError}`);
+    } else if (auditError) {
+      setError(`Audit error: ${auditError}`);
     }
-  }, [tenantId]);
+  }, [tenantError, configError, syncError, notificationError, auditError]);
+
+  // Load activities when all dependencies are ready
+  useEffect(() => {
+    if (tenantId && isInitialized && !tenantLoading && config && !tenantError && !configError && !syncError && !notificationError && !auditError) {
+      refreshActivities();
+    } else if (!tenantId) {
+      setActivities([]);
+      if (!tenantError && !configError && !syncError && !notificationError && !auditError) {
+        setError(null);
+      }
+    }
+  }, [tenantId, isInitialized, tenantLoading, config, tenantError, configError, syncError, notificationError, auditError]);
 
   const refreshActivities = useCallback(async () => {
     if (!tenantId) return;

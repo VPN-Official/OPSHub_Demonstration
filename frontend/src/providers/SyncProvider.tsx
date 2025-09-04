@@ -33,6 +33,7 @@ import type {
 import { markSynced } from "../db/dbClient";
 import { generateSecureId } from "../utils/auditUtils";
 import { useTenant } from "./TenantProvider";
+import { useConfig } from "./ConfigProvider";
 
 interface SyncContextType {
   // State
@@ -85,7 +86,8 @@ interface RetryOptions {
 const SyncContext = createContext<SyncContextType | undefined>(undefined);
 
 export const SyncProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId, isInitialized, isLoading: tenantLoading } = useTenant();
+  const { tenantId, isInitialized, isLoading: tenantLoading, error: tenantError } = useTenant();
+  const { config, isLoading: configLoading, error: configError } = useConfig();
   
   const [stats, setStats] = useState<SyncStats | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -94,9 +96,32 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
   
   const autoSyncInterval = useRef<NodeJS.Timeout | null>(null);
   const abortController = useRef<AbortController | null>(null);
+  
+  // ✅ Propagate parent errors
+  useEffect(() => {
+    if (tenantError) {
+      setError(`Tenant error: ${tenantError}`);
+      setStats(null);
+    } else if (configError) {
+      setError(`Config error: ${configError}`);
+      setStats(null);
+    }
+  }, [tenantError, configError]);
+
+  // ✅ Define refreshStats first as it's used by enqueueItem
+  const refreshStats = useCallback(async () => {
+    if (!tenantId || !isInitialized || tenantLoading || tenantError || configError) return;
+    
+    try {
+      const stats = await getQueueStats(tenantId);
+      setStats(stats);
+    } catch (err) {
+      console.error('Failed to refresh sync stats:', err);
+    }
+  }, [tenantId, isInitialized, tenantLoading, tenantError, configError]);
 
   // ✅ CRITICAL FIX: Enhanced enqueueItem implementation
-  const enqueueItem = useCallback(async <T>(item: {
+  const enqueueItem = useCallback(async <T,>(item: {
     storeName: string;
     entityId: string;
     action: 'create' | 'update' | 'delete';
@@ -108,8 +133,8 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
       throw new Error("No tenant selected for sync queue operation");
     }
     
-    if (!isInitialized || tenantLoading) {
-      throw new Error("Tenant not fully initialized");
+    if (!isInitialized || tenantLoading || tenantError || configError) {
+      throw new Error("System not fully initialized or has errors");
     }
 
     try {
@@ -138,18 +163,7 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
       console.error('SyncProvider enqueue error:', errorMessage);
       throw new Error(`Sync enqueue failed: ${errorMessage}`);
     }
-  }, [tenantId, isInitialized, tenantLoading]);
-
-  const refreshStats = useCallback(async () => {
-    if (!tenantId || !isInitialized || tenantLoading) return;
-    
-    try {
-      const newStats = await getQueueStats(tenantId);
-      setStats(newStats);
-    } catch (err) {
-      console.error('Failed to refresh sync stats:', err);
-    }
-  }, [tenantId, isInitialized, tenantLoading]);
+  }, [tenantId, isInitialized, tenantLoading, tenantError, configError, refreshStats]);
 
   const processQueue = useCallback(async (options: ProcessQueueOptions = {}): Promise<BatchSyncResult> => {
     if (!tenantId || !isInitialized) {

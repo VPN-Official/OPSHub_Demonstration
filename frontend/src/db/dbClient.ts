@@ -248,20 +248,25 @@ export const putWithAudit = async <T extends { id: string }>(
       metadata: auditMetadata?.metadata,
     });
 
-    // ✅ CRITICAL FIX: Enqueue with proper structure for syncQueue.enqueue
-    const queueItemId = await generateSecureId();
-    await enqueue(tenantId, {
-      id: queueItemId,              // ✅ Required field
-      storeName: storeName.toString(),
-      entityId: entity.id,
-      action,
-      payload: enrichedEntity,      // ✅ Include enriched entity with tenantId
-      timestamp,                    // ✅ Required field
-      tenantId,                     // ✅ Required field
-      status: 'pending',            // ✅ Default status
-      priority: 'normal',           // ✅ Default priority
-      userId,                       // ✅ Pass userId if available
-    });
+    // ✅ CRITICAL: Sync queue operations should not block main operations
+    try {
+      const queueItemId = await generateSecureId();
+      await enqueue(tenantId, {
+        id: queueItemId,              // ✅ Required field
+        storeName: storeName.toString(),
+        entityId: entity.id,
+        action,
+        payload: enrichedEntity,      // ✅ Include enriched entity with tenantId
+        timestamp,                    // ✅ Required field
+        tenantId,                     // ✅ Required field
+        status: 'pending',            // ✅ Default status
+        priority: 'normal',           // ✅ Default priority
+        userId,                       // ✅ Pass userId if available
+      });
+    } catch (syncError) {
+      console.warn('Sync enqueue failed, operation completed locally:', syncError);
+      // Don't throw - allow local operation to succeed
+    }
 
     // Notify watchers
     notifyWatchers(storeName, enrichedEntity, action);
@@ -338,20 +343,25 @@ export const removeWithAudit = async (
       metadata: auditMetadata?.metadata,
     });
 
-    // ✅ CRITICAL FIX: Enqueue deletion with proper structure
-    const queueItemId = await generateSecureId();
-    await enqueue(tenantId, {
-      id: queueItemId,              // ✅ Required field
-      storeName: storeName.toString(),
-      entityId,
-      action: "delete",
-      payload: null,                // ✅ Null payload for deletions
-      timestamp,                    // ✅ Required field
-      tenantId,                     // ✅ Required field
-      status: 'pending',            // ✅ Default status
-      priority: 'normal',           // ✅ Default priority
-      userId,                       // ✅ Pass userId if available
-    });
+    // ✅ CRITICAL: Sync queue operations should not block main operations
+    try {
+      const queueItemId = await generateSecureId();
+      await enqueue(tenantId, {
+        id: queueItemId,              // ✅ Required field
+        storeName: storeName.toString(),
+        entityId,
+        action: "delete",
+        payload: null,                // ✅ Null payload for deletions
+        timestamp,                    // ✅ Required field
+        tenantId,                     // ✅ Required field
+        status: 'pending',            // ✅ Default status
+        priority: 'normal',           // ✅ Default priority
+        userId,                       // ✅ Pass userId if available
+      });
+    } catch (syncError) {
+      console.warn('Sync enqueue failed, operation completed locally:', syncError);
+      // Don't throw - allow local operation to succeed
+    }
 
     // Notify watchers
     notifyWatchers(storeName, { id: entityId }, "delete");

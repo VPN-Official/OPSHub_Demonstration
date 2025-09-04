@@ -1,0 +1,13 @@
+/* Tailwind v4 Dark Mode Support */
+@import "../app.css";
+
+/* Additional dark mode overrides if needed */
+@media (prefers-color-scheme: dark) {
+  html:not(.light) {
+    color-scheme: dark;
+  }
+}
+
+html.dark {
+  color-scheme: dark;
+}

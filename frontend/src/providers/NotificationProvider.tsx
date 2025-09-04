@@ -9,6 +9,8 @@ import React, {
 } from "react";
 import { getAll, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "./TenantProvider";
+import { useConfig } from "./ConfigProvider";
+import { useSync } from "./SyncProvider";
 
 export type NotificationType =
   | "alert"
@@ -110,15 +112,30 @@ const DEFAULT_TTL_HOURS: Record<NotificationType, number> = {
 // Provider
 // ---------------------------------
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId } = useTenant();
+  const { tenantId, isInitialized, isLoading: tenantLoading, error: tenantError } = useTenant();
+  const { config, isLoading: configLoading, error: configError } = useConfig();
+  const { error: syncError } = useSync();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load notifications when tenant changes
+  // ✅ Propagate parent errors
   useEffect(() => {
-    if (tenantId) {
+    if (tenantError) {
+      setError(`Tenant error: ${tenantError}`);
+      setNotifications([]);
+    } else if (configError) {
+      setError(`Config error: ${configError}`);
+      setNotifications([]);
+    } else if (syncError) {
+      setError(`Sync error: ${syncError}`);
+    }
+  }, [tenantError, configError, syncError]);
+
+  // Load notifications when tenant is fully ready and no errors
+  useEffect(() => {
+    if (tenantId && isInitialized && !tenantLoading && !tenantError && !configError && !syncError) {
       refreshNotifications();
       // Set up periodic cleanup
       const cleanupInterval = setInterval(() => {
@@ -126,11 +143,13 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       }, 60000); // Every minute
       
       return () => clearInterval(cleanupInterval);
-    } else {
+    } else if (!tenantId) {
       setNotifications([]);
-      setError(null);
+      if (!tenantError && !configError && !syncError) {
+        setError(null);
+      }
     }
-  }, [tenantId]);
+  }, [tenantId, isInitialized, tenantLoading, tenantError, configError, syncError]);
 
   const refreshNotifications = useCallback(async () => {
     if (!tenantId) return;
@@ -573,6 +592,9 @@ export const useNotifications = () => {
   }
   return ctx;
 };
+
+// Alias for compatibility with other providers
+export const useNotification = useNotifications;
 
 // Utility hooks
 export const useNotificationsByType = (type: NotificationType) => {

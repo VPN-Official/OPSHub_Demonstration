@@ -10,6 +10,9 @@ import React, {
 } from "react";
 import { getAll } from "../db/dbClient";
 import { useTenant } from "./TenantProvider";
+import { useConfig } from "./ConfigProvider";
+import { useSync } from "./SyncProvider";
+import { useNotification } from "./NotificationProvider";
 
 interface AuditLogEntry {
   id: string;
@@ -45,21 +48,41 @@ interface AuditLogsContextType {
 const AuditLogsContext = createContext<AuditLogsContextType | undefined>(undefined);
 
 export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId } = useTenant();
+  const { tenantId, isInitialized, isLoading: tenantLoading, error: tenantError } = useTenant();
+  const { config, isLoading: configLoading, error: configError } = useConfig();
+  const { error: syncError } = useSync();
+  const { error: notificationError } = useNotification();
   
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load audit logs when tenant changes
+  // ✅ Propagate parent errors
   useEffect(() => {
-    if (tenantId) {
-      refreshAuditLogs();
-    } else {
+    if (tenantError) {
+      setError(`Tenant error: ${tenantError}`);
       setAuditLogs([]);
-      setError(null);
+    } else if (configError) {
+      setError(`Config error: ${configError}`);
+      setAuditLogs([]);
+    } else if (syncError) {
+      setError(`Sync error: ${syncError}`);
+    } else if (notificationError) {
+      setError(`Notification error: ${notificationError}`);
     }
-  }, [tenantId]);
+  }, [tenantError, configError, syncError, notificationError]);
+
+  // Load audit logs when all dependencies are ready
+  useEffect(() => {
+    if (tenantId && isInitialized && !tenantLoading && config && !tenantError && !configError && !syncError && !notificationError) {
+      refreshAuditLogs();
+    } else if (!tenantId) {
+      setAuditLogs([]);
+      if (!tenantError && !configError && !syncError && !notificationError) {
+        setError(null);
+      }
+    }
+  }, [tenantId, isInitialized, tenantLoading, config, tenantError, configError, syncError, notificationError]);
 
   const refreshAuditLogs = useCallback(async () => {
     if (!tenantId) return;

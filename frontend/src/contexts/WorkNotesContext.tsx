@@ -295,7 +295,7 @@ export const WorkItemsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * API call wrapper with error handling and retry logic
    */
-  const apiCall = useCallback(async <T>(
+  const apiCall = useCallback(async <T,>(
     operation: (signal: AbortSignal) => Promise<T>,
     errorContext: string,
     retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG

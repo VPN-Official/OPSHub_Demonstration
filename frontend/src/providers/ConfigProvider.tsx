@@ -37,18 +37,27 @@ interface ConfigContextType {
 
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
-// ✅ CRITICAL FIX: ConfigProvider with proper dependency waiting
+// ✅ CRITICAL FIX: ConfigProvider with proper dependency waiting and error propagation
 export const ConfigProvider = ({ children }: { children: ReactNode }) => {
-  const { tenantId, isInitialized, isLoading: tenantLoading } = useTenant(); // ✅ Get all tenant state
+  const { tenantId, isInitialized, isLoading: tenantLoading, error: tenantError } = useTenant(); // ✅ Get all tenant state including error
   
   const [config, setConfig] = useState<AIOpsConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // ✅ CRITICAL FIX: Only load config when tenant is fully initialized
+  // ✅ Propagate parent errors
   useEffect(() => {
-    if (tenantId && isInitialized && !tenantLoading) {
+    if (tenantError) {
+      setError(`Tenant error: ${tenantError}`);
+      setConfig(null);
+      setIsLoading(false);
+    }
+  }, [tenantError]);
+
+  // ✅ CRITICAL FIX: Only load config when tenant is fully initialized and no errors
+  useEffect(() => {
+    if (tenantId && isInitialized && !tenantLoading && !tenantError) {
       loadConfigForTenant(tenantId);
     } else if (!tenantId) {
       // Clear config when no tenant selected
@@ -61,7 +70,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       setError(null);
     }
-  }, [tenantId, isInitialized, tenantLoading]); // ✅ Watch all tenant dependencies
+  }, [tenantId, isInitialized, tenantLoading, tenantError]); // ✅ Watch all tenant dependencies including error
 
   const loadConfigForTenant = useCallback(async (tenantId: string) => {
     // ✅ Double-check tenant is ready before loading

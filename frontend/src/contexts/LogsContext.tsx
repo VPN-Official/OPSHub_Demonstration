@@ -302,7 +302,7 @@ export const LogsProvider = ({ children }: { children: ReactNode }) => {
   // API Integration Layer
   // ---------------------------------
 
-  const callAPI = useCallback(async <T>(
+  const callAPI = useCallback(async <T,>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<{ success: boolean; data?: T; error?: string }> => {

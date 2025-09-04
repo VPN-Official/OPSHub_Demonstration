@@ -8,6 +8,14 @@ import { AuditLogsProvider } from './AuditLogsProvider';
 import { ActivityTimelineProvider } from './ActivityTimelineProvider';
 import { ThemeProvider } from './ThemeProvider';
 
+// Import entity context providers
+import { IncidentsProvider } from '../contexts/IncidentsContext';
+import { ProblemsProvider } from '../contexts/ProblemsContext';
+import { ChangeRequestsProvider } from '../contexts/ChangeRequestsContext';
+import { ServiceRequestsProvider } from '../contexts/ServiceRequestsContext';
+import { AlertsProvider } from '../contexts/AlertsContext';
+import { MaintenanceProvider } from '../contexts/MaintenanceContext';
+
 interface AppProvidersProps {
   children: ReactNode;
 }
@@ -20,7 +28,8 @@ interface AppProvidersProps {
  * 4. SyncProvider (depends on tenant)
  * 5. NotificationProvider (depends on tenant + sync)
  * 6. AuditLogsProvider (depends on tenant)
- * 7. ActivityTimelineProvider (innermost - depends on all audit/activity)
+ * 7. ActivityTimelineProvider (depends on audit)
+ * 8. Entity Providers (depend on all infrastructure providers)
  */
 export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
   return (
@@ -31,7 +40,20 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
             <NotificationProvider>
               <AuditLogsProvider>
                 <ActivityTimelineProvider>
-                  {children}
+                  {/* Entity context providers */}
+                  <IncidentsProvider>
+                    <ProblemsProvider>
+                      <ChangeRequestsProvider>
+                        <ServiceRequestsProvider>
+                          <AlertsProvider>
+                            <MaintenanceProvider>
+                              {children}
+                            </MaintenanceProvider>
+                          </AlertsProvider>
+                        </ServiceRequestsProvider>
+                      </ChangeRequestsProvider>
+                    </ProblemsProvider>
+                  </IncidentsProvider>
                 </ActivityTimelineProvider>
               </AuditLogsProvider>
             </NotificationProvider>

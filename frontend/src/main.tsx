@@ -3,14 +3,14 @@ import React, { StrictMode, Component } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// PrimeReact imports
-import 'primereact/resources/themes/lara-light-blue/theme.css';
-import 'primereact/resources/primereact.min.css';
-import 'primeicons/primeicons.css';
-import 'primeflex/primeflex.css';
+// PrimeReact imports - commented out to prevent style conflicts
+// import 'primereact/resources/themes/lara-light-blue/theme.css';
+// import 'primereact/resources/primereact.min.css';
+// import 'primeicons/primeicons.css';
+// import 'primeflex/primeflex.css';
 
-// Tailwind CSS
-import './index.css';
+// Tailwind CSS with dark mode support
+import './theme.css';
 
 import App from './App.tsx';
 

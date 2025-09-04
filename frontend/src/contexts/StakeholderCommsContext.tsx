@@ -326,7 +326,7 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
     setCommunications(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const data = await getAll<StakeholderComm>(tenantId, "stakeholder_communications");
+      const data = await getAll<StakeholderComm>(tenantId, "stakeholder_comms");
       const now = new Date().toISOString();
       
       setCommunications({
@@ -353,7 +353,9 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
     setTemplates(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const data = await getAll<CommTemplate>(tenantId, "communication_templates");
+      // TODO: Templates should be filtered from stakeholder_comms store or stored separately
+      // For now, return empty array as communication_templates store doesn't exist
+      const data: CommTemplate[] = [];
       const now = new Date().toISOString();
       
       setTemplates({

@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Dark mode utilities for Tailwind v4 */
+@layer utilities {
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+/* Theme layer for custom properties */
+@layer theme {
+  :root {
+    --color-background: theme(colors.white);
+    --color-foreground: theme(colors.gray.900);
+    --color-card: theme(colors.white);
+    --color-card-foreground: theme(colors.gray.900);
+    --color-border: theme(colors.gray.200);
+    --color-primary: theme(colors.blue.600);
+    --color-primary-foreground: theme(colors.white);
+    --color-muted: theme(colors.gray.100);
+    --color-muted-foreground: theme(colors.gray.600);
+  }
+
+  .dark {
+    --color-background: theme(colors.gray.900);
+    --color-foreground: theme(colors.gray.100);
+    --color-card: theme(colors.gray.800);
+    --color-card-foreground: theme(colors.gray.100);
+    --color-border: theme(colors.gray.700);
+    --color-primary: theme(colors.blue.500);
+    --color-primary-foreground: theme(colors.white);
+    --color-muted: theme(colors.gray.800);
+    --color-muted-foreground: theme(colors.gray.400);
+  }
+}

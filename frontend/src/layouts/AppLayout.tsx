@@ -45,7 +45,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   ];
 
   return (
-    <div className={`flex h-screen ${mode === 'dark' ? 'dark' : ''}`}>
+    <div className="flex h-screen bg-white dark:bg-gray-900">
       
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
