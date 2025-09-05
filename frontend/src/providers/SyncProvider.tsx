@@ -62,6 +62,8 @@ interface SyncContextType {
   startAutoSync: () => void;
   stopAutoSync: () => void;
   forceSync: () => Promise<BatchSyncResult>;
+
+  triggerSync: () => Promise<void>; 
 }
 
 interface ProcessQueueOptions {
@@ -432,6 +434,25 @@ const simulateServerSync = async (item: SyncItem): Promise<{
       }
     };
   }
+};
+
+// Add this function in your SyncProvider component
+const triggerSync = useCallback(async (): Promise<void> => {
+  if (!tenantId || !isInitialized || isProcessing) return;
+  
+  try {
+    console.log('[SyncProvider] Manual sync triggered');
+    await processQueue({ batchSize: 10 });
+  } catch (err) {
+    console.error('[SyncProvider] Manual sync failed:', err);
+    throw err;
+  }
+}, [tenantId, isInitialized, isProcessing, processQueue]);
+
+// Add triggerSync to your contextValue
+const contextValue: SyncContextType = {
+  // ... existing properties
+  triggerSync, // ADD THIS
 };
 
 export const useSync = () => {

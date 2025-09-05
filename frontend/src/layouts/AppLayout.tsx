@@ -3,6 +3,10 @@ import React, { ReactNode, useState } from "react";
 import { useTheme } from "../providers/ThemeProvider";
 import { useNotifications } from "../providers/NotificationProvider";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
+import { OfflineStatusIndicator } from '../components/OfflineStatusIndicator';
+import { ServiceWorkerUpdateNotification } from '../components/ServiceWorkerUpdateNotification';
+import { useOfflineCapability } from '../contexts/OfflineCapabilityContext';
 
 export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const { mode, toggleTheme } = useTheme();
@@ -10,35 +14,36 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { serviceWorkerState } = useOfflineCapability();
 
   const menuItems = [
-    { 
-      label: "Pulse", 
-      icon: "📊", 
+    {
+      label: "Pulse",
+      icon: "📊",
       path: "/pulse",
       active: location.pathname === "/pulse"
     },
-    { 
-      label: "SmartQueue", 
-      icon: "📋", 
+    {
+      label: "SmartQueue",
+      icon: "📋",
       path: "/smartqueue",
-      active: location.pathname === "/smartqueue"  
+      active: location.pathname === "/smartqueue"
     },
-    { 
-      label: "Schedule", 
-      icon: "📅", 
+    {
+      label: "Schedule",
+      icon: "📅",
       path: "/schedule",
       active: location.pathname === "/schedule"
     },
-    { 
-      label: "Intelligence", 
-      icon: "🤖", 
+    {
+      label: "Intelligence",
+      icon: "🤖",
       path: "/intelligence",
       active: location.pathname === "/intelligence"
     },
-    { 
-      label: "Notifications", 
-      icon: "🔔", 
+    {
+      label: "Notifications",
+      icon: "🔔",
       path: "/notifications",
       active: location.pathname === "/notifications"
     },
@@ -46,15 +51,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   return (
     <div className="flex h-screen bg-white dark:bg-gray-900">
-      
+      <OfflineStatusIndicator />
+      <ServiceWorkerUpdateNotification />
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      
+
       {/* Sidebar */}
       <aside className={`
         fixed md:relative z-50 md:z-auto
@@ -68,14 +74,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">
               🚀 OpsHub
             </h1>
-            <button 
+            <button
               className="md:hidden text-gray-500"
               onClick={() => setSidebarOpen(false)}
             >
               ✕
             </button>
           </div>
-          
+
           <nav className="space-y-2">
             {menuItems.map((item) => (
               <button
@@ -87,8 +93,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 className={`
                   w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left
                   transition-colors duration-200
-                  ${item.active 
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
+                  ${item.active
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                   }
                 `}
@@ -108,11 +114,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        
+
         {/* Top Bar */}
         <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between">
-            
+
             {/* Left Side - Menu Toggle + Back */}
             <div className="flex items-center gap-3">
               <button
@@ -121,7 +127,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               >
                 ☰
               </button>
-              
+
               <button
                 onClick={() => navigate(-1)}
                 className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -129,7 +135,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               >
                 ←
               </button>
-              
+
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {menuItems.find(item => item.active)?.label || 'OpsHub'}
               </h2>
@@ -137,7 +143,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
             {/* Right Side - Actions */}
             <div className="flex items-center gap-2">
-              
+
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}
@@ -176,6 +182,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           {children || <Outlet />}
         </main>
       </div>
+      <PWAInstallPrompt />
     </div>
   );
 };
