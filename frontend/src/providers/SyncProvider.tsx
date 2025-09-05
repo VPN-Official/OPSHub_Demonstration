@@ -41,6 +41,7 @@ interface SyncContextType {
   isProcessing: boolean;
   lastSyncAt: string | null;
   error: string | null;
+  syncState: 'idle' | 'syncing' | 'error';
   
   // Core operations
   enqueueItem: <T>(item: {
@@ -350,6 +351,19 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
   const forceSync = useCallback(async (): Promise<BatchSyncResult> => {
     return await processQueue({ batchSize: 20 });
   }, [processQueue]);
+  
+  // Add triggerSync function inside the component
+  const triggerSync = useCallback(async (): Promise<void> => {
+    if (!tenantId || !isInitialized || isProcessing) return;
+    
+    try {
+      console.log('[SyncProvider] Manual sync triggered');
+      await processQueue({ batchSize: 10 });
+    } catch (err) {
+      console.error('[SyncProvider] Manual sync failed:', err);
+      throw err;
+    }
+  }, [tenantId, isInitialized, isProcessing, processQueue]);
 
   // Initialize stats when tenant is ready
   useEffect(() => {
@@ -384,6 +398,8 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
     startAutoSync,
     stopAutoSync,
     forceSync,
+    triggerSync,
+    syncState: isProcessing ? 'syncing' : (error ? 'error' : 'idle'),
   };
 
   return (
@@ -436,24 +452,7 @@ const simulateServerSync = async (item: SyncItem): Promise<{
   }
 };
 
-// Add this function in your SyncProvider component
-const triggerSync = useCallback(async (): Promise<void> => {
-  if (!tenantId || !isInitialized || isProcessing) return;
-  
-  try {
-    console.log('[SyncProvider] Manual sync triggered');
-    await processQueue({ batchSize: 10 });
-  } catch (err) {
-    console.error('[SyncProvider] Manual sync failed:', err);
-    throw err;
-  }
-}, [tenantId, isInitialized, isProcessing, processQueue]);
-
-// Add triggerSync to your contextValue
-const contextValue: SyncContextType = {
-  // ... existing properties
-  triggerSync, // ADD THIS
-};
+// NOTE: triggerSync has been moved inside the SyncProvider component above
 
 export const useSync = () => {
   const ctx = useContext(SyncContext);

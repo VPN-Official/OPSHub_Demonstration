@@ -798,7 +798,7 @@ export const RealtimeStreamProvider: React.FC<{ children: ReactNode }> = ({ chil
     }
     
     return subscriptionId;
-  }, [sync]);
+  }, [triggerSync]);
   
   const unsubscribeFromEntity = useCallback(async (
     entityType: string,

@@ -61,7 +61,7 @@ const tenants = [
 ];
 
 export const seedAllTenants = async () => {
-  const db = await openDB<AIOpsDB>("AIOpsDB", 2);
+  const db = await openDB<AIOpsDB>("AIOpsDB", 3);
 
   for (const tenantId of tenants) {
     console.log(`🌱 Seeding data for ${tenantId}...`);

@@ -7,7 +7,7 @@ import { AIOpsDB } from "../seeds/seedIndexedDB";
   try {
     console.log("🧹 Clearing AIOpsDB...");
 
-    const db = await openDB<AIOpsDB>("AIOpsDB", 2);
+    const db = await openDB<AIOpsDB>("AIOpsDB", 3);
 
     // Loop over all object stores and clear them
     const tx = db.transaction(db.objectStoreNames, "readwrite");

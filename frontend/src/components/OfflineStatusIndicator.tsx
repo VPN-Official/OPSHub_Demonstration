@@ -1,3 +1,4 @@
+// 2. Create frontend/src/components/OfflineStatusIndicator.tsx
 import React from 'react';
 import { useOfflineCapability } from '../contexts/OfflineCapabilityContext';
 
@@ -56,9 +57,21 @@ export const OfflineStatusIndicator: React.FC = () => {
   const statusConfig = getStatusConfig();
   if (!statusConfig) return null;
 
+  const handleClick = () => {
+    // Navigate to sync/conflicts page or show sync details
+    if (syncConflicts.length > 0) {
+      // Could open conflicts resolution modal
+      console.log('Navigate to conflict resolution');
+    } else {
+      // Could show sync queue details
+      console.log('Show sync queue details');
+    }
+  };
+
   return (
     <div 
       className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 text-sm text-center text-white cursor-pointer transition-all duration-300 ${statusConfig.bgColor}`}
+      onClick={handleClick}
     >
       <div className="flex items-center justify-center gap-2">
         <span className="animate-pulse">{statusConfig.icon}</span>

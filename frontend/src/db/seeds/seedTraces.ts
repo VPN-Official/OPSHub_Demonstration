@@ -69,7 +69,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
         trace_state: "completed", // Added trace state
         environment: "production", // Added environment
         health_status: "red", // Added health status
-        tags: ["bgp", "routing", "trace", "network"],
+        categories: ["bgp", "routing", "trace", "network"],
         custom_fields: {
           peer_count: 4,
           route_count_total: 15000,
@@ -137,7 +137,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
         trace_state: "completed",
         environment: "production",
         health_status: "green",
-        tags: ["exchange", "email", "transport", "smtp"],
+        categories: ["exchange", "email", "transport", "smtp"],
         custom_fields: {
           message_size_kb: 2048,
           recipient_count: 5,
@@ -210,7 +210,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
         trace_state: "completed",
         environment: "production",
         health_status: "green",
-        tags: ["video", "transcoding", "cdn", "streaming"],
+        categories: ["video", "transcoding", "cdn", "streaming"],
         custom_fields: {
           video_size_gb: 8.5,
           transcoding_profiles: 5,
@@ -283,7 +283,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
         trace_state: "failed",
         environment: "production",
         health_status: "red",
-        tags: ["etl", "spark", "financial", "data"],
+        categories: ["etl", "spark", "financial", "data"],
         custom_fields: {
           data_volume_gb: 150,
           records_total: 5000000,
@@ -310,7 +310,7 @@ export const seedTraces = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
         description: `Distributed trace collected: ${trace.name} (${trace.status}) - ${trace.duration_ms}ms duration`,
         timestamp: trace.end_time,
         user_id: "system", // Required field - traces are system collected
-        tags: ["seed", "trace", "collect", trace.status],
+        categories: ["seed", "trace", "collect", trace.status],
         hash: await generateHash({
           entity_type: "trace",
           entity_id: trace.id,

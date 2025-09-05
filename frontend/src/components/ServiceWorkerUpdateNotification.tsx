@@ -1,3 +1,4 @@
+// 3. Create frontend/src/components/ServiceWorkerUpdateNotification.tsx
 import React, { useState, useEffect } from 'react';
 import { useOfflineCapability } from '../contexts/OfflineCapabilityContext';
 
@@ -14,6 +15,7 @@ export const ServiceWorkerUpdateNotification: React.FC = () => {
   if (!showUpdate) return null;
 
   const handleUpdate = () => {
+    // Skip waiting and reload
     if (serviceWorkerState.registration?.waiting) {
       serviceWorkerState.registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       window.location.reload();

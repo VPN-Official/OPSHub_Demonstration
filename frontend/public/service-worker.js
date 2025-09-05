@@ -57,24 +57,103 @@ const NETWORK_ONLY_PATTERNS = [
 ];
 
 // =================================
+// STORAGE QUOTA MANAGEMENT
+// =================================
+async function checkStorageQuota() {
+  try {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      const estimate = await navigator.storage.estimate();
+      const usageRatio = estimate.usage / estimate.quota;
+      
+      console.log(`[ServiceWorker] Storage usage: ${(usageRatio * 100).toFixed(1)}% (${estimate.usage} / ${estimate.quota} bytes)`);
+      
+      if (usageRatio > 0.8) {
+        console.warn('[ServiceWorker] Storage quota nearly full, cleaning cache');
+        await performCacheCleanup();
+      }
+      
+      return usageRatio;
+    }
+  } catch (error) {
+    console.error('[ServiceWorker] Storage quota check failed:', error);
+  }
+  return 0;
+}
+
+async function performCacheCleanup() {
+  try {
+    const cacheNames = await caches.keys();
+    
+    // Delete old version caches first
+    for (const cacheName of cacheNames) {
+      if (cacheName.startsWith('opshub-') && !cacheName.startsWith(CACHE_VERSION)) {
+        console.log('[ServiceWorker] Cleaning old cache:', cacheName);
+        await caches.delete(cacheName);
+      }
+    }
+    
+    // If still over limit, clean dynamic cache entries
+    const dynamicCache = await caches.open(DYNAMIC_CACHE);
+    const requests = await dynamicCache.keys();
+    
+    // Remove oldest 25% of dynamic cache entries
+    const removeCount = Math.floor(requests.length * 0.25);
+    for (let i = 0; i < removeCount; i++) {
+      await dynamicCache.delete(requests[i]);
+    }
+    
+    // Clean up old API cache entries
+    const apiCaches = await caches.keys();
+    for (const cacheName of apiCaches) {
+      if (cacheName.includes(API_CACHE)) {
+        const cache = await caches.open(cacheName);
+        const entries = await cache.keys();
+        
+        // Remove entries older than 24 hours
+        for (const entry of entries) {
+          const response = await cache.match(entry);
+          if (response) {
+            const dateHeader = response.headers.get('date');
+            if (dateHeader) {
+              const age = Date.now() - new Date(dateHeader).getTime();
+              if (age > 24 * 60 * 60 * 1000) { // 24 hours
+                await cache.delete(entry);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('[ServiceWorker] Cache cleanup failed:', error);
+  }
+}
+
+// =================================
 // INSTALL EVENT
 // =================================
 self.addEventListener('install', (event) => {
   console.log('[ServiceWorker] Installing OpsHub SW...');
   
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[ServiceWorker] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => {
-        console.log('[ServiceWorker] Skip waiting');
-        return self.skipWaiting();
-      })
-      .catch((error) => {
-        console.error('[ServiceWorker] Install failed:', error);
-      })
+    Promise.all([
+      // Check storage quota before caching
+      checkStorageQuota(),
+      // Cache static assets
+      caches.open(STATIC_CACHE)
+        .then((cache) => {
+          console.log('[ServiceWorker] Caching static assets');
+          return cache.addAll(STATIC_ASSETS);
+        })
+    ])
+    .then(() => {
+      console.log('[ServiceWorker] Skip waiting');
+      return self.skipWaiting();
+    })
+    .catch((error) => {
+      console.error('[ServiceWorker] Install failed:', error);
+    })
   );
 });
 
@@ -184,7 +263,24 @@ async function cacheFirst(request, cacheName) {
 }
 
 async function networkFirstWithTenantIsolation(request, cacheName) {
-  const tenantId = extractTenantFromRequest(request);
+  let tenantId;
+  try {
+    tenantId = extractTenantFromRequest(request);
+  } catch (error) {
+    // Return error response for invalid tenant
+    return new Response(
+      JSON.stringify({
+        error: 'ValidationError',
+        message: error.message,
+        code: 'INVALID_TENANT'
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+  
   const cache = await caches.open(`${cacheName}-${tenantId || 'default'}`);
   
   try {
@@ -217,6 +313,10 @@ async function networkFirstWithTenantIsolation(request, cacheName) {
 
 async function cacheFirstWithBackgroundUpdate(request, cacheName) {
   const tenantId = extractTenantFromRequest(request);
+  
+  // Check storage quota before major cache operation
+  await checkStorageQuota();
+  
   const cache = await caches.open(`${cacheName}-${tenantId || 'default'}`);
   const cachedResponse = await cache.match(request);
   
@@ -279,9 +379,11 @@ async function processOfflineQueue(tenantId) {
   try {
     console.log(`[ServiceWorker] Processing offline queue for tenant: ${tenantId}`);
     
-    // Get queued actions from localStorage (matches your OfflineQueueManager)
+    // Service workers cannot access localStorage
+    // Queue processing should be handled by the main thread
+    // For now, we'll skip queue processing in the service worker
     const queueKey = `opshub_${tenantId}_offline_queue`;
-    const queueData = localStorage.getItem(queueKey);
+    const queueData = null; // Would need IndexedDB or postMessage implementation
     
     if (!queueData) return;
     
@@ -326,7 +428,8 @@ async function processOfflineQueue(tenantId) {
       const remainingActions = queuedActions.filter(action => 
         !processedActions.includes(action.id)
       );
-      localStorage.setItem(queueKey, JSON.stringify(remainingActions));
+      // Would need to store via IndexedDB or postMessage
+      console.log('[ServiceWorker] Queue update skipped - localStorage not available');
     }
     
   } catch (error) {
@@ -445,19 +548,25 @@ function isNetworkOnly(url) {
 function extractTenantFromRequest(request) {
   const url = new URL(request.url);
   
-  // Try to get tenant from query params
+  // Try multiple sources
   const tenantFromQuery = url.searchParams.get('tenant');
-  if (tenantFromQuery) return tenantFromQuery;
-  
-  // Try to get from headers
   const tenantHeader = request.headers.get('X-Tenant-ID');
-  if (tenantHeader) return tenantHeader;
-  
-  // Try to extract from URL path pattern
   const pathMatch = url.pathname.match(/\/api\/tenant\/([^\/]+)/);
-  if (pathMatch) return pathMatch[1];
   
-  return null;
+  const tenantId = tenantFromQuery || tenantHeader || (pathMatch ? pathMatch[1] : null);
+  
+  // CRITICAL: Add validation
+  if (!tenantId) {
+    console.error('[ServiceWorker] Tenant ID is required for this request');
+    return null; // Allow graceful degradation
+  }
+  
+  if (!/^[a-zA-Z0-9_-]{1,50}$/.test(tenantId)) {
+    console.error('[ServiceWorker] Invalid tenant identifier format:', tenantId);
+    throw new Error('Invalid tenant identifier format');
+  }
+  
+  return tenantId;
 }
 
 async function updateCacheInBackground(request, cache, tenantId) {
@@ -473,40 +582,40 @@ async function updateCacheInBackground(request, cache, tenantId) {
 }
 
 async function updateSyncTimestamp(url, tenantId) {
-  try {
-    // Store sync timestamp for OfflineCapabilityContext to access
-    const storageKey = `opshub_${tenantId || 'default'}_sync_timestamps`;
-    const timestamps = JSON.parse(localStorage.getItem(storageKey) || '{}');
-    timestamps[url] = new Date().toISOString();
-    localStorage.setItem(storageKey, JSON.stringify(timestamps));
-  } catch (error) {
-    console.log('[ServiceWorker] Failed to update sync timestamp:', error);
-  }
+  // Service workers cannot access localStorage
+  // This functionality would need to be implemented using IndexedDB or postMessage to main thread
+  // For now, we'll skip timestamp tracking in the service worker
+  return;
 }
 
 async function storeConflict(tenantId, action, conflictData) {
-  try {
-    const conflictKey = `opshub_${tenantId}_sync_conflicts`;
-    const conflicts = JSON.parse(localStorage.getItem(conflictKey) || '[]');
-    
-    const conflict = {
-      id: `conflict_${action.id}`,
-      entityType: action.entityType,
-      entityId: action.entityId,
-      conflictType: 'version',
-      localValue: action.payload,
-      remoteValue: conflictData.remoteValue,
-      localTimestamp: action.queuedAt,
-      remoteTimestamp: conflictData.remoteTimestamp,
-      autoResolvable: false,
-      createdAt: new Date().toISOString()
-    };
-    
-    conflicts.push(conflict);
-    localStorage.setItem(conflictKey, JSON.stringify(conflicts));
-  } catch (error) {
-    console.error('[ServiceWorker] Failed to store conflict:', error);
-  }
+  // Service workers cannot access localStorage
+  // Conflicts should be handled by the main thread through postMessage
+  // For now, we'll log the conflict
+  const conflict = {
+    id: `conflict_${action.id}`,
+    entityType: action.entityType,
+    entityId: action.entityId,
+    conflictType: 'version',
+    localValue: action.payload,
+    remoteValue: conflictData.remoteValue,
+    localTimestamp: action.queuedAt,
+    remoteTimestamp: conflictData.remoteTimestamp,
+    autoResolvable: false,
+    createdAt: new Date().toISOString()
+  };
+  
+  console.log('[ServiceWorker] Conflict detected:', conflict);
+  
+  // Send conflict to main thread via postMessage
+  const clients = await self.clients.matchAll();
+  clients.forEach(client => {
+    client.postMessage({
+      type: 'SYNC_CONFLICT',
+      tenantId,
+      conflict
+    });
+  });
 }
 
 function getNotificationActions(type) {
@@ -591,22 +700,10 @@ async function handleOfflineResponse(request, url) {
 }
 
 async function initializeCriticalDataStorage() {
-  // Initialize storage structures that your contexts expect
-  const defaultTenant = 'default';
-  
-  try {
-    // Initialize sync timestamps storage
-    if (!localStorage.getItem(`opshub_${defaultTenant}_sync_timestamps`)) {
-      localStorage.setItem(`opshub_${defaultTenant}_sync_timestamps`, '{}');
-    }
-    
-    // Initialize conflicts storage
-    if (!localStorage.getItem(`opshub_${defaultTenant}_sync_conflicts`)) {
-      localStorage.setItem(`opshub_${defaultTenant}_sync_conflicts`, '[]');
-    }
-  } catch (error) {
-    console.error('[ServiceWorker] Failed to initialize storage:', error);
-  }
+  // Service workers cannot access localStorage
+  // Storage initialization should be handled by the main thread
+  // or implemented using IndexedDB
+  console.log('[ServiceWorker] Storage initialization skipped - localStorage not available');
 }
 
 // =================================

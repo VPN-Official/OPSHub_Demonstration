@@ -15,6 +15,7 @@ import {
   putWithAudit,
   removeWithAudit,
 } from "../db/dbClient";
+import type { AIOpsDB } from "../db/seedIndexedDB";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
@@ -374,21 +375,21 @@ class OfflineQueueManager {
   private async applyOptimisticUpdate(update: OptimisticUpdate) {
     // Store rollback value
     try {
-      const current = await getById(update.storeName, update.key);
+      const current = await getById('default', update.storeName as keyof AIOpsDB, update.key as string);
       update.rollbackValue = current;
     } catch {
       // No existing value
     }
 
     // Apply optimistic update
-    await putWithAudit(update.storeName, update.key, update.value, 'system');
+    await putWithAudit('default', update.storeName as keyof AIOpsDB, update.value, 'system');
   }
 
   private async rollbackOptimisticUpdate(update: OptimisticUpdate) {
     if (update.rollbackValue !== undefined) {
-      await putWithAudit(update.storeName, update.key, update.rollbackValue, 'system');
+      await putWithAudit('default', update.storeName as keyof AIOpsDB, update.rollbackValue, 'system');
     } else {
-      await removeWithAudit(update.storeName, update.key, 'system');
+      await removeWithAudit('default', update.storeName as keyof AIOpsDB, update.key as string, 'system');
     }
   }
 
@@ -654,6 +655,56 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
     }
   }, [tenantId]);
 
+  // Define replayQueuedActions early to avoid temporal dead zone
+  const replayQueuedActions = useCallback(async (): Promise<void> => {
+    if (!queueManager.current || !isOnline) return;
+
+    setSyncStatus('syncing');
+    setSyncProgress(0);
+
+    try {
+      await queueManager.current.processQueue(
+        async (action) => {
+          // Execute action against backend
+          const response = await fetch(`/api/${action.entityType}/${action.actionType}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(action.payload),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            if (error.type === 'conflict') {
+              throw { type: 'conflict', ...error };
+            }
+            throw new Error(error.message || 'Action failed');
+          }
+
+          // Update sync progress
+          const queue = queueManager.current!.getQueue();
+          const processed = queue.filter(a => a.attemptCount > 0).length;
+          setSyncProgress(Math.round((processed / queue.length) * 100));
+        },
+        (conflict) => {
+          conflictEngine.current.addConflict(conflict);
+          setSyncConflicts(prev => [...prev, conflict]);
+        }
+      );
+
+      setLastSyncAt(new Date().toISOString());
+      setSyncStatus(syncConflicts.length > 0 ? 'conflicts' : 'synced');
+      setSyncProgress(100);
+
+      // Trigger main sync
+      await triggerSync();
+    } catch (error) {
+      console.error('[OfflineCapability] Sync failed:', error);
+      setSyncStatus('error');
+    } finally {
+      setSyncProgress(0);
+    }
+  }, [isOnline, triggerSync, syncConflicts.length]);
+
   // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => {
@@ -675,7 +726,7 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [replayQueuedActions]);
 
   // Monitor network quality
   useEffect(() => {
@@ -810,15 +861,67 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
     setCriticalDataSets(criticalData);
   }, []);
 
+  // Define registerServiceWorker early to avoid temporal dead zone
+  const registerServiceWorker = useCallback(async (): Promise<void> => {
+    if (!('serviceWorker' in navigator)) return;
+
+    try {
+      // Clean up any existing interval
+      if ((window as any).__serviceWorkerUpdateInterval) {
+        clearInterval((window as any).__serviceWorkerUpdateInterval);
+      }
+      
+      const registration = await navigator.serviceWorker.register('/service-worker.js');
+
+      setServiceWorkerState({
+        registration,
+        updateAvailable: false,
+        isControlled: !!navigator.serviceWorker.controller,
+        scriptURL: registration.active?.scriptURL,
+      });
+
+      // Check for updates
+      const handleUpdateFound = () => {
+        setServiceWorkerState(prev => ({ ...prev, updateAvailable: true }));
+      };
+      registration.addEventListener('updatefound', handleUpdateFound);
+      
+      // Store handler for cleanup
+      (registration as any).__updateFoundHandler = handleUpdateFound;
+
+      // ADD: Listen for tenant changes to notify service worker
+      const notifyTenantChange = (newTenantId: string) => {
+        if (registration.active) {
+          registration.active.postMessage({
+            type: 'TENANT_CHANGED',
+            tenantId: newTenantId
+          });
+        }
+      };
+
+      // Check for updates periodically
+      const updateInterval = setInterval(() => registration.update(), 3600000); // Every hour
+      
+      // Store interval ID for cleanup
+      (window as any).__serviceWorkerUpdateInterval = updateInterval;
+
+      console.log('[OfflineCapability] Service worker registered successfully');
+    } catch (error) {
+      console.error('[ServiceWorker] Registration failed:', error);
+    }
+  }, []);
+
   // Service Worker registration
   useEffect(() => {
+    const handleControllerChange = () => {
+      setServiceWorkerState(prev => ({ ...prev, isControlled: true }));
+    };
+    
     if ('serviceWorker' in navigator) {
       registerServiceWorker();
 
       // Listen for updates
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        setServiceWorkerState(prev => ({ ...prev, isControlled: true }));
-      });
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
     }
 
     // PWA install prompt
@@ -835,9 +938,12 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
     }
 
     return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      }
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-  }, []);
+  }, [registerServiceWorker]);
 
   // Sync management
   useEffect(() => {
@@ -897,55 +1003,6 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
 
     await queueManager.current.dequeue(actionId);
   }, []);
-
-  const replayQueuedActions = useCallback(async (): Promise<void> => {
-    if (!queueManager.current || !isOnline) return;
-
-    setSyncStatus('syncing');
-    setSyncProgress(0);
-
-    try {
-      await queueManager.current.processQueue(
-        async (action) => {
-          // Execute action against backend
-          const response = await fetch(`/api/${action.entityType}/${action.actionType}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(action.payload),
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            if (error.type === 'conflict') {
-              throw { type: 'conflict', ...error };
-            }
-            throw new Error(error.message || 'Action failed');
-          }
-
-          // Update sync progress
-          const queue = queueManager.current!.getQueue();
-          const processed = queue.filter(a => a.attemptCount > 0).length;
-          setSyncProgress(Math.round((processed / queue.length) * 100));
-        },
-        (conflict) => {
-          conflictEngine.current.addConflict(conflict);
-          setSyncConflicts(prev => [...prev, conflict]);
-        }
-      );
-
-      setLastSyncAt(new Date().toISOString());
-      setSyncStatus(syncConflicts.length > 0 ? 'conflicts' : 'synced');
-      setSyncProgress(100);
-
-      // Trigger main sync
-      await triggerSync();
-    } catch (error) {
-      console.error('[OfflineCapability] Sync failed:', error);
-      setSyncStatus('error');
-    } finally {
-      setSyncProgress(0);
-    }
-  }, [isOnline, triggerSync, syncConflicts.length]);
 
   const clearQueue = useCallback(async (): Promise<void> => {
     if (!queueManager.current) return;
@@ -1116,42 +1173,7 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
 
   // Service Worker management
   // Service Worker management
-  const registerServiceWorker = useCallback(async (): Promise<void> => {
-    if (!('serviceWorker' in navigator)) return;
-
-    try {
-      const registration = await navigator.serviceWorker.register('/service-worker.js');
-
-      setServiceWorkerState({
-        registration,
-        updateAvailable: false,
-        isControlled: !!navigator.serviceWorker.controller,
-        scriptURL: registration.active?.scriptURL,
-      });
-
-      // Check for updates
-      registration.addEventListener('updatefound', () => {
-        setServiceWorkerState(prev => ({ ...prev, updateAvailable: true }));
-      });
-
-      // ADD: Listen for tenant changes to notify service worker
-      const notifyTenantChange = (newTenantId: string) => {
-        if (registration.active) {
-          registration.active.postMessage({
-            type: 'TENANT_CHANGED',
-            tenantId: newTenantId
-          });
-        }
-      };
-
-      // Check for updates periodically
-      setInterval(() => registration.update(), 3600000); // Every hour
-
-      console.log('[OfflineCapability] Service worker registered successfully');
-    } catch (error) {
-      console.error('[ServiceWorker] Registration failed:', error);
-    }
-  }, []);
+  // registerServiceWorker has been moved earlier to avoid temporal dead zone
 
   useEffect(() => {
     if (serviceWorkerState.registration?.active && tenantId) {

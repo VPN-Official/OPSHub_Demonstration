@@ -37,7 +37,7 @@ export interface ActivityEvent {
 }
 
 // ---------------------------------
-// Audit Log Entry (Updated interface)
+// Audit Log Entry (Enhanced for Compliance)
 // ---------------------------------
 export interface AuditLogEntry {
   id: string;
@@ -48,9 +48,18 @@ export interface AuditLogEntry {
   timestamp: string;
   user_id: string | null;
   tags: string[];
-  hash: string; // Renamed from immutable_hash for consistency
+  hash: string; // Immutable hash for audit integrity
   tenantId: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> & {
+    classification?: 'public' | 'internal' | 'confidential' | 'sensitive';
+    reason?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    compliance_relevant?: boolean;
+    retention_period_days?: number;
+    gdpr_relevant?: boolean;
+    sox_relevant?: boolean;
+  };
 }
 
 // ---------------------------------
@@ -184,12 +193,15 @@ export const putWithAudit = async <T extends { id: string }>(
   tenantId: string,
   storeName: keyof AIOpsDB,
   entity: T,
-  action: "create" | "update",
+  action: "create" | "update" | "system" | "conflict-resolution" | "preload",
   userId?: string,
-  auditMetadata?: {
+  options: {
     description?: string;
+    classification?: 'public' | 'internal' | 'confidential' | 'sensitive';
+    reason?: string;
+    ipAddress?: string;
     metadata?: Record<string, any>;
-  }
+  } = {}
 ): Promise<T> => {
   if (!tenantId) {
     throw new Error("tenantId is required for all DB operations");
@@ -211,17 +223,21 @@ export const putWithAudit = async <T extends { id: string }>(
     // Save to IndexedDB
     await db.put(storeName, enrichedEntity);
 
-    // Create audit log entry
+    // Determine data classification based on store and content
+    const classification = options.classification || determineDataClassification(storeName, entity);
+    const isComplianceRelevant = ['sensitive', 'confidential'].includes(classification);
+    
+    // Create enhanced audit log entry for compliance
     const auditEntry: AuditLogEntry = {
       id: await generateSecureId(),
       tenantId,
       entity_type: storeName.toString(),
       entity_id: entity.id,
       action,
-      description: auditMetadata?.description || `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
+      description: options.description || `${action} ${storeName} ${entity.id}${options.reason ? ` - ${options.reason}` : ''}`,
       timestamp,
-      user_id: userId || null,     // ✅ Handle optional userId properly
-      tags: ["dbclient", storeName.toString(), action],
+      user_id: userId || null,
+      tags: ["dbclient", storeName.toString(), action, classification],
       hash: await generateImmutableHash({
         entity_type: storeName.toString(),
         entity_id: entity.id,
@@ -229,23 +245,37 @@ export const putWithAudit = async <T extends { id: string }>(
         timestamp,
         tenantId,
         user_id: userId,
+        classification,
       }),
-      metadata: auditMetadata?.metadata,
+      metadata: {
+        ...options.metadata,
+        classification,
+        reason: options.reason,
+        ipAddress: options.ipAddress || (typeof window !== 'undefined' ? await getUserIP() : undefined),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'server',
+        compliance_relevant: isComplianceRelevant,
+        retention_period_days: getRetentionPeriod(classification),
+        gdpr_relevant: isGDPRRelevant(storeName, entity),
+        sox_relevant: isSOXRelevant(storeName, action),
+      },
     };
 
     await db.put("audit_logs", auditEntry);
 
-    // Create activity timeline entry
+    // Create activity timeline entry with classification
     await db.put("activity_timeline", {
       id: await generateSecureId(),
       tenantId,
       timestamp,
-      message: auditMetadata?.description || `${action === "create" ? "Created" : "Updated"} ${storeName} (${entity.id})`,
+      message: options.description || `${action} ${storeName} (${entity.id})`,
       storeName: storeName.toString(),
       recordId: entity.id,
-      action: action as "create" | "update",
+      action: action === 'system' || action === 'conflict-resolution' || action === 'preload' ? 'update' : action as "create" | "update",
       userId,
-      metadata: auditMetadata?.metadata,
+      metadata: {
+        ...options.metadata,
+        classification,
+      },
     });
 
     // ✅ CRITICAL: Sync queue operations should not block main operations
@@ -283,11 +313,14 @@ export const removeWithAudit = async (
   tenantId: string,
   storeName: keyof AIOpsDB,
   entityId: string,
+  action: "delete" | "system",
   userId?: string,
-  auditMetadata?: {
+  options: {
     description?: string;
+    classification?: 'public' | 'internal' | 'confidential' | 'sensitive';
+    reason?: string;
     metadata?: Record<string, any>;
-  }
+  } = {}
 ): Promise<void> => {
   if (!tenantId) {
     throw new Error("tenantId is required for all DB operations");
@@ -306,17 +339,20 @@ export const removeWithAudit = async (
     // Delete from IndexedDB
     await db.delete(storeName, entityId);
 
-    // Create audit log entry
+    // Determine classification from existing entity
+    const classification = options.classification || determineDataClassification(storeName, existingEntity);
+    
+    // Create enhanced audit log entry
     const auditEntry: AuditLogEntry = {
       id: await generateSecureId(),
       tenantId,
       entity_type: storeName.toString(),
       entity_id: entityId,
-      action: "delete",
-      description: auditMetadata?.description || `Deleted ${storeName} (${entityId})`,
+      action: action || "delete",
+      description: options.description || `Deleted ${storeName} (${entityId})${options.reason ? ` - ${options.reason}` : ''}`,
       timestamp,
-      user_id: userId || null,     // ✅ Handle optional userId properly
-      tags: ["dbclient", storeName.toString(), "delete"],
+      user_id: userId || null,
+      tags: ["dbclient", storeName.toString(), "delete", classification],
       hash: await generateImmutableHash({
         entity_type: storeName.toString(),
         entity_id: entityId,
@@ -324,8 +360,16 @@ export const removeWithAudit = async (
         timestamp,
         tenantId,
         user_id: userId,
+        deleted_data_hash: await generateImmutableHash(existingEntity), // Hash of deleted data for compliance
       }),
-      metadata: auditMetadata?.metadata,
+      metadata: {
+        ...options.metadata,
+        classification,
+        reason: options.reason,
+        compliance_relevant: ['sensitive', 'confidential'].includes(classification),
+        deletion_timestamp: timestamp,
+        gdpr_deletion: isGDPRRelevant(storeName, existingEntity),
+      },
     };
 
     await db.put("audit_logs", auditEntry);
@@ -492,6 +536,137 @@ export const clear = async (
     throw error;
   }
 };
+
+// ---------------------------------
+// Compliance Helper Functions
+// ---------------------------------
+function determineDataClassification(storeName: keyof AIOpsDB, entity: any): 'public' | 'internal' | 'confidential' | 'sensitive' {
+  // Sensitive data stores
+  if (['users', 'end_users', 'customers', 'audit_logs'].includes(storeName.toString())) {
+    return 'sensitive';
+  }
+  
+  // Confidential data stores
+  if (['contracts', 'vendors', 'compliance_controls', 'risks'].includes(storeName.toString())) {
+    return 'confidential';
+  }
+  
+  // Check for PII in entity
+  if (entity && (entity.email || entity.ssn || entity.phone || entity.address)) {
+    return 'sensitive';
+  }
+  
+  // Check for financial data
+  if (entity && (entity.salary || entity.budget || entity.cost || entity.revenue)) {
+    return 'confidential';
+  }
+  
+  // Internal by default for most operational data
+  if (['incidents', 'problems', 'changes', 'service_requests'].includes(storeName.toString())) {
+    return 'internal';
+  }
+  
+  return 'public';
+}
+
+function getRetentionPeriod(classification: string): number {
+  switch (classification) {
+    case 'sensitive':
+      return 2555; // 7 years for sensitive data (GDPR/SOX)
+    case 'confidential':
+      return 1825; // 5 years for confidential data
+    case 'internal':
+      return 365; // 1 year for internal data
+    case 'public':
+      return 90; // 90 days for public data
+    default:
+      return 365;
+  }
+}
+
+function isGDPRRelevant(storeName: keyof AIOpsDB, entity: any): boolean {
+  // GDPR applies to personal data
+  const gdprStores = ['users', 'end_users', 'customers', 'audit_logs'];
+  if (gdprStores.includes(storeName.toString())) {
+    return true;
+  }
+  
+  // Check for PII fields
+  if (entity && (entity.email || entity.name || entity.phone || entity.address || entity.ip_address)) {
+    return true;
+  }
+  
+  return false;
+}
+
+function isSOXRelevant(storeName: keyof AIOpsDB, action: string): boolean {
+  // SOX applies to financial controls and audit trails
+  const soxStores = ['audit_logs', 'compliance_controls', 'contracts', 'vendors', 'cost_centers'];
+  if (soxStores.includes(storeName.toString())) {
+    return true;
+  }
+  
+  // Any delete action on financial data is SOX relevant
+  if (action === 'delete' && ['contracts', 'vendors', 'cost_centers'].includes(storeName.toString())) {
+    return true;
+  }
+  
+  return false;
+}
+
+async function getUserIP(): Promise<string | undefined> {
+  try {
+    // In production, this would call your backend API to get the real IP
+    // For now, return a placeholder
+    return 'client-ip';
+  } catch {
+    return undefined;
+  }
+}
+
+// Data retention cleanup function
+export async function cleanupExpiredData(tenantId: string): Promise<number> {
+  if (!tenantId) throw new Error('tenantId required');
+  
+  const db = await getDB(tenantId);
+  const now = new Date();
+  let deletedCount = 0;
+  
+  try {
+    // Check audit logs for expired entries
+    const auditLogs = await db.getAll('audit_logs');
+    
+    for (const log of auditLogs) {
+      const retentionDays = log.metadata?.retention_period_days || 365;
+      const logDate = new Date(log.timestamp);
+      const expiryDate = new Date(logDate.getTime() + (retentionDays * 24 * 60 * 60 * 1000));
+      
+      if (expiryDate < now && !log.metadata?.compliance_relevant) {
+        // Only delete non-compliance-relevant expired logs
+        await db.delete('audit_logs', log.id);
+        deletedCount++;
+        console.log(`[Compliance] Deleted expired audit log: ${log.id}`);
+      }
+    }
+    
+    // Clean up activity timeline older than 30 days
+    const activities = await db.getAll('activity_timeline');
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    
+    for (const activity of activities) {
+      if (new Date(activity.timestamp) < thirtyDaysAgo) {
+        await db.delete('activity_timeline', activity.id);
+        deletedCount++;
+      }
+    }
+    
+    console.log(`[Compliance] Data retention cleanup completed. Deleted ${deletedCount} expired records.`);
+  } catch (error) {
+    console.error('[Compliance] Data retention cleanup failed:', error);
+  }
+  
+  return deletedCount;
+}
 
 // ---------------------------------
 // Sync Status Management
