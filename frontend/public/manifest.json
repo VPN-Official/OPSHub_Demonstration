@@ -1,0 +1,167 @@
+{
+  "name": "OpsHub - IT Operations Management",
+  "short_name": "OpsHub",
+  "description": "Enterprise-grade IT operations management platform with offline-first capabilities for incident management, asset tracking, and intelligent automation.",
+  "version": "1.0.0",
+  "start_url": "/pulse",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#1f2937",
+  "background_color": "#ffffff",
+  "lang": "en-US",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96.png", 
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128", 
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png", 
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png", 
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "View Active Incidents",
+      "short_name": "Incidents",
+      "description": "Quickly access active incidents requiring attention",
+      "url": "/smartqueue?filter=incidents&status=active",
+      "icons": [
+        {
+          "src": "/icons/shortcut-incidents.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Create New Incident",
+      "short_name": "New Incident", 
+      "description": "Report a new incident",
+      "url": "/incidents/new",
+      "icons": [
+        {
+          "src": "/icons/shortcut-new.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "On-Call Schedule",
+      "short_name": "On-Call",
+      "description": "Check current on-call assignments",
+      "url": "/schedule?view=oncall",
+      "icons": [
+        {
+          "src": "/icons/shortcut-schedule.png", 
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Intelligence Center",
+      "short_name": "AI Hub",
+      "description": "Access AI insights and automations",
+      "url": "/intelligence",
+      "icons": [
+        {
+          "src": "/icons/shortcut-ai.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "attachments",
+          "accept": ["image/*", ".pdf", ".doc", ".docx", ".txt", ".log"]
+        }
+      ]
+    }
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+opshub",
+      "url": "/handle?incident=%s"
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "prefer_related_applications": false,
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "file_handlers": [
+    {
+      "action": "/import",
+      "accept": {
+        "text/csv": [".csv"],
+        "application/json": [".json"],
+        "text/plain": [".log", ".txt"]
+      }
+    }
+  ]
+}
