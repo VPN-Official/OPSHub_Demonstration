@@ -12,6 +12,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 import { teamsApi } from "../api/teamsApi";
 
 // ---------------------------------
@@ -43,6 +44,12 @@ export interface UIFilters {
   hasSkill?: string;
   availableOnly?: boolean;
   overloadedOnly?: boolean;
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 export interface CacheConfig {
@@ -478,10 +485,11 @@ export const TeamsProvider = ({ children }: { children: ReactNode }) => {
 
     // Simple search for UI responsiveness (not business search)
     const searchResults = filters.search 
-      ? filteredTeams.filter(team => 
-          team.name.toLowerCase().includes(filters.search!.toLowerCase()) ||
-          team.description?.toLowerCase().includes(filters.search!.toLowerCase())
-        )
+      ? filteredTeams.filter(team => {
+          const searchLower = filters.search?.toLowerCase() || '';
+          return team.name.toLowerCase().includes(searchLower) ||
+            team.description?.toLowerCase().includes(searchLower);
+        })
       : filteredTeams;
 
     // Group by type for UI organization

@@ -60,7 +60,7 @@ export interface Log {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
   tenantId?: string;
 }
 
@@ -197,11 +197,13 @@ const applyUIFilters = (logs: Log[], filters: UIFilters): Log[] => {
   }
   
   if (filters.levels?.length) {
-    filtered = filtered.filter(log => filters.levels!.includes(log.level));
+    filtered = filtered.filter(log => filters.levels.includes(log.level));
   }
   
   if (filters.sourceSystems?.length) {
-    filtered = filtered.filter(log => filters.sourceSystems!.includes(log.source_system));
+    filtered = filtered.filter(log => 
+      log.source_system && filters.sourceSystems.includes(log.source_system)
+    );
   }
   
   if (filters.showOnlyErrors) {
@@ -405,9 +407,9 @@ export const LogsProvider = ({ children }: { children: ReactNode }) => {
     const operationId = crypto.randomUUID();
     const tempLog: Log = {
       id: crypto.randomUUID(),
-      source_system: logData.source_system!,
-      message: logData.message!,
-      level: logData.level!,
+      source_system: logData.source_system || 'internal',
+      message: logData.message || '',
+      level: logData.level || 'info',
       captured_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

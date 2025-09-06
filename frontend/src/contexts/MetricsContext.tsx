@@ -30,7 +30,7 @@ export interface Metric {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
 }
 
 /**
@@ -49,7 +49,7 @@ interface AsyncState<T> {
  */
 interface UIFilters {
   healthStatus?: Metric['health_status'][];
-  sourceSystem?: string;
+  sourceSystems?: string[];
   hasAsset?: boolean;
   searchQuery?: string;
   tags?: string[];
@@ -405,12 +405,12 @@ export const MetricsProvider = ({ children }: { children: ReactNode }) => {
     let filtered = [...state.data];
 
     if (filters.healthStatus?.length) {
-      filtered = filtered.filter(m => filters.healthStatus!.includes(m.health_status));
+      filtered = filtered.filter(m => filters.healthStatus.includes(m.health_status));
     }
 
-    if (filters.sourceSystem) {
+    if (filters.sourceSystems?.length) {
       filtered = filtered.filter(m => 
-        m.source_system.toLowerCase().includes(filters.sourceSystem!.toLowerCase())
+        m.source_system && filters.sourceSystems.includes(m.source_system)
       );
     }
 
@@ -430,7 +430,7 @@ export const MetricsProvider = ({ children }: { children: ReactNode }) => {
 
     if (filters.tags?.length) {
       filtered = filtered.filter(m =>
-        filters.tags!.some(tag => m.tags.includes(tag))
+        filters.tags?.some(tag => m.tags?.includes(tag)) || false
       );
     }
 

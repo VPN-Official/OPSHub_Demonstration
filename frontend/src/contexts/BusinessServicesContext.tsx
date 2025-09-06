@@ -4,6 +4,7 @@ import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -40,7 +41,7 @@ export interface BusinessServiceHealthCheck {
 }
 
 // Core business service interface (UI state focused)
-export interface BusinessService {
+export interface BusinessService extends ExternalSystemFields {
   id: string;
   name: string;
   description: string;
@@ -111,8 +112,6 @@ export interface BusinessService {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -277,7 +276,7 @@ export const BusinessServicesProvider = ({ children }: { children: ReactNode }) 
       tenantId,
       tags: svc.tags || [],
       health_status: svc.health_status || "gray",
-      sync_status: svc.sync_status || "dirty",
+      sync_status: svc.sync_status || "syncing",
       synced_at: svc.synced_at || now,
       service_component_ids: svc.service_component_ids || [],
       customer_ids: svc.customer_ids || [],
@@ -733,7 +732,7 @@ export const BusinessServicesProvider = ({ children }: { children: ReactNode }) 
       // Invalidate specific service (for selective updates)
       setBusinessServices(prev => ({
         ...prev,
-        data: prev.data.map(s => s.id === serviceId ? { ...s, sync_status: 'dirty' } : s),
+        data: prev.data.map(s => s.id === serviceId ? { ...s, sync_status: 'syncing' } : s),
         isStale: true,
       }));
     } else {

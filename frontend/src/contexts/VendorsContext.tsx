@@ -78,7 +78,7 @@ export interface Vendor {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
   tenantId?: string;
 }
 
@@ -210,7 +210,7 @@ export const VendorsProvider = ({ children }: { children: ReactNode }) => {
       tenantId,
       tags: vendor.tags || [],
       health_status: vendor.health_status || "gray",
-      sync_status: vendor.sync_status || "dirty",
+      sync_status: vendor.sync_status || "syncing",
       synced_at: vendor.synced_at || now,
       asset_ids: vendor.asset_ids || [],
       contract_ids: vendor.contract_ids || [],

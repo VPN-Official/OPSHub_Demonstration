@@ -18,6 +18,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -56,6 +57,12 @@ export interface UIFilters {
   ownerType?: 'user' | 'team';
   requiresCertification?: boolean;
   tags?: string[];
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -82,7 +89,7 @@ export type SkillCategory =
   | "business"
   | "other";
 
-export interface Skill {
+export interface Skill extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -103,8 +110,7 @@ export interface Skill {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   tenantId?: string;
 
   // Backend-calculated metrics (never calculated in frontend)
@@ -349,7 +355,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       health_status: "green",
-      sync_status: "dirty",
+      sync_status: "syncing",
       tenantId,
     };
 
@@ -407,7 +413,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
     const updatedSkill = {
       ...skill,
       updated_at: new Date().toISOString(),
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
       tenantId,
     };
 
@@ -546,7 +552,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
 
     if (filters.tags && filters.tags.length > 0) {
       result = result.filter(skill => 
-        filters.tags!.some(tag => skill.tags.includes(tag))
+        filters.tags?.some(tag => skill.tags?.includes(tag)) || false
       );
     }
 

@@ -19,12 +19,13 @@ import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
 import { useAIInsights } from "./AIInsightsContext";
 import { useNavigationTrace } from "./NavigationTraceContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Business Metric Types
 // ---------------------------------
 
-export interface BusinessImpactMetric {
+export interface BusinessImpact extends ExternalSystemFields {
   id: string;
   metricType: 'revenue' | 'cost' | 'efficiency' | 'satisfaction' | 'compliance' | 'risk';
   entityType?: string;
@@ -38,7 +39,13 @@ export interface BusinessImpactMetric {
   target?: number;
   calculatedAt: string;
   factors?: ImpactFactor[];
+  
+  // External system fields are inherited from ExternalSystemFields:
+  // source_system, external_id, external_url, sync_status, synced_at, etc.
 }
+
+// Maintain backward compatibility with existing interface name
+export interface BusinessImpactMetric extends BusinessImpact {}
 
 export interface ImpactFactor {
   name: string;

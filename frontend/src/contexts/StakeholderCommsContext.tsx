@@ -18,6 +18,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Core Types (Domain Models)
@@ -61,7 +62,7 @@ export interface CommTemplate {
   variables: string[];
 }
 
-export interface StakeholderComm {
+export interface StakeholderComm extends ExternalSystemFields {
   id: string;
   related_entity_type: "incident" | "change" | "problem" | "maintenance" | "alert" | "other";
   related_entity_id: string;
@@ -132,8 +133,7 @@ export interface StakeholderComm {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at, sync_status replaced with ExternalSystemFields
   tenantId?: string;
 }
 
@@ -165,6 +165,12 @@ interface UIFilters {
     start: string;
     end: string;
   };
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 interface OptimisticUpdate<T> {
@@ -422,7 +428,7 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       health_status: "green",
-      sync_status: "dirty",
+      sync_status: "syncing",
       tenantId,
       recipients: [],
       total_recipients: 0,
@@ -485,7 +491,7 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
       ...existing,
       ...updates,
       updated_at: new Date().toISOString(),
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
 
     // Optimistic UI update
@@ -799,16 +805,16 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
     let filtered = communications.data;
 
     if (filters.status?.length) {
-      filtered = filtered.filter(c => filters.status!.includes(c.status));
+      filtered = filtered.filter(c => filters.status?.includes(c.status) || false);
     }
     if (filters.channel?.length) {
-      filtered = filtered.filter(c => filters.channel!.includes(c.channel));
+      filtered = filtered.filter(c => filters.channel?.includes(c.channel) || false);
     }
     if (filters.audience?.length) {
-      filtered = filtered.filter(c => filters.audience!.includes(c.audience));
+      filtered = filtered.filter(c => filters.audience?.includes(c.audience) || false);
     }
     if (filters.priority?.length) {
-      filtered = filtered.filter(c => filters.priority!.includes(c.priority));
+      filtered = filtered.filter(c => filters.priority?.includes(c.priority) || false);
     }
     if (filters.entityId) {
       filtered = filtered.filter(c => c.related_entity_id === filters.entityId);
@@ -826,8 +832,9 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
     }
     if (filters.dateRange) {
       filtered = filtered.filter(c => 
-        c.created_at >= filters.dateRange!.start && 
-        c.created_at <= filters.dateRange!.end
+        filters.dateRange && 
+        c.created_at >= filters.dateRange.start && 
+        c.created_at <= filters.dateRange.end
       );
     }
 
@@ -840,10 +847,10 @@ export const StakeholderCommsProvider = ({ children }: { children: ReactNode }) 
     let filtered = templates.data;
 
     if (filters.channel?.length) {
-      filtered = filtered.filter(t => filters.channel!.includes(t.channel));
+      filtered = filtered.filter(t => filters.channel?.includes(t.channel) || false);
     }
     if (filters.audience?.length) {
-      filtered = filtered.filter(t => filters.audience!.includes(t.audience));
+      filtered = filtered.filter(t => filters.audience?.includes(t.audience) || false);
     }
     if (filters.search) {
       const query = filters.search.toLowerCase();

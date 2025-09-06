@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Type Definitions
@@ -29,7 +30,7 @@ export interface RunbookStep {
   automation_rule_id?: string | null;
 }
 
-export interface Runbook {
+export interface Runbook extends ExternalSystemFields {
   id: string;
   title: string;
   description?: string;
@@ -60,8 +61,7 @@ export interface Runbook {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at and sync_status inherited from ExternalSystemFields
   tenantId?: string;
 }
 
@@ -72,6 +72,21 @@ export interface RunbookDetails extends Runbook {
   related_problems?: any[];
   related_changes?: any[];
   related_maintenances?: any[];
+}
+
+export interface RunbookUIFilters {
+  type?: string;
+  status?: string;
+  owner_user_id?: string;
+  owner_team_id?: string;
+  tags?: string[];
+  needs_review?: boolean;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -185,7 +200,7 @@ export const RunbooksProvider = ({ children }: { children: ReactNode }) => {
       tenantId,
       tags: runbook.tags || [],
       health_status: runbook.health_status || "gray",
-      sync_status: runbook.sync_status || "dirty",
+      sync_status: runbook.sync_status || "syncing",
       synced_at: runbook.synced_at || now,
       related_incident_ids: runbook.related_incident_ids || [],
       related_problem_ids: runbook.related_problem_ids || [],

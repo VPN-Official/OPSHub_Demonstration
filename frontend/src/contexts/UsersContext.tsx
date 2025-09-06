@@ -12,6 +12,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -47,7 +48,7 @@ export interface UserPreferences {
   dashboard_layout?: Record<string, any>;
 }
 
-export interface User {
+export interface User extends ExternalSystemFields {
   id: string;
   username: string;
   email: string;
@@ -80,9 +81,8 @@ export interface User {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
 }
 
 // ---------------------------------
@@ -111,6 +111,12 @@ export interface UserFilters {
   isActive?: boolean;
   onCallStatus?: string;
   searchQuery?: string;
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 export interface OptimisticUpdate {

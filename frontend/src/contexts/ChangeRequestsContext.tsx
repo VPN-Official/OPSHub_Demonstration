@@ -18,6 +18,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Types
@@ -37,7 +38,7 @@ export interface AsyncState<T> {
 /**
  * UI-optimized change request interface (display-focused)
  */
-export interface ChangeRequest {
+export interface ChangeRequest extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -108,8 +109,6 @@ export interface ChangeRequest {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -139,6 +138,11 @@ export interface UIFilters {
   pending_approval?: boolean;
   scheduled_only?: boolean;
   search_query?: string;
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 /**
@@ -248,7 +252,7 @@ export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) =>
       tenantId,
       tags: cr.tags || [],
       health_status: cr.health_status || "gray",
-      sync_status: cr.sync_status || "dirty",
+      sync_status: cr.sync_status || "syncing",
       synced_at: cr.synced_at || now,
       service_component_ids: cr.service_component_ids || [],
       asset_ids: cr.asset_ids || [],

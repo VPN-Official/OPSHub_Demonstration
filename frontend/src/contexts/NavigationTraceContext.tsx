@@ -18,17 +18,19 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Entity Relationship Types
 // ---------------------------------
 
-export interface EntityReference {
+export interface EntityReference extends ExternalSystemFields {
   entityType: string;
   entityId: string;
   displayName: string;
   entityStatus?: string;
   entityMetadata?: Record<string, any>;
+  // synced_at, sync_status removed - inherited from ExternalSystemFields
 }
 
 export interface EntityRelationship {

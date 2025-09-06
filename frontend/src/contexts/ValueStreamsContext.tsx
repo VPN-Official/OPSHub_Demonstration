@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -32,6 +33,12 @@ export interface ValueStreamUIFilters {
   maturity?: string;
   high_value_only?: boolean;
   risk_threshold?: number;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -55,7 +62,7 @@ export interface OptimisticUpdate {
 /**
  * Value Stream entity (simplified for UI display)
  */
-export interface ValueStream {
+export interface ValueStream extends ExternalSystemFields {
   id: string;
   name: string;
   description: string;
@@ -82,6 +89,7 @@ export interface ValueStream {
     last_viewed?: string;
     user_notes?: string;
   };
+  // synced_at, sync_status removed - inherited from ExternalSystemFields
 }
 
 /**
@@ -639,7 +647,7 @@ export const ValueStreamsProvider = ({ children }: { children: ReactNode }) => {
     }
     if (filters.high_value_only && filters.risk_threshold) {
       filtered = filtered.filter(vs => 
-        (vs.annual_value && vs.annual_value >= filters.risk_threshold!) ||
+        (vs.annual_value && vs.annual_value >= filters.risk_threshold) ||
         vs.strategic_importance === 'critical'
       );
     }

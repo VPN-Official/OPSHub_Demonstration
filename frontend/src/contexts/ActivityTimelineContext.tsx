@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -55,7 +56,7 @@ export type ActivityAction =
   | "cancel"
   | "custom";
 
-export interface ActivityEvent {
+export interface ActivityEvent extends ExternalSystemFields {
   id: string;
   timestamp: string;
   tenantId: string;
@@ -71,7 +72,7 @@ export interface ActivityEvent {
   team_id?: string | null;
   ai_agent_id?: string | null;
   automation_rule_id?: string | null;
-  source_system?: string;
+  // source_system field moved to ExternalSystemFields
   field_changes?: Array<{
     field: string;
     old_value?: any;
@@ -119,6 +120,12 @@ interface ActivityFilters {
   success?: boolean;
   correlationId?: string;
   searchQuery?: string;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**

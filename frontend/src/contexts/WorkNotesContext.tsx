@@ -11,6 +11,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Core Type Definitions
@@ -29,7 +30,7 @@ export type WorkItemType =
 /**
  * Base WorkItem entity structure - matches backend API response
  */
-export interface WorkItem {
+export interface WorkItem extends ExternalSystemFields {
   id: string;
   type: WorkItemType;
   title: string;
@@ -78,6 +79,11 @@ export interface WorkItemUIFilters {
   searchQuery?: string;
   sla_breach_risk?: string;
   tags?: string[];
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 /**

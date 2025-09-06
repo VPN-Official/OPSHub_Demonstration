@@ -1,6 +1,7 @@
 // src/db/syncQueue.ts - FIXED with consolidated interfaces
 import { getDB } from "./dbClient";
 import { AIOpsDB } from "./seedIndexedDB";
+import type { ExternalSystemType } from "../types/externalSystem";
 
 // ✅ CRITICAL FIX: Import and re-export types from syncTypes.ts to avoid duplication
 export type { 
@@ -413,6 +414,238 @@ export const retryFailedItems = async (
     return itemsToRetry.length;
   } catch (error) {
     console.error("Failed to retry failed items:", error);
+    throw error;
+  }
+};
+
+// ---------------------------------
+// External System Sync Operations
+// ---------------------------------
+
+/**
+ * Enqueue items for sync with external systems
+ */
+export const enqueueExternalSync = async <T>(
+  tenantId: string,
+  items: Array<{
+    entityId: string;
+    storeName: string;
+    source_system: string;
+    action: 'push' | 'pull' | 'sync';
+    payload?: T;
+    priority?: SyncPriority;
+  }>
+): Promise<void> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required for external sync");
+  }
+
+  const promises = items.map(item => 
+    enqueue(tenantId, {
+      id: `ext_${item.source_system}_${item.entityId}_${Date.now()}`,
+      storeName: item.storeName,
+      entityId: item.entityId,
+      action: item.action as SyncAction,
+      payload: {
+        ...item.payload,
+        source_system: item.source_system,
+        externalSync: true
+      } as T,
+      timestamp: new Date().toISOString(),
+      tenantId,
+      priority: item.priority || 'normal',
+      correlationId: `ext_sync_${item.source_system}`
+    })
+  );
+
+  await Promise.all(promises);
+  console.log(`Enqueued ${items.length} items for external sync`);
+};
+
+/**
+ * Get sync queue items by source system
+ */
+export const getBySourceSystem = async <T>(
+  tenantId: string,
+  source_system: string,
+  options: {
+    limit?: number;
+    status?: SyncStatus[];
+  } = {}
+): Promise<SyncItem<T>[]> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required");
+  }
+
+  const { limit = DEFAULT_BATCH_SIZE, status = ["pending"] } = options;
+
+  try {
+    const db = await getDB(tenantId);
+    const all = await db.getAll(STORE);
+    
+    return all
+      .filter((item: SyncItem<T>) => {
+        // Filter by status
+        if (!status.includes(item.status)) return false;
+        
+        // Filter by source system in payload or correlationId
+        const payload = item.payload as any;
+        const hasSourceSystem = 
+          payload?.source_system === source_system ||
+          item.metadata.correlationId?.includes(source_system);
+        
+        return hasSourceSystem;
+      })
+      .slice(0, limit);
+  } catch (error) {
+    console.error("Failed to get items by source system:", error);
+    throw error;
+  }
+};
+
+/**
+ * Mark external sync as conflicted with external system data
+ */
+export const markExternalConflict = async (
+  tenantId: string,
+  id: string,
+  conflictDetails: {
+    source_system: string;
+    externalId: string;
+    externalUrl?: string;
+    localVersion: any;
+    remoteVersion: any;
+    conflictFields: string[];
+    suggestedResolution?: 'local' | 'remote' | 'merge';
+  }
+): Promise<void> => {
+  if (!tenantId || !id) {
+    throw new Error("tenantId and id are required");
+  }
+
+  await markConflict(tenantId, id, {
+    conflictType: 'external_system',
+    ...conflictDetails,
+    resolution: conflictDetails.suggestedResolution || 'manual'
+  });
+};
+
+/**
+ * Get external sync statistics
+ */
+export const getExternalSyncStats = async (
+  tenantId: string
+): Promise<Record<string, SyncStats>> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required");
+  }
+
+  try {
+    const db = await getDB(tenantId);
+    const all = await db.getAll(STORE);
+    
+    // Group by source system
+    const statsBySystem: Record<string, SyncStats> = {};
+    
+    all.forEach((item: SyncItem) => {
+      const payload = item.payload as any;
+      const source_system = payload?.source_system || 'internal';
+      
+      if (!statsBySystem[source_system]) {
+        statsBySystem[source_system] = {
+          total: 0,
+          pending: 0,
+          in_progress: 0,
+          completed: 0,
+          failed: 0,
+          conflict: 0,
+          cancelled: 0,
+          byStore: {},
+          byPriority: {
+            low: 0,
+            normal: 0,
+            high: 0,
+            critical: 0,
+          },
+          oldestPending: null,
+          averageAttempts: 0,
+          successRate: 0,
+          lastProcessedAt: undefined,
+        };
+      }
+      
+      const stats = statsBySystem[source_system];
+      stats.total++;
+      stats[item.status]++;
+      stats.byStore[item.storeName] = (stats.byStore[item.storeName] || 0) + 1;
+      
+      const priority = item.metadata.priority || 'normal';
+      stats.byPriority[priority]++;
+      
+      if (item.status === 'pending' && (!stats.oldestPending || item.enqueuedAt < stats.oldestPending)) {
+        stats.oldestPending = item.enqueuedAt;
+      }
+    });
+    
+    // Calculate success rates
+    Object.values(statsBySystem).forEach(stats => {
+      const totalProcessed = stats.completed + stats.failed + stats.conflict + stats.cancelled;
+      stats.successRate = totalProcessed > 0 ? (stats.completed / totalProcessed) * 100 : 0;
+    });
+    
+    return statsBySystem;
+  } catch (error) {
+    console.error("Failed to get external sync stats:", error);
+    throw error;
+  }
+};
+
+/**
+ * Retry failed external syncs for a specific system
+ */
+export const retryExternalSyncs = async (
+  tenantId: string,
+  source_system: string,
+  options: {
+    maxRetries?: number;
+    storeName?: string;
+  } = {}
+): Promise<number> => {
+  if (!tenantId) {
+    throw new Error("tenantId is required");
+  }
+
+  try {
+    const db = await getDB(tenantId);
+    const all = await db.getAll(STORE);
+    
+    const itemsToRetry = all.filter((item: SyncItem) => {
+      if (item.status !== 'failed' && item.status !== 'conflict') return false;
+      
+      const payload = item.payload as any;
+      if (payload?.source_system !== source_system) return false;
+      
+      if (options.storeName && item.storeName !== options.storeName) return false;
+      
+      const maxRetries = options.maxRetries || item.metadata.maxAttempts || DEFAULT_MAX_ATTEMPTS;
+      return item.metadata.attemptCount < maxRetries;
+    });
+
+    // Reset items to pending
+    const tx = db.transaction(STORE, 'readwrite');
+    for (const item of itemsToRetry) {
+      item.status = "pending";
+      item.metadata.errorMessage = undefined;
+      item.metadata.retryAfter = undefined;
+      item.metadata.conflictDetails = undefined;
+      await tx.store.put(item);
+    }
+    await tx.done;
+
+    console.log(`Retrying ${itemsToRetry.length} failed external sync items for ${source_system}`);
+    return itemsToRetry.length;
+  } catch (error) {
+    console.error("Failed to retry external syncs:", error);
     throw error;
   }
 };

@@ -1,4 +1,6 @@
 // src/types/team.ts
+import { ExternalSystemFields } from './externalSystem';
+
 /**
  * Shared Team Type Definitions
  * These types define the contract between frontend and backend
@@ -16,7 +18,6 @@ export type TeamType =
   | "other";
 
 export type HealthStatus = "green" | "yellow" | "orange" | "red" | "gray";
-export type SyncStatus = "clean" | "dirty" | "conflict";
 
 export type SkillProficiencyLevel = "basic" | "intermediate" | "advanced" | "expert";
 
@@ -56,7 +57,7 @@ export interface TeamMetrics {
  * Base Team Entity
  * Frontend displays what backend provides, never calculates derived fields
  */
-export interface Team {
+export interface Team extends ExternalSystemFields {
   // Core identification
   id: string;
   name: string;
@@ -98,9 +99,7 @@ export interface Team {
   custom_fields?: Record<string, any>;
   health_status: HealthStatus;         // Backend determines based on metrics
   
-  // Sync status (frontend managed for offline support)
-  synced_at?: string;
-  sync_status?: SyncStatus;
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   tenantId?: string;
 }
 
@@ -321,6 +320,12 @@ export interface TeamFilters {
   available_only?: boolean;
   overloaded_only?: boolean;
   overloaded_threshold?: number;
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 export interface TeamSortOptions {

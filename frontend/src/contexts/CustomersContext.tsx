@@ -4,6 +4,7 @@ import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend UI State Types
@@ -34,6 +35,12 @@ export interface CustomerUIFilters {
   hasContacts?: boolean;
   hasSLABreach?: boolean;
   searchQuery?: string;
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -66,7 +73,7 @@ export interface CustomerContact {
   };
 }
 
-export interface Customer {
+export interface Customer extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -115,8 +122,7 @@ export interface Customer {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   tenantId?: string;
 }
 
@@ -324,7 +330,7 @@ export const CustomersProvider = ({ children }: { children: ReactNode }) => {
       contract_ids: customer.contract_ids || [],
       contacts: customer.contacts || [],
       health_status: customer.health_status || "gray" as const,
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
 
     // Optimistic update for immediate UI feedback
@@ -380,7 +386,7 @@ export const CustomersProvider = ({ children }: { children: ReactNode }) => {
     const updatedCustomer = {
       ...customer,
       updated_at: new Date().toISOString(),
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
 
     // Optimistic update

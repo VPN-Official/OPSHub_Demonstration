@@ -19,6 +19,7 @@ import type { AIOpsDB } from "../db/seedIndexedDB";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Connection & Sync Types
@@ -34,7 +35,7 @@ export interface NetworkInfo {
   saveData?: boolean;
 }
 
-export interface QueuedAction {
+export interface QueuedAction extends ExternalSystemFields {
   id: string;
   actionType: string;
   entityType?: string;

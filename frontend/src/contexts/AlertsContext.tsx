@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -39,7 +40,7 @@ export interface AsyncState<T> {
 export interface AlertUIFilters {
   status?: string[];
   severity?: string[];
-  sourceSystem?: string[];
+  sourceSystems?: string[];
   businessService?: string[];
   assignedToMe?: boolean;
   teamId?: string;
@@ -87,7 +88,7 @@ export interface AlertCorrelation {
   correlation_confidence: number;
 }
 
-export interface Alert {
+export interface Alert extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -156,7 +157,7 @@ export interface Alert {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
   tenantId?: string;
 }
 
@@ -993,19 +994,21 @@ export const AlertsProvider = ({ children }: { children: ReactNode }) => {
     let filtered = [...alerts.data];
     
     if (filters.status?.length) {
-      filtered = filtered.filter(a => filters.status!.includes(a.status));
+      filtered = filtered.filter(a => filters.status.includes(a.status));
     }
     
     if (filters.severity?.length) {
-      filtered = filtered.filter(a => filters.severity!.includes(a.severity));
+      filtered = filtered.filter(a => filters.severity.includes(a.severity));
     }
     
-    if (filters.sourceSystem?.length) {
-      filtered = filtered.filter(a => filters.sourceSystem!.includes(a.source_system));
+    if (filters.sourceSystems?.length) {
+      filtered = filtered.filter(a => 
+        a.source_system && filters.sourceSystems.includes(a.source_system)
+      );
     }
     
     if (filters.businessService?.length) {
-      filtered = filtered.filter(a => a.business_service_id && filters.businessService!.includes(a.business_service_id));
+      filtered = filtered.filter(a => a.business_service_id && filters.businessService.includes(a.business_service_id));
     }
     
     if (filters.teamId) {
@@ -1013,7 +1016,7 @@ export const AlertsProvider = ({ children }: { children: ReactNode }) => {
     }
     
     if (filters.tags?.length) {
-      filtered = filtered.filter(a => filters.tags!.some(tag => a.tags.includes(tag)));
+      filtered = filtered.filter(a => filters.tags?.some(tag => a.tags?.includes(tag)) || false);
     }
     
     if (filters.dateRange) {
@@ -1207,7 +1210,7 @@ export const useRecentAlerts = (hours: number = 24) => {
 
 export const useAlertsBySourceSystem = (sourceSystem: string) => {
   const { filterAlerts } = useAlerts();
-  return useMemo(() => filterAlerts({ sourceSystem: [sourceSystem] }), [filterAlerts, sourceSystem]);
+  return useMemo(() => filterAlerts({ sourceSystems: [sourceSystem] }), [filterAlerts, sourceSystem]);
 };
 
 /**

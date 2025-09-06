@@ -19,6 +19,7 @@ import { useTenant } from "../providers/TenantProvider";
 import { useAuth } from "../providers/AuthProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
 import { useOfflineCapability } from "./OfflineCapabilityContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. User and Team Types
@@ -71,7 +72,7 @@ export interface UserActivity {
 // 2. Communication Types
 // ---------------------------------
 
-export interface ChatSession {
+export interface ChatSession extends ExternalSystemFields {
   id: string;
   entityType?: string;
   entityId?: string;
@@ -83,6 +84,7 @@ export interface ChatSession {
   lastMessageAt?: string;
   status: 'active' | 'archived' | 'closed';
   unreadCount?: Record<string, number>;
+  // External system fields for Slack/Teams integration inherited from ExternalSystemFields
 }
 
 export interface ChatMessage {
@@ -146,7 +148,7 @@ export interface Mention {
 // 3. Handoff and Assignment Types
 // ---------------------------------
 
-export interface HandoffRequest {
+export interface HandoffRequest extends ExternalSystemFields {
   id: string;
   workItemId: string;
   workItemType: string;
@@ -163,6 +165,7 @@ export interface HandoffRequest {
   respondedAt?: string;
   responseNotes?: string;
   expiresAt?: string;
+  // External system fields for ITSM integration inherited from ExternalSystemFields
 }
 
 export interface AssignmentHistory {
@@ -211,7 +214,7 @@ export interface EscalationLevel {
 // 4. Approval Workflow Types
 // ---------------------------------
 
-export interface ApprovalChain {
+export interface ApprovalChain extends ExternalSystemFields {
   id: string;
   entityType: string;
   entityId: string;
@@ -225,6 +228,7 @@ export interface ApprovalChain {
   completedAt?: string;
   expiresAt?: string;
   metadata?: Record<string, any>;
+  // External system fields for approval workflow integration inherited from ExternalSystemFields
 }
 
 export interface ApprovalNode {
@@ -296,7 +300,7 @@ export interface AssistanceRequest {
   resolution?: string;
 }
 
-export interface TeamAnnouncement {
+export interface TeamAnnouncement extends ExternalSystemFields {
   id: string;
   teamId?: string;
   title: string;
@@ -307,6 +311,7 @@ export interface TeamAnnouncement {
   expiresAt?: string;
   acknowledged: string[]; // user IDs who acknowledged
   pinned: boolean;
+  // External system fields for communication platform integration inherited from ExternalSystemFields
 }
 
 // ---------------------------------

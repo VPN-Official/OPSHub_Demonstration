@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -44,6 +45,12 @@ export interface IncidentUIFilters {
   assignedToMe?: boolean;
   businessService?: string;
   searchQuery?: string;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -71,7 +78,7 @@ export interface LinkedRecommendation {
   acted_by_user_id?: string | null;
 }
 
-export interface Incident {
+export interface Incident extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -135,7 +142,7 @@ export interface Incident {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
   tenantId?: string;
 }
 

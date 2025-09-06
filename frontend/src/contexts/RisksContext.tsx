@@ -13,6 +13,7 @@ import { putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Types & Interfaces
@@ -39,7 +40,7 @@ export type RiskSeverity = "low" | "medium" | "high" | "critical";
 export type RiskLikelihood = "rare" | "unlikely" | "possible" | "likely" | "almost_certain";
 export type RiskImpact = "low" | "medium" | "high" | "critical";
 
-export interface Risk {
+export interface Risk extends ExternalSystemFields {
   id: string;
   title: string;
   description?: string;
@@ -71,8 +72,6 @@ export interface Risk {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -93,6 +92,11 @@ export interface RiskFilters {
   owner_team_id?: string;
   business_service_ids?: string[];
   search?: string;
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 export interface RiskSort {

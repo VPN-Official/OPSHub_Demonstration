@@ -16,6 +16,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Types (Following Reference Pattern)
@@ -66,15 +67,21 @@ interface TraceUIFilters {
     start: string;
     end: string;
   };
+  
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 // ---------------------------------
 // 2. Domain Types
 // ---------------------------------
 
-export interface Trace {
+export interface Trace extends ExternalSystemFields {
   id: string;
-  source_system: string;
   trace_id: string;
   span_id: string;
   parent_span_id?: string | null;
@@ -91,8 +98,9 @@ export interface Trace {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  
+  // External system fields are inherited from ExternalSystemFields:
+  // source_system, external_id, external_url, sync_status, synced_at, etc.
   tenantId?: string;
 }
 
@@ -349,7 +357,7 @@ export const TracesProvider = ({ children }: { children: ReactNode }) => {
     const tempTrace: Trace = {
       id: tempId,
       ...trace,
-      sync_status: 'dirty' as const,
+      sync_status: 'syncing' as const,
       synced_at: undefined,
       tenantId,
     };
@@ -405,7 +413,7 @@ export const TracesProvider = ({ children }: { children: ReactNode }) => {
       ...existingTrace,
       ...updates,
       id, // Ensure ID doesn't change
-      sync_status: 'dirty' as const,
+      sync_status: 'syncing' as const,
       synced_at: undefined,
     };
 

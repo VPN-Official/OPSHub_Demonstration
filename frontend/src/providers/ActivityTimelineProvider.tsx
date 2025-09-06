@@ -48,7 +48,7 @@ export interface ActivityEvent {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
 }
 
 interface ActivityTimelineContextType {
@@ -178,7 +178,7 @@ export const ActivityTimelineProvider = ({ children }: { children: ReactNode }) 
       tags: [],
       success: true,
       health_status: "green",
-      sync_status: "dirty",
+      sync_status: "syncing",
       synced_at: now,
       ...activityData,
     };

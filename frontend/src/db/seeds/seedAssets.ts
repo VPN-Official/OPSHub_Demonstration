@@ -2,6 +2,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 import { generateSecureId } from "../../utils/auditUtils";
+import { addExternalSystemFieldsBatch } from "./externalSystemHelpers";
 
 export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
@@ -293,6 +294,9 @@ export const seedAssets = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) =>
       },
     ];
   }
+
+  // Add external system fields to all assets
+  assets = addExternalSystemFieldsBatch(assets, 'asset', tenantId);
 
   // Insert assets with proper error handling
   for (const asset of assets) {

@@ -19,6 +19,7 @@ import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
 import { useOfflineCapability } from "./OfflineCapabilityContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. AI Score and Model Types
@@ -86,23 +87,28 @@ export interface AlternativeAction {
 // 2. AI Recommendation Types
 // ---------------------------------
 
-export interface AIRecommendation {
+export interface AIInsight extends ExternalSystemFields {
   id: string;
   entityType?: string;
   entityId?: string;
-  recommendationType: RecommendationType;
+  insightType: 'recommendation' | 'prediction' | 'explanation' | 'score';
   title: string;
   description: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
   confidence: number;
+  createdAt: string;
+  modelVersion: string;
+  // synced_at, sync_status removed - inherited from ExternalSystemFields
+}
+
+export interface AIRecommendation extends AIInsight {
+  recommendationType: RecommendationType;
   impact: ImpactAssessment;
   actions: RecommendedAction[];
   reasoning: string;
   evidence: Evidence[];
   expiresAt?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'expired';
-  createdAt: string;
-  modelVersion: string;
 }
 
 export type RecommendationType = 

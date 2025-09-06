@@ -18,6 +18,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -41,7 +42,7 @@ export interface LinkedAccount {
   account_id: string;
 }
 
-export interface EndUser {
+export interface EndUser extends ExternalSystemFields {
   id: string;
   name: string;
   email?: string;
@@ -64,8 +65,7 @@ export interface EndUser {
   skills?: EndUserSkill[];
   created_at: string;
   updated_at: string;
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   tenantId?: string;
@@ -98,6 +98,12 @@ export interface UIFilters {
   is_vip?: boolean;
   search?: string;
   tags?: string[];
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 // ---------------------------------
@@ -250,7 +256,7 @@ export const EndUsersProvider = ({ children }: { children: ReactNode }) => {
       created_at: timestamp,
       updated_at: timestamp,
       health_status: endUserData.health_status || "green",
-      sync_status: "dirty",
+      sync_status: "syncing",
       tenantId,
     };
     
@@ -317,7 +323,7 @@ export const EndUsersProvider = ({ children }: { children: ReactNode }) => {
     const updatedUser = {
       ...endUser,
       updated_at: timestamp,
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
     
     // Optimistic Update
@@ -452,7 +458,7 @@ export const EndUsersProvider = ({ children }: { children: ReactNode }) => {
     
     if (filters.tags && filters.tags.length > 0) {
       filtered = filtered.filter(user =>
-        filters.tags!.some(tag => user.tags.includes(tag))
+        filters.tags?.some(tag => user.tags?.includes(tag)) || false
       );
     }
     

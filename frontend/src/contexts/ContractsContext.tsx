@@ -12,6 +12,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend Type Definitions
@@ -31,7 +32,7 @@ export interface AsyncState<T> {
 /**
  * UI-focused Contract interface (mirrors backend but for frontend display)
  */
-export interface Contract {
+export interface Contract extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -116,8 +117,6 @@ export interface Contract {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 

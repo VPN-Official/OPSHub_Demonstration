@@ -2,6 +2,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 import { generateSecureId } from "../../utils/auditUtils";
+import { ExternalSystemType } from "../../types/externalSystem";
 
 export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
@@ -83,7 +84,17 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           firmware_target: "15.7.2",
           maintenance_window_required: true,
           vendor: "cisco"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.SERVICENOW,
+        external_id: "CHG0001234",
+        external_url: "https://demo.service-now.com/change_request.do?sys_id=CHG0001234",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 20 * 60000).toISOString(), // 20 mins ago
+        data_completeness: 95,
+        data_sources: [ExternalSystemType.SERVICENOW],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_chg02`,
@@ -170,7 +181,17 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           switch_model_new: "cisco-9300",
           emergency_justification: "Active packet loss affecting business operations",
           change_window: "emergency"
-        }
+        },
+        // External system fields - emergency change
+        source_system: ExternalSystemType.REMEDY,
+        external_id: "CHG-EMRG-5432",
+        external_url: "https://demo.remedy.com/change/CHG-EMRG-5432",
+        sync_status: "syncing" as const,
+        synced_at: new Date(Date.now() - 5 * 60000).toISOString(),
+        data_completeness: 100,
+        data_sources: [ExternalSystemType.REMEDY],
+        has_local_changes: true,
+        source_priority: 1
       },
     ];
   }
@@ -243,7 +264,17 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           threshold_old: "70%",
           threshold_new: "60%",
           region: "eu-west-1"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.JIRA_SERVICE_DESK,
+        external_id: "CHG-2023-789",
+        external_url: "https://demo.atlassian.net/browse/CHG-2023-789",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 10 * 60000).toISOString(),
+        data_completeness: 98,
+        data_sources: [ExternalSystemType.JIRA_SERVICE_DESK, ExternalSystemType.GRAFANA],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_chg02`,
@@ -309,7 +340,17 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           namespace: "transcoding",
           memory_limit_old: "2Gi",
           memory_limit_new: "4Gi"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.SERVICENOW,
+        external_id: "CHG0002456",
+        external_url: "https://demo.service-now.com/change_request.do?sys_id=CHG0002456",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 45 * 60000).toISOString(),
+        data_completeness: 92,
+        data_sources: [ExternalSystemType.SERVICENOW],
+        has_local_changes: false,
+        source_priority: 1
       },
     ];
   }
@@ -400,7 +441,17 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           database_version: "13.8",
           config_changes: ["wal_buffers", "max_wal_size", "checkpoint_segments"],
           compliance_framework: "SOX"
-        }
+        },
+        // External system fields - compliance tracked
+        source_system: ExternalSystemType.SERVICENOW,
+        external_id: "CHG0003789",
+        external_url: "https://demo.service-now.com/change_request.do?sys_id=CHG0003789",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 30 * 60000).toISOString(),
+        data_completeness: 100,
+        data_sources: [ExternalSystemType.SERVICENOW, ExternalSystemType.SPLUNK],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_chg02`,
@@ -471,7 +522,18 @@ export const seedChangeRequests = async (tenantId: string, db: IDBPDatabase<AIOp
           retry_attempts: "3",
           checkpoint_interval: "10_minutes",
           affected_jobs: ["nightly_financial_etl", "daily_risk_etl"]
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.REMEDY,
+        external_id: "CHG-STD-9876",
+        external_url: "https://demo.remedy.com/change/CHG-STD-9876",
+        sync_status: "error" as const,
+        synced_at: new Date(Date.now() - 2 * 60 * 60000).toISOString(),
+        sync_error: "Connection timeout to Remedy API",
+        data_completeness: 85,
+        data_sources: [ExternalSystemType.REMEDY],
+        has_local_changes: true,
+        source_priority: 2
       },
     ];
   }

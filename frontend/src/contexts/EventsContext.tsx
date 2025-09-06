@@ -11,6 +11,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -26,9 +27,8 @@ export interface AsyncState<T> {
 }
 
 // Minimal Event interface - UI display focused
-export interface Event {
+export interface Event extends ExternalSystemFields {
   id: string;
-  source_system: string;
   message: string;
   severity: string;
   captured_at: string;
@@ -49,15 +49,13 @@ export interface Event {
   tags: string[];
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   
-  // Sync metadata for offline support
-  sync_status?: "clean" | "dirty" | "conflict";
-  synced_at?: string;
+  // External system fields are inherited from ExternalSystemFields:
+  // source_system, external_id, external_url, sync_status, synced_at, etc.
   tenantId?: string;
 }
 
 // UI filters for client-side performance
 export interface EventFilters {
-  source_systems?: string[];
   severities?: string[];
   event_types?: string[];
   business_service_ids?: string[];
@@ -67,6 +65,13 @@ export interface EventFilters {
   date_to?: string;
   correlation_id?: string;
   health_status?: string[];
+  
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 // UI configuration from backend
@@ -251,7 +256,7 @@ export const EventsProvider = ({ children }: { children: ReactNode }) => {
       related_incident_ids: event.related_incident_ids || [],
       related_alert_ids: event.related_alert_ids || [],
       health_status: event.health_status || "gray",
-      sync_status: "dirty",
+      sync_status: "syncing",
     };
     
     // Optimistic update
@@ -489,28 +494,30 @@ export const EventsProvider = ({ children }: { children: ReactNode }) => {
   const getFilteredEvents = useCallback((filters: EventFilters): Event[] => {
     let filtered = eventsState.data;
     
-    if (filters.source_systems?.length) {
-      filtered = filtered.filter(e => filters.source_systems!.includes(e.source_system));
+    if (filters.sourceSystems?.length) {
+      filtered = filtered.filter(e => 
+        e.source_system && filters.sourceSystems.includes(e.source_system)
+      );
     }
     
     if (filters.severities?.length) {
-      filtered = filtered.filter(e => filters.severities!.includes(e.severity));
+      filtered = filtered.filter(e => filters.severities.includes(e.severity));
     }
     
     if (filters.event_types?.length) {
-      filtered = filtered.filter(e => e.event_type && filters.event_types!.includes(e.event_type));
+      filtered = filtered.filter(e => e.event_type && filters.event_types.includes(e.event_type));
     }
     
     if (filters.business_service_ids?.length) {
-      filtered = filtered.filter(e => e.business_service_id && filters.business_service_ids!.includes(e.business_service_id));
+      filtered = filtered.filter(e => e.business_service_id && filters.business_service_ids.includes(e.business_service_id));
     }
     
     if (filters.asset_ids?.length) {
-      filtered = filtered.filter(e => e.asset_id && filters.asset_ids!.includes(e.asset_id));
+      filtered = filtered.filter(e => e.asset_id && filters.asset_ids.includes(e.asset_id));
     }
     
     if (filters.health_status?.length) {
-      filtered = filtered.filter(e => filters.health_status!.includes(e.health_status));
+      filtered = filtered.filter(e => filters.health_status.includes(e.health_status));
     }
     
     if (filters.correlation_id) {

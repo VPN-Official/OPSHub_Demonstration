@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -56,6 +57,12 @@ export interface KpiUIFilters {
   show_critical_only?: boolean;
   show_outdated?: boolean;
   show_missing_targets?: boolean;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -98,7 +105,7 @@ export interface KpiFormula {
   data_sources: string[];
 }
 
-export interface Kpi {
+export interface Kpi extends ExternalSystemFields {
   id: string;
   name: string;
   description: string;
@@ -166,8 +173,7 @@ export interface Kpi {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at and sync_status inherited from ExternalSystemFields
   tenantId?: string;
 }
 
@@ -350,7 +356,7 @@ export const KpisProvider = ({ children }: { children: ReactNode }) => {
     return {
       tags: [],
       health_status: "gray",
-      sync_status: "dirty",
+      sync_status: "syncing",
       synced_at: now,
       business_service_ids: [],
       asset_ids: [],

@@ -18,6 +18,7 @@ import { useTenant } from "../providers/TenantProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
 import { useAIInsights } from "./AIInsightsContext";
 import { useBusinessImpact } from "./BusinessImpactContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. KPI and Performance Types
@@ -51,7 +52,9 @@ export interface PerformanceMetric {
   source?: string;
 }
 
-export interface TrendAnalysis {
+// Primary metric analysis interface - extends external system fields
+export interface MetricAnalysis extends ExternalSystemFields {
+  id: string;
   metricId: string;
   metricName?: string;
   period: string;
@@ -61,6 +64,13 @@ export interface TrendAnalysis {
   outliers: Outlier[];
   forecast?: ForecastData;
   confidence: number;
+  
+  // External system fields are inherited from ExternalSystemFields:
+  // source_system, external_id, external_url, sync_status, synced_at, etc.
+}
+
+export interface TrendAnalysis extends MetricAnalysis {
+  // TrendAnalysis extends MetricAnalysis with same fields
 }
 
 export interface DataPoint {

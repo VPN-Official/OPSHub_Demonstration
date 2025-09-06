@@ -11,6 +11,7 @@ import React, {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Type Definitions
@@ -19,7 +20,7 @@ import { useConfig } from "../providers/ConfigProvider";
 /**
  * Core AI Agent entity for UI display
  */
-export interface AiAgent {
+export interface AIAgent extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -69,8 +70,7 @@ export interface AiAgent {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at, sync_status removed - inherited from ExternalSystemFields
   tenantId?: string;
 }
 
@@ -88,13 +88,19 @@ export interface AsyncState<T> {
 /**
  * UI-focused filter interface for client-side filtering
  */
-export interface AiAgentUIFilters {
+export interface AIAgentUIFilters {
   type?: string;
   status?: string;
   search?: string;
   ownedByMe?: boolean;
   requiresApproval?: boolean;
   healthStatus?: string[];
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -127,28 +133,28 @@ export interface AgentExecutionResult {
 // ---------------------------------
 interface AiAgentsContextType {
   // Core async state
-  agents: AsyncState<AiAgent[]>;
+  agents: AsyncState<AIAgent[]>;
   
   // CRUD operations (API orchestration only)
-  createAgent: (agent: Omit<AiAgent, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
-  updateAgent: (id: string, updates: Partial<AiAgent>) => Promise<void>;
+  createAgent: (agent: Omit<AIAgent, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  updateAgent: (id: string, updates: Partial<AIAgent>) => Promise<void>;
   deleteAgent: (id: string) => Promise<void>;
   
   // Data fetching
   refreshAgents: (force?: boolean) => Promise<void>;
-  getAgentById: (id: string) => AiAgent | null;
+  getAgentById: (id: string) => AIAgent | null;
   
   // Agent execution (API orchestration)
   executeAgent: (agentId: string, inputData: any) => Promise<AsyncState<AgentExecutionResult>>;
   
   // UI-focused filtering and search (client-side only)
-  getFilteredAgents: (filters: AiAgentUIFilters) => AiAgent[];
-  searchAgents: (query: string) => AiAgent[];
+  getFilteredAgents: (filters: AIAgentUIFilters) => AIAgent[];
+  searchAgents: (query: string) => AIAgent[];
   
   // Simple client-side categorization for UI
-  getAgentsByType: (type: string) => AiAgent[];
-  getAgentsByStatus: (status: string) => AiAgent[];
-  getAgentsByHealth: (health: string) => AiAgent[];
+  getAgentsByType: (type: string) => AIAgent[];
+  getAgentsByStatus: (status: string) => AIAgent[];
+  getAgentsByHealth: (health: string) => AIAgent[];
   
   // UI state helpers
   optimisticOperations: OptimisticOperation[];
@@ -176,7 +182,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   const { config: globalConfig } = useConfig();
 
   // Core async state
-  const [agents, setAgents] = useState<AsyncState<AiAgent[]>>({
+  const [agents, setAgents] = useState<AsyncState<AIAgent[]>>({
     data: [],
     loading: false,
     error: null,
@@ -233,21 +239,21 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Apply optimistic updates to UI state
    */
-  const applyOptimisticUpdates = useCallback((baseAgents: AiAgent[]): AiAgent[] => {
+  const applyOptimisticUpdates = useCallback((baseAgents: AIAgent[]): AIAgent[] => {
     let result = [...baseAgents];
     
     optimisticOperations.forEach(op => {
       switch (op.type) {
         case 'create':
           if (op.payload && !result.find(a => a.id === op.payload.id)) {
-            result.unshift({ ...op.payload, sync_status: 'dirty' });
+            result.unshift({ ...op.payload, sync_status: 'syncing' });
           }
           break;
         case 'update':
           if (op.payload) {
             const index = result.findIndex(a => a.id === op.id);
             if (index >= 0) {
-              result[index] = { ...result[index], ...op.payload, sync_status: 'dirty' };
+              result[index] = { ...result[index], ...op.payload, sync_status: 'syncing' };
             }
           }
           break;
@@ -280,7 +286,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Failed to fetch agents: ${response.status}`);
       }
 
-      const data: AiAgent[] = await response.json();
+      const data: AIAgent[] = await response.json();
       
       setAgents({
         data,
@@ -301,11 +307,11 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Create new agent via backend API
    */
-  const createAgent = useCallback(async (agentData: Omit<AiAgent, 'id' | 'created_at' | 'updated_at'>) => {
+  const createAgent = useCallback(async (agentData: Omit<AIAgent, 'id' | 'created_at' | 'updated_at'>) => {
     if (!tenantId) throw new Error("No tenant selected");
 
     const tempId = `temp-${Date.now()}`;
-    const optimisticAgent: AiAgent = {
+    const optimisticAgent: AIAgent = {
       ...agentData,
       id: tempId,
       created_at: new Date().toISOString(),
@@ -347,7 +353,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(errorData.message || 'Failed to create agent');
       }
 
-      const createdAgent: AiAgent = await response.json();
+      const createdAgent: AIAgent = await response.json();
       
       // Queue for sync if offline
       await enqueueItem({
@@ -379,7 +385,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Update agent via backend API
    */
-  const updateAgent = useCallback(async (id: string, updates: Partial<AiAgent>) => {
+  const updateAgent = useCallback(async (id: string, updates: Partial<AIAgent>) => {
     if (!tenantId) throw new Error("No tenant selected");
 
     // Optimistic UI update
@@ -402,7 +408,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(errorData.message || 'Failed to update agent');
       }
 
-      const updatedAgent: AiAgent = await response.json();
+      const updatedAgent: AIAgent = await response.json();
 
       // Queue for sync if offline
       await enqueueItem({
@@ -540,7 +546,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Get agent by ID (client-side lookup for UI responsiveness)
    */
-  const getAgentById = useCallback((id: string): AiAgent | null => {
+  const getAgentById = useCallback((id: string): AIAgent | null => {
     const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
     return agentsWithOptimistic.find(agent => agent.id === id) || null;
   }, [agents.data, applyOptimisticUpdates]);
@@ -549,7 +555,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
    * Client-side filtering for immediate UI responsiveness
    * Note: Complex business filtering should be done via backend API
    */
-  const getFilteredAgents = useCallback((filters: AiAgentUIFilters): AiAgent[] => {
+  const getFilteredAgents = useCallback((filters: AIAgentUIFilters): AIAgent[] => {
     const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
     
     return agentsWithOptimistic.filter(agent => {
@@ -571,7 +577,7 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Simple client-side search for UI responsiveness
    */
-  const searchAgents = useCallback((query: string): AiAgent[] => {
+  const searchAgents = useCallback((query: string): AIAgent[] => {
     if (!query.trim()) return applyOptimisticUpdates(agents.data);
     
     const searchTerm = query.toLowerCase();
@@ -588,17 +594,17 @@ export const AiAgentsProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Simple client-side categorization for UI dropdowns/filters
    */
-  const getAgentsByType = useCallback((type: string): AiAgent[] => {
+  const getAgentsByType = useCallback((type: string): AIAgent[] => {
     const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
     return agentsWithOptimistic.filter(agent => agent.type === type);
   }, [agents.data, applyOptimisticUpdates]);
 
-  const getAgentsByStatus = useCallback((status: string): AiAgent[] => {
+  const getAgentsByStatus = useCallback((status: string): AIAgent[] => {
     const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
     return agentsWithOptimistic.filter(agent => agent.status === status);
   }, [agents.data, applyOptimisticUpdates]);
 
-  const getAgentsByHealth = useCallback((health: string): AiAgent[] => {
+  const getAgentsByHealth = useCallback((health: string): AIAgent[] => {
     const agentsWithOptimistic = applyOptimisticUpdates(agents.data);
     return agentsWithOptimistic.filter(agent => agent.health_status === health);
   }, [agents.data, applyOptimisticUpdates]);
@@ -689,7 +695,7 @@ export const useAiAgent = (id: string) => {
 /**
  * Hook for filtered agents with memoization
  */
-export const useFilteredAiAgents = (filters: AiAgentUIFilters) => {
+export const useFilteredAIAgents = (filters: AIAgentUIFilters) => {
   const { getFilteredAgents } = useAiAgents();
   return useMemo(() => getFilteredAgents(filters), [filters, getFilteredAgents]);
 };

@@ -12,6 +12,7 @@ import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 import { 
   useIncidents, 
   useServiceRequests, 
@@ -31,7 +32,7 @@ export type WorkItemType =
   | "problem"
   | "maintenance";
 
-export interface WorkItem {
+export interface WorkItem extends ExternalSystemFields {
   id: string;
   type: WorkItemType;
   title: string;
@@ -50,6 +51,7 @@ export interface WorkItem {
     confidence: number;
     suggestion: string;
   }>; // Backend provided
+  // External system fields for ITSM integration inherited from ExternalSystemFields
 }
 
 export interface AsyncState<T> {
@@ -69,6 +71,12 @@ export interface WorkItemFilters {
   business_service_id?: string;
   search?: string;
   sla_breach_risk?: string;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 export interface WorkItemUIState {

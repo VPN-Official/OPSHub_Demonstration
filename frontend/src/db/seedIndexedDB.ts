@@ -189,7 +189,24 @@ export const initDB = () =>
 
       for (const store of stores) {
         if (!db.objectStoreNames.contains(store)) {
-          db.createObjectStore(store, { keyPath: "id" });
+          const objectStore = db.createObjectStore(store, { keyPath: "id" });
+          
+          // Add indices for external system fields on relevant stores
+          // Skip system stores that don't need external system tracking
+          const systemStores = ['sync_queue', 'notifications', 'audit_logs', 'activity_timeline'];
+          if (!systemStores.includes(store)) {
+            // Add external system indices
+            objectStore.createIndex('source_system', 'source_system', { unique: false });
+            objectStore.createIndex('sync_status', 'sync_status', { unique: false });
+            objectStore.createIndex('external_id', 'external_id', { unique: false });
+            objectStore.createIndex('has_local_changes', 'has_local_changes', { unique: false });
+            
+            // Add compound index for source system + sync status
+            objectStore.createIndex('source_sync', ['source_system', 'sync_status'], { unique: false });
+          }
+          
+          // Add tenant index for all stores
+          objectStore.createIndex('tenantId', 'tenantId', { unique: false });
         }
       }
     },

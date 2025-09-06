@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Types
@@ -36,7 +37,7 @@ export interface AsyncState<T> {
 /**
  * Asset entity - matches backend contract
  */
-export interface Asset {
+export interface Asset extends ExternalSystemFields {
   id: string;
   name: string;
   description: string;
@@ -114,8 +115,6 @@ export interface Asset {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -160,6 +159,11 @@ export interface AssetFilters {
   business_service_id?: string[];
   health_status?: string[];
   search_query?: string;
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 export interface AssetSortOptions {
@@ -272,7 +276,7 @@ export const AssetsProvider = ({ children }: { children: ReactNode }) => {
       tenantId,
       tags: asset.tags || [],
       health_status: asset.health_status || "gray",
-      sync_status: asset.sync_status || "dirty",
+      sync_status: asset.sync_status || "syncing",
       synced_at: asset.synced_at || now,
       child_asset_ids: asset.child_asset_ids || [],
       dependencies: asset.dependencies || [],

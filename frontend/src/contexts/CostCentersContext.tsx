@@ -4,6 +4,7 @@ import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -43,6 +44,12 @@ export interface CostCenterFilters {
   showUnderUtilized?: boolean;
   ownerType?: 'user' | 'team';
   ownerId?: string;
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -83,7 +90,7 @@ export interface CostCenterApproval {
  * Cost Center entity optimized for frontend state management
  * Removes complex business logic calculations - those come from backend
  */
-export interface CostCenter {
+export interface CostCenter extends ExternalSystemFields {
   id: string;
   code: string;
   name: string;
@@ -131,9 +138,8 @@ export interface CostCenter {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
 }
 
 // ---------------------------------
@@ -363,7 +369,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
       tenantId,
       tags: costCenterData.tags || [],
       health_status: costCenterData.health_status || "gray",
-      sync_status: "dirty",
+      sync_status: "syncing",
       synced_at: now,
       business_service_ids: costCenterData.business_service_ids || [],
       asset_ids: costCenterData.asset_ids || [],
@@ -441,7 +447,7 @@ export const CostCentersProvider = ({ children }: { children: ReactNode }) => {
     const updatedCostCenter = {
       ...costCenter,
       updated_at: new Date().toISOString(),
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
     
     // Store original for rollback

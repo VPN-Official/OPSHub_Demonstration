@@ -2,6 +2,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 import { generateSecureId } from "../../utils/auditUtils";
+import { ExternalSystemType } from "../../types/externalSystem";
 
 export const seedIncidents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
@@ -34,7 +35,17 @@ export const seedIncidents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
         custom_fields: { // Added custom fields
           vendor: "cisco",
           circuit_id: "ATT-BGP-001"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.SERVICENOW,
+        external_id: "INC0012345",
+        external_url: "https://demo.service-now.com/incident.do?sys_id=INC0012345",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 5 * 60000).toISOString(), // 5 mins ago
+        data_completeness: 95,
+        data_sources: [ExternalSystemType.SERVICENOW, ExternalSystemType.DATADOG],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_inc02`,
@@ -61,7 +72,17 @@ export const seedIncidents = async (tenantId: string, db: IDBPDatabase<AIOpsDB>)
         custom_fields: {
           vendor: "microsoft",
           partition: "D:\\MailStore"
-        }
+        },
+        // External system fields - different source
+        source_system: ExternalSystemType.REMEDY,
+        external_id: "HD0054321",
+        external_url: "https://demo.remedy.com/incident/HD0054321",
+        sync_status: "syncing" as const,
+        synced_at: new Date(Date.now() - 10 * 60000).toISOString(), // 10 mins ago
+        data_completeness: 88,
+        data_sources: [ExternalSystemType.REMEDY],
+        has_local_changes: true, // Has local edits
+        source_priority: 2
       },
     ];
   }

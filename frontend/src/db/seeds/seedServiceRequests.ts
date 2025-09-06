@@ -2,6 +2,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 import { generateSecureId } from "../../utils/auditUtils";
+import { addExternalSystemFieldsBatch } from "./externalSystemHelpers";
 
 export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
@@ -231,6 +232,9 @@ export const seedServiceRequests = async (tenantId: string, db: IDBPDatabase<AIO
       },
     ];
   }
+
+  // Add external system fields to all requests
+  requests = addExternalSystemFieldsBatch(requests, 'service_request', tenantId);
 
   // Insert service requests with proper error handling
   for (const sr of requests) {

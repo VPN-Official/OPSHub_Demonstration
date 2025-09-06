@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend AsyncState Pattern
@@ -67,7 +68,7 @@ export interface MetricDataPoint {
   source?: string;
 }
 
-export interface SystemMetric {
+export interface SystemMetric extends ExternalSystemFields {
   id: string;
   name: string;
   display_name: string;
@@ -79,7 +80,6 @@ export interface SystemMetric {
   updated_at: string;
 
   // Source configuration (backend provides)
-  source_system: string;
   collection_method: "push" | "pull" | "batch" | "streaming";
   collection_interval_seconds?: number;
   retention_days: number;
@@ -133,8 +133,9 @@ export interface SystemMetric {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  
+  // External system fields are inherited from ExternalSystemFields:
+  // source_system, external_id, external_url, sync_status, synced_at, etc.
   tenantId?: string;
 }
 
@@ -188,6 +189,13 @@ interface SystemMetricsContextType {
     filterByType: (type: MetricType) => SystemMetric[];
     filterByStatus: (status: string) => SystemMetric[];
     filterByHealthStatus: (health: SystemMetric['health_status']) => SystemMetric[];
+    
+    // External system filtering
+    filterBySourceSystems: (sourceSystems: string[]) => SystemMetric[];
+    filterBySyncStatus: (syncStatus: ('synced' | 'syncing' | 'error' | 'conflict')[]) => SystemMetric[];
+    filterByDataCompleteness: (range: { min: number; max: number }) => SystemMetric[];
+    getConflictedMetrics: () => SystemMetric[];
+    getMetricsWithLocalChanges: () => SystemMetric[];
     
     // Basic text search for UI
     searchMetrics: (query: string) => SystemMetric[];
@@ -416,7 +424,7 @@ export const SystemMetricsProvider = ({ children }: { children: ReactNode }) => 
       labels: {},
       thresholds: [],
       health_status: "gray",
-      sync_status: "dirty",
+      sync_status: "syncing",
       tenantId,
       ...metricData,
     };
@@ -472,7 +480,7 @@ export const SystemMetricsProvider = ({ children }: { children: ReactNode }) => 
         ...currentMetric,
         ...updates,
         updated_at: new Date().toISOString(),
-        sync_status: "dirty" as const,
+        sync_status: "syncing" as const,
       };
 
       // Backend handles ALL business logic

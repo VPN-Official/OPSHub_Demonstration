@@ -4,6 +4,7 @@ import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Types
@@ -24,7 +25,7 @@ export interface AsyncState<T> {
 /**
  * Service Component entity (matches backend API contract)
  */
-export interface ServiceComponent {
+export interface ServiceComponent extends ExternalSystemFields {
   id: string;
   name: string;
   description: string;
@@ -52,8 +53,6 @@ export interface ServiceComponent {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -67,6 +66,11 @@ export interface ServiceComponentFilters {
   criticality?: string;
   health_status?: ("green" | "yellow" | "orange" | "red" | "gray")[];
   search?: string;
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 /**
@@ -196,7 +200,7 @@ export const ServiceComponentsProvider = ({ children }: { children: ReactNode })
       tenantId,
       tags: sc.tags || [],
       health_status: sc.health_status || "gray",
-      sync_status: sc.sync_status || "dirty",
+      sync_status: sc.sync_status || "syncing",
       synced_at: sc.synced_at || now,
       asset_ids: sc.asset_ids || [],
       dependency_component_ids: sc.dependency_component_ids || [],

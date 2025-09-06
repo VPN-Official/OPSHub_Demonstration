@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -48,6 +49,11 @@ export interface ServiceRequestUIFilters {
   searchQuery?: string;
   healthStatus?: string;
   tags?: string[];
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 /**
@@ -75,7 +81,7 @@ export interface LinkedRecommendation {
   acted_by_user_id?: string | null;
 }
 
-export interface ServiceRequest {
+export interface ServiceRequest extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -170,8 +176,6 @@ export interface ServiceRequest {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
   tenantId?: string;
 }
 
@@ -911,7 +915,7 @@ export const ServiceRequestsProvider = ({ children }: { children: ReactNode }) =
     
     if (filters.tags && filters.tags.length > 0) {
       filtered = filtered.filter(sr => 
-        filters.tags!.some(tag => sr.tags.includes(tag))
+        filters.tags?.some(tag => sr.tags?.includes(tag)) || false
       );
     }
     

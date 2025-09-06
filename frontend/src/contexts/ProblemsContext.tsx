@@ -20,6 +20,7 @@ import { useConfig } from "../providers/ConfigProvider";
 import { useEndUsers } from "./EndUsersContext";
 import { useIncidents } from "./IncidentsContext";
 import { useBusinessServices } from "./BusinessServicesContext";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -52,6 +53,12 @@ export interface ProblemUIFilters {
   healthStatus?: string;
   reportedBy?: string;
   dateRange?: { start: string; end: string };
+  // External system filters
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -79,7 +86,7 @@ export interface LinkedRecommendation {
   acted_by_user_id?: string | null;
 }
 
-export interface Problem {
+export interface Problem extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -134,7 +141,7 @@ export interface Problem {
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
   synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  sync_status?: "synced" | "syncing" | "error" | "conflict";
   tenantId?: string;
 }
 
@@ -756,7 +763,7 @@ export const ProblemsProvider = ({ children }: { children: ReactNode }) => {
     
     if (filters.tags && filters.tags.length > 0) {
       filtered = filtered.filter(p => 
-        filters.tags!.some(tag => p.tags.includes(tag))
+        filters.tags?.some(tag => p.tags?.includes(tag)) || false
       );
     }
     

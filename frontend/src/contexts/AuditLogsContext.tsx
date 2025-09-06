@@ -14,6 +14,7 @@ import {
 } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -68,7 +69,7 @@ export type AuditAction =
 export type AuditRisk = "low" | "medium" | "high" | "critical";
 export type ComplianceFramework = "SOX" | "PCI-DSS" | "HIPAA" | "GDPR" | "ISO27001" | "NIST" | "custom";
 
-export interface AuditLogEntry {
+export interface AuditLogEntry extends ExternalSystemFields {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -159,6 +160,12 @@ export interface AuditSearchFilters {
   hasViolations?: boolean;
   legalHold?: boolean;
   textSearch?: string;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 /**
@@ -427,7 +434,7 @@ export const AuditLogsProvider = ({ children }: { children: ReactNode }) => {
     }
     if (filters.complianceFramework) {
       filtered = filtered.filter(log => 
-        log.compliance_frameworks.includes(filters.complianceFramework!)
+        log.compliance_frameworks?.includes(filters.complianceFramework) || false
       );
     }
     if (filters.hasViolations !== undefined) {

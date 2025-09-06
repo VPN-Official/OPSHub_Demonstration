@@ -5,6 +5,7 @@ import { useSync } from '../providers/SyncProvider';
 import { useRealtimeStream } from './RealtimeStreamContext';
 import { useAIInsights } from './AIInsightsContext';
 import { useMetricsAnalytics } from './MetricsAnalyticsContext';
+import { ExternalSystemFields } from '../types/externalSystem';
 
 // ---------------------------------
 // 1. Type Definitions
@@ -42,7 +43,7 @@ export interface ResourcePool {
   metadata: Record<string, any>;
 }
 
-export interface OptimizationRecommendation {
+export interface OptimizationRecommendation extends ExternalSystemFields {
   id: string;
   type: 'rightsizing' | 'consolidation' | 'migration' | 'decommission' | 'scaling';
   resourceId: string;
@@ -60,6 +61,7 @@ export interface OptimizationRecommendation {
   automationAvailable: boolean;
   approvalRequired: boolean;
   expiresAt: Date;
+  // synced_at, sync_status removed - inherited from ExternalSystemFields
 }
 
 export interface CapacityForecast {

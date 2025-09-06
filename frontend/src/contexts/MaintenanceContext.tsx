@@ -12,6 +12,7 @@ import { getAll, getById } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend-Only Type Definitions
@@ -32,7 +33,7 @@ export interface AsyncState<T> {
  * Core MaintenanceWork entity (backend-driven structure)
  * Frontend context manages only UI state, not business logic
  */
-export interface MaintenanceWork {
+export interface MaintenanceWork extends ExternalSystemFields {
   id: string;
   title: string;
   description: string;
@@ -77,8 +78,6 @@ export interface MaintenanceWork {
   // UI metadata
   tags: string[];
   custom_fields?: Record<string, any>;
-  sync_status?: "clean" | "dirty" | "conflict";
-  synced_at?: string;
   tenantId?: string;
 }
 
@@ -96,6 +95,11 @@ export interface MaintenanceFilters {
     start: string;
     end: string;
   };
+  
+  // External system filtering
+  source_system?: string;
+  sync_status?: 'synced' | 'syncing' | 'error' | 'conflict';
+  has_local_changes?: boolean;
 }
 
 /**
@@ -352,7 +356,7 @@ export const MaintenanceProvider = ({ children }: { children: ReactNode }) => {
       parts_required: maintenanceData.parts_required || [],
       tags: maintenanceData.tags || [],
       health_status: 'gray',
-      sync_status: 'dirty',
+      sync_status: 'syncing',
       tenantId,
       ...maintenanceData,
     };

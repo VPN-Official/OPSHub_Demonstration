@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -70,7 +71,7 @@ export interface EscalationStep {
   escalation_condition?: "no_response" | "no_acknowledgment" | "no_resolution";
 }
 
-export interface EscalationPolicy {
+export interface EscalationPolicy extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -96,12 +97,11 @@ export interface EscalationPolicy {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   tenantId?: string;
 }
 
-export interface OnCallSchedule {
+export interface OnCallSchedule extends ExternalSystemFields {
   id: string;
   team_id: string;
   name: string;
@@ -143,8 +143,7 @@ export interface OnCallSchedule {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // Note: synced_at and sync_status are now provided by ExternalSystemFields
   tenantId?: string;
 }
 
@@ -368,7 +367,7 @@ export const OnCallProvider = ({ children }: { children: ReactNode }) => {
           ...schedule,
           created_at: schedule.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          sync_status: "dirty",
+          sync_status: "syncing",
           tenantId,
         },
         userId,
@@ -396,7 +395,7 @@ export const OnCallProvider = ({ children }: { children: ReactNode }) => {
         {
           ...schedule,
           updated_at: new Date().toISOString(),
-          sync_status: "dirty",
+          sync_status: "syncing",
           tenantId,
         },
         userId,
@@ -503,7 +502,7 @@ export const OnCallProvider = ({ children }: { children: ReactNode }) => {
           ...policy,
           created_at: policy.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          sync_status: "dirty",
+          sync_status: "syncing",
           tenantId,
         },
         userId,
@@ -527,7 +526,7 @@ export const OnCallProvider = ({ children }: { children: ReactNode }) => {
         {
           ...policy,
           updated_at: new Date().toISOString(),
-          sync_status: "dirty",
+          sync_status: "syncing",
           tenantId,
         },
         userId,

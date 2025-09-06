@@ -2,6 +2,7 @@
 import { IDBPDatabase } from "idb";
 import { AIOpsDB } from "../seedIndexedDB";
 import { generateSecureId } from "../../utils/auditUtils";
+import { ExternalSystemType } from "../../types/externalSystem";
 
 export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) => {
   const now = new Date().toISOString();
@@ -36,7 +37,17 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
         custom_fields: {
           cpu_threshold: "85%",
           affected_routers: ["router01", "router02"]
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.SERVICENOW,
+        external_id: "PRB0001234",
+        external_url: "https://demo.service-now.com/problem.do?sys_id=PRB0001234",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 15 * 60000).toISOString(), // 15 mins ago
+        data_completeness: 90,
+        data_sources: [ExternalSystemType.SERVICENOW, ExternalSystemType.PROMETHEUS],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_prob02`,
@@ -65,7 +76,18 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
         custom_fields: {
           switch_model: "cisco-3750x",
           affected_ports: ["Gi1/0/1", "Gi1/0/2"]
-        }
+        },
+        // External system fields - different source
+        source_system: ExternalSystemType.DATADOG,
+        external_id: "DD-PRB-987654",
+        external_url: "https://app.datadoghq.com/problems/DD-PRB-987654",
+        sync_status: "error" as const,
+        synced_at: new Date(Date.now() - 2 * 60 * 60000).toISOString(), // 2 hours ago
+        sync_error: "Failed to fetch latest metrics from Datadog API",
+        data_completeness: 75,
+        data_sources: [ExternalSystemType.DATADOG],
+        has_local_changes: true,
+        source_priority: 2
       },
     ];
   }
@@ -100,7 +122,17 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
           region: "eu-west-1",
           latency_ms: "250",
           capacity_utilization: "95%"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.NEW_RELIC,
+        external_id: "NR-PRB-EU-001",
+        external_url: "https://one.newrelic.com/problems/NR-PRB-EU-001",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 5 * 60000).toISOString(),
+        data_completeness: 95,
+        data_sources: [ExternalSystemType.NEW_RELIC, ExternalSystemType.GRAFANA],
+        has_local_changes: false,
+        source_priority: 1
       },
       {
         id: `${tenantId}_prob02`,
@@ -131,7 +163,17 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
           namespace: "transcoding",
           memory_limit: "2Gi",
           oom_kill_count: "47"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.PROMETHEUS,
+        external_id: "prom-alert-oom-47",
+        external_url: "https://prometheus.io/alerts/prom-alert-oom-47",
+        sync_status: "syncing" as const,
+        synced_at: new Date(Date.now() - 30 * 60000).toISOString(),
+        data_completeness: 88,
+        data_sources: [ExternalSystemType.PROMETHEUS],
+        has_local_changes: false,
+        source_priority: 1
       },
     ];
   }
@@ -166,7 +208,18 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
           max_lag_minutes: "45",
           avg_lag_minutes: "15",
           replica_type: "streaming"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.SPLUNK,
+        external_id: "SPL-DB-LAG-001",
+        external_url: "https://splunk.example.com/problems/SPL-DB-LAG-001",
+        sync_status: "conflict" as const,
+        synced_at: new Date(Date.now() - 60 * 60000).toISOString(),
+        sync_error: "Conflicting severity between local (P1) and Splunk (P2)",
+        data_completeness: 92,
+        data_sources: [ExternalSystemType.SPLUNK, ExternalSystemType.APPDYNAMICS],
+        has_local_changes: true,
+        source_priority: 1
       },
       {
         id: `${tenantId}_prob02`,
@@ -196,7 +249,17 @@ export const seedProblems = async (tenantId: string, db: IDBPDatabase<AIOpsDB>) 
           failure_rate: "23%",
           cluster_size: "8_nodes",
           driver_memory: "4g"
-        }
+        },
+        // External system fields
+        source_system: ExternalSystemType.ELASTICSEARCH,
+        external_id: "es-etl-prob-002",
+        external_url: "https://elastic.cloud/problems/es-etl-prob-002",
+        sync_status: "synced" as const,
+        synced_at: new Date(Date.now() - 10 * 60000).toISOString(),
+        data_completeness: 100,
+        data_sources: [ExternalSystemType.ELASTICSEARCH],
+        has_local_changes: false,
+        source_priority: 1
       },
     ];
   }

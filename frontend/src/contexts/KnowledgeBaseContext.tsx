@@ -18,6 +18,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. UI State Management Types
@@ -84,7 +85,7 @@ export interface KnowledgeMetrics {
   effectiveness_score?: number;
 }
 
-export interface KnowledgeArticle {
+export interface KnowledgeArticle extends ExternalSystemFields {
   id: string;
   title: string;
   description?: string;
@@ -159,8 +160,7 @@ export interface KnowledgeArticle {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at and sync_status inherited from ExternalSystemFields
   tenantId?: string;
 }
 
@@ -177,6 +177,12 @@ export interface KnowledgeFilters {
   author_ids?: string[];
   needs_review?: boolean;
   published_only?: boolean;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 export interface KnowledgeSort {
@@ -488,7 +494,7 @@ export const KnowledgeBaseProvider = ({ children }: { children: ReactNode }) => 
       tenantId,
       tags: articleData.tags || [],
       health_status: "gray",
-      sync_status: "dirty",
+      sync_status: "syncing",
       keywords: articleData.keywords || [],
       version: 1,
       version_history: [],
@@ -569,7 +575,7 @@ export const KnowledgeBaseProvider = ({ children }: { children: ReactNode }) => 
       ...currentArticle,
       ...updates,
       updated_at: new Date().toISOString(),
-      sync_status: "dirty" as const,
+      sync_status: "syncing" as const,
     };
     
     // Add optimistic update

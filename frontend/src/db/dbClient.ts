@@ -216,8 +216,10 @@ export const putWithAudit = async <T extends { id: string }>(
       ...entity,
       tenantId,                    // ✅ Ensure tenant isolation
       updated_at: timestamp,       // ✅ Update timestamp
-      synced_at: null,            // ✅ Mark as unsynced
-      sync_status: "dirty" as const, // ✅ Mark as needing sync
+      // Handle external system fields
+      has_local_changes: action === "update" || action === "create" ? true : entity.has_local_changes,
+      sync_status: action === "update" || action === "create" ? "syncing" as const : entity.sync_status || "synced",
+      synced_at: entity.synced_at || null,  // Preserve existing sync timestamp
     } as T;
 
     // Save to IndexedDB
@@ -688,7 +690,7 @@ export const markSynced = async (
       const updatedEntity = {
         ...entity,
         synced_at: new Date().toISOString(),
-        sync_status: "clean" as const,
+        sync_status: "synced" as const,
       };
       await db.put(storeName, updatedEntity);
     }
@@ -722,6 +724,165 @@ export const lastSynced = async (
     return null;
   }
 };
+
+// ---------------------------------
+// External System Query Functions
+// ---------------------------------
+
+/**
+ * Query records by source system
+ */
+export async function getBySourceSystem<T>(
+  tenantId: string,
+  storeName: keyof AIOpsDB,
+  sourceSystem: string
+): Promise<T[]> {
+  try {
+    const db = await getDB(tenantId);
+    const allRecords = await db.getAll(storeName);
+    return allRecords.filter((item: any) => 
+      item.source_system === sourceSystem && item.tenantId === tenantId
+    ) as T[];
+  } catch (error) {
+    console.error(`Failed to get records by source system:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get all records with sync conflicts
+ */
+export async function getConflicts<T>(
+  tenantId: string,
+  storeName: keyof AIOpsDB
+): Promise<T[]> {
+  try {
+    const db = await getDB(tenantId);
+    const allRecords = await db.getAll(storeName);
+    return allRecords.filter((item: any) => 
+      item.sync_status === 'conflict' && item.tenantId === tenantId
+    ) as T[];
+  } catch (error) {
+    console.error(`Failed to get conflicts:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get records with local changes pending sync
+ */
+export async function getLocalChanges<T>(
+  tenantId: string,
+  storeName: keyof AIOpsDB
+): Promise<T[]> {
+  try {
+    const db = await getDB(tenantId);
+    const allRecords = await db.getAll(storeName);
+    return allRecords.filter((item: any) => 
+      item.has_local_changes === true && item.tenantId === tenantId
+    ) as T[];
+  } catch (error) {
+    console.error(`Failed to get local changes:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get records by sync status
+ */
+export async function getBySyncStatus<T>(
+  tenantId: string,
+  storeName: keyof AIOpsDB,
+  syncStatus: 'synced' | 'syncing' | 'error' | 'conflict'
+): Promise<T[]> {
+  try {
+    const db = await getDB(tenantId);
+    const allRecords = await db.getAll(storeName);
+    return allRecords.filter((item: any) => 
+      item.sync_status === syncStatus && item.tenantId === tenantId
+    ) as T[];
+  } catch (error) {
+    console.error(`Failed to get records by sync status:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get external system statistics for a store
+ */
+export async function getExternalSystemStats(
+  tenantId: string,
+  storeName: keyof AIOpsDB
+): Promise<{
+  totalRecords: number;
+  bySourceSystem: Record<string, number>;
+  bySyncStatus: Record<string, number>;
+  withConflicts: number;
+  withLocalChanges: number;
+  averageCompleteness: number;
+}> {
+  try {
+    const db = await getDB(tenantId);
+    const allRecords = await db.getAll(storeName);
+    const tenantRecords = allRecords.filter((item: any) => item.tenantId === tenantId);
+    
+    const stats = {
+      totalRecords: tenantRecords.length,
+      bySourceSystem: {} as Record<string, number>,
+      bySyncStatus: {} as Record<string, number>,
+      withConflicts: 0,
+      withLocalChanges: 0,
+      averageCompleteness: 0
+    };
+    
+    let totalCompleteness = 0;
+    let completenessCount = 0;
+    
+    tenantRecords.forEach((record: any) => {
+      // Count by source system
+      if (record.source_system) {
+        stats.bySourceSystem[record.source_system] = 
+          (stats.bySourceSystem[record.source_system] || 0) + 1;
+      }
+      
+      // Count by sync status
+      const status = record.sync_status || 'synced';
+      stats.bySyncStatus[status] = (stats.bySyncStatus[status] || 0) + 1;
+      
+      // Count conflicts
+      if (record.sync_status === 'conflict') {
+        stats.withConflicts++;
+      }
+      
+      // Count local changes
+      if (record.has_local_changes) {
+        stats.withLocalChanges++;
+      }
+      
+      // Calculate average completeness
+      if (record.data_completeness !== undefined) {
+        totalCompleteness += record.data_completeness;
+        completenessCount++;
+      }
+    });
+    
+    if (completenessCount > 0) {
+      stats.averageCompleteness = Math.round(totalCompleteness / completenessCount);
+    }
+    
+    return stats;
+  } catch (error) {
+    console.error(`Failed to get external system stats:`, error);
+    return {
+      totalRecords: 0,
+      bySourceSystem: {},
+      bySyncStatus: {},
+      withConflicts: 0,
+      withLocalChanges: 0,
+      averageCompleteness: 0
+    };
+  }
+}
 
 // ---------------------------------
 // Reset + Reseed Helpers

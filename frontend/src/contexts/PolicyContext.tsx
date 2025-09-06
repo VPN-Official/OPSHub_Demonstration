@@ -17,6 +17,7 @@ import {
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
+import { ExternalSystemFields } from "../types/externalSystem";
 
 // ---------------------------------
 // 1. Frontend State Management Types
@@ -96,7 +97,7 @@ export interface PolicyControl {
   test_results?: "pass" | "fail" | "needs_review";
 }
 
-export interface Policy {
+export interface Policy extends ExternalSystemFields {
   id: string;
   name: string;
   description?: string;
@@ -177,9 +178,24 @@ export interface Policy {
   tags: string[];
   custom_fields?: Record<string, any>;
   health_status: "green" | "yellow" | "orange" | "red" | "gray";
-  synced_at?: string;
-  sync_status?: "clean" | "dirty" | "conflict";
+  // synced_at and sync_status inherited from ExternalSystemFields
   tenantId?: string;
+}
+
+export interface PolicyUIFilters {
+  type?: PolicyType;
+  status?: PolicyStatus;
+  enforcement_mode?: EnforcementMode;
+  policy_owner_user_id?: string;
+  tags?: string[];
+  needs_review?: boolean;
+  has_violations?: boolean;
+  // External system filtering
+  sourceSystems?: string[];
+  syncStatus?: ('synced' | 'syncing' | 'error' | 'conflict')[];
+  hasConflicts?: boolean;
+  hasLocalChanges?: boolean;
+  dataCompleteness?: { min: number; max: number };
 }
 
 // ---------------------------------
@@ -420,7 +436,7 @@ export const PolicyProvider = ({ children }: { children: ReactNode }) => {
         violations: [],
         violations_count: 0,
         health_status: "green",
-        sync_status: "dirty",
+        sync_status: "syncing",
         acknowledged_by_user_ids: [],
         change_history: [],
         tenantId,
