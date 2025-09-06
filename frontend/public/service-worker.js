@@ -265,7 +265,7 @@ async function cacheFirst(request, cacheName) {
 async function networkFirstWithTenantIsolation(request, cacheName) {
   let tenantId;
   try {
-    tenantId = extractTenantFromRequest(request);
+    tenantId = await extractTenantFromRequest(request);
   } catch (error) {
     // Return error response for invalid tenant
     return new Response(
@@ -312,7 +312,7 @@ async function networkFirstWithTenantIsolation(request, cacheName) {
 }
 
 async function cacheFirstWithBackgroundUpdate(request, cacheName) {
-  const tenantId = extractTenantFromRequest(request);
+  const tenantId = await extractTenantFromRequest(request);
   
   // Check storage quota before major cache operation
   await checkStorageQuota();
@@ -545,22 +545,73 @@ function isNetworkOnly(url) {
   return NETWORK_ONLY_PATTERNS.some(pattern => pattern.test(url.pathname));
 }
 
-function extractTenantFromRequest(request) {
+// Helper function to get tenant ID from IndexedDB
+async function getTenantFromIndexedDB() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(['app_state'], 'readonly');
+    const store = tx.objectStore('app_state');
+    const result = await store.get('current_tenant');
+    return result ? result.value : null;
+  } catch (error) {
+    // IndexedDB not available or error
+    return null;
+  }
+}
+
+// Helper to open IndexedDB
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('OpsHubDB', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('app_state')) {
+        db.createObjectStore('app_state', { keyPath: 'key' });
+      }
+    };
+  });
+}
+
+async function extractTenantFromRequest(request) {
   const url = new URL(request.url);
+  
+  // Skip tenant requirement for non-API routes
+  if (!url.pathname.startsWith('/api/')) {
+    return null;
+  }
+  
+  // Skip tenant requirement for public endpoints
+  const publicEndpoints = ['/api/health', '/api/status', '/api/version', '/api/auth', '/api/tenants'];
+  if (publicEndpoints.some(endpoint => url.pathname.startsWith(endpoint))) {
+    return null;
+  }
   
   // Try multiple sources
   const tenantFromQuery = url.searchParams.get('tenant');
   const tenantHeader = request.headers.get('X-Tenant-ID');
   const pathMatch = url.pathname.match(/\/api\/tenant\/([^\/]+)/);
   
-  const tenantId = tenantFromQuery || tenantHeader || (pathMatch ? pathMatch[1] : null);
+  let tenantId = tenantFromQuery || tenantHeader || (pathMatch ? pathMatch[1] : null);
   
-  // CRITICAL: Add validation
+  // Try IndexedDB as fallback
   if (!tenantId) {
-    console.error('[ServiceWorker] Tenant ID is required for this request');
+    tenantId = await getTenantFromIndexedDB();
+  }
+  
+  // For non-critical operations, allow missing tenant ID
+  if (!tenantId) {
+    // Only log in debug mode, not in production
+    if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
+      console.debug('[ServiceWorker] No tenant ID found for request:', url.pathname);
+    }
     return null; // Allow graceful degradation
   }
   
+  // Validate tenant ID format if present
   if (!/^[a-zA-Z0-9_-]{1,50}$/.test(tenantId)) {
     console.error('[ServiceWorker] Invalid tenant identifier format:', tenantId);
     throw new Error('Invalid tenant identifier format');

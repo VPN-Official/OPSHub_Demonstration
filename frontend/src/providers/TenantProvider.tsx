@@ -44,15 +44,45 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Helper to store tenant ID in IndexedDB for service worker access
+  const storeTenantInIndexedDB = async (tenantId: string | null) => {
+    try {
+      const request = indexedDB.open('OpsHubDB', 1);
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('app_state')) {
+          db.createObjectStore('app_state', { keyPath: 'key' });
+        }
+      };
+      
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction(['app_state'], 'readwrite');
+        const store = tx.objectStore('app_state');
+        
+        if (tenantId) {
+          store.put({ key: 'current_tenant', value: tenantId });
+        } else {
+          store.delete('current_tenant');
+        }
+      };
+    } catch (error) {
+      console.warn('Failed to store tenant ID in IndexedDB:', error);
+    }
+  };
+
   // Initialize tenant when tenantId changes
   useEffect(() => {
     if (!tenantId) {
       setIsInitialized(false);
       setError(null);
+      storeTenantInIndexedDB(null); // Clear IndexedDB when no tenant
       return;
     }
 
     initializeTenant(tenantId);
+    storeTenantInIndexedDB(tenantId); // Store in IndexedDB for service worker
   }, [tenantId]);
 
   const initializeTenant = async (newTenantId: string) => {
@@ -101,8 +131,9 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       invalidateCache(tenantId);
     }
     
-    // Update localStorage and state
+    // Update localStorage, IndexedDB, and state
     localStorage.setItem("tenantId", newTenantId);
+    await storeTenantInIndexedDB(newTenantId);
     setTenantId(newTenantId);
     // initializeTenant will be called via useEffect
   }, [tenantId]);
