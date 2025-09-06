@@ -1,0 +1,480 @@
+Sync Center — UI Spec (frontend-only, battle-tested)
+
+This is the complete, no-wriggle-room UI spec for the Sync Center — the frontend surface that shows, manages, and helps resolve all queued / pending / replayed client actions (the WAL). It is strictly UI: no business logic, no server-side decisioning. The Sync Center displays what the client has queued, how replay progressed, and exposes safe controls (cancel, retry, inspect). It surfaces conflicts, failures, and audit metadata clearly so users and QA can act.
+
+Use this as a direct hand-off to design, front-end, QA and the Scrum Master. Everything below must be implemented as specified for MVP.
+
+⸻
+
+Table of contents
+	1.	Purpose & scope
+	2.	High-level principles (frontend-only constraints)
+	3.	Entry points & navigation
+	4.	Screens & layouts (desktop + mobile)
+	5.	Data model (display fields + example JSON)
+	6.	Item states & transitions (definitions)
+	7.	Actions & permitted user interactions (per-state)
+	8.	Conflict handling UI (detailed)
+	9.	Error handling & messaging (exact copy)
+	10.	Filters, sorting & grouping rules
+	11.	Bulk actions & limits
+	12.	Telemetry events (required)
+	13.	Accessibility requirements
+	14.	Performance targets
+	15.	Acceptance criteria (QA-ready)
+	16.	Test cases (step-by-step)
+	17.	Jira-ready tasks / subtasks
+	18.	Copy library (modals, toasts, banners)
+	19.	Handoff checklist for backend & architect
+
+⸻
+
+1. Purpose & scope
+
+Show all locally queued client actions (WAL), let users monitor replay progress, cancel queued actions, retry failures, inspect payloads & audit metadata, and resolve conflicts that the server reports during replay. It is not an editor: it does not attempt to resolve business rules — it surfaces decisions for users and records their choices.
+
+Scope: desktop + mobile PWA. Core target users: Engineers (primary), Managers (audit/review), Support (troubleshooting).
+
+⸻
+
+2. High-level principles (must be respected)
+	•	Frontend-only: the Sync Center shows client state and server responses. Business validation / final decisions always come from server.
+	•	Truth source: when server returns final status or conflict, UI displays server-supplied values.
+	•	Immutable audit: any user decision in the Sync Center (cancel, retry, conflict resolution choice) must create a local audit event with clientActionId, timestampUTC and be sent to backend as metadata when possible.
+	•	No automatic destructive actions: UI will not automatically delete or auto-resolve queued actions without explicit user action.
+	•	Clarity: status, priority, target WorkItem, and reason (for queued/failure/conflict) must be visible at glance.
+
+⸻
+
+3. Entry points & navigation
+
+Accessible from:
+	•	Global header: icon/badge (bell-like or sync icon) showing N queued actions or sync status. Tooltip: Sync Center — N pending. Keyboard: g s opens Sync Center (global shortcut).
+	•	WorkItem Detail: footer small link Open Sync Center when there are queued actions related to this item.
+	•	Mobile: from main menu (More → Sync Center) and from smart-queue bottom-sheet when offline.
+
+On open: Sync Center is a modal drawer on desktop (right side) and a full-screen view on mobile.
+
+⸻
+
+4. Screens & layouts
+
+4.1 Desktop — Drawer layout
+	•	Width: 480–560px. Title: Sync Center. Close: top-right X + ESC.
+	•	Header row:
+	•	Left: Sync Center (title)
+	•	Middle: status summary (e.g., Syncing 3 / 5 or Offline — 5 queued)
+	•	Right: controls: Retry All (icon button), Pause Auto-sync (toggle), Clear Completed (action)
+	•	Body: two-pane
+	•	Top: Filters & search row (see §10)
+	•	Bottom: list of queued actions (virtualized list)
+	•	Each list item is an expandable card summarizing key fields (see §5)
+	•	Expand shows payload preview, server responses, activity timestamps, and per-item actions
+	•	Footer: Sync log link (opens full replay transcript view) + Download report (CSV) for admin users.
+
+4.2 Mobile — Full screen
+	•	Header: Sync Center + back arrow.
+	•	Summary banner under header showing counts and a Retry All CTA.
+	•	List view (card stack) with expandable detail.
+	•	Action sheet for per-item actions (Cancel / Retry / Inspect).
+
+⸻
+
+5. Data model — fields to display (must be shown in UI)
+
+Each queued item displayed must include these fields (visible on collapsed card where applicable, and fully on expand):
+
+Required display fields
+	1.	clientActionId (GUID) — prominently shown and copyable.
+	2.	localCreatedAt — timestamp UTC (when queued).
+	3.	actionType — e.g., ASSIGN, STATUS_UPDATE, RUN_AUTOMATION, ATTACHMENT_UPLOAD, CREATE_INCIDENT.
+	4.	target — WorkItemId / EventId / NotificationId (linkable to WorkItem if local data cached).
+	5.	priority — integer or enum (when assigned by client or default) — display label: Automations, Approvals, Updates, Attachments mapping to product priority.
+	6.	status — one of the canonical states (Queued, In-Flight, Success, Failed, Conflict, Cancelled). See §6.
+	7.	attempts — number of replay attempts (integer).
+	8.	sizeBytes — for attachments (optional).
+	9.	deviceId — friendly name if available (e.g., Vijay's iPhone) + raw id on hover.
+	10.	offlineFlag — Y/N (should be Y for queued items created offline).
+	11.	payloadPreview — concise readable summary (not full JSON) of what the action will do (e.g., Assign to user: Ramesh, or Change status: IN_PROGRESS → RESOLVED). Expand reveals full JSON.
+	12.	serverResponse — if replay attempted: show last server result (success with auditEntryId + serverTimestamp, or error code + message, or conflict diff stub).
+	13.	errorMessage — when failed (server-supplied, if any).
+	14.	relatedAuditEntryId — if server returned it after success.
+
+On expand show:
+	•	Full JSON payload (readonly, copyable).
+	•	Full server response JSON (if any).
+	•	Timeline: queued → firstAttempt → lastAttempt → resolvedAt (if success).
+	•	Actions (Cancel / Retry / Inspect Conflict / Copy clientActionId).
+
+⸻
+
+Example JSON (for QA/dev stubs)
+{
+  "clientActionId": "a1b2c3d4-1111-2222-3333-abcdef123456",
+  "actionType": "RUN_AUTOMATION",
+  "target": "WI-20250906-348",
+  "localCreatedAt": "2025-09-06T09:12:34Z",
+  "deviceId": "Vijays-MacBook-Air",
+  "offlineFlag": true,
+  "priority": "AUTOMATION",
+  "attempts": 1,
+  "status": "FAILED",
+  "payloadPreview": "Run automation: Restart service X (automationId: auto-23)",
+  "payload": { "automationId": "auto-23", "params": { "service":"svc-x" } },
+  "serverResponse": {
+    "errorCode": "AUTOMATION_BLOCKED_POLICY",
+    "message": "Policy restricts restart without approval.",
+    "serverTimestamp": "2025-09-06T09:15:01Z"
+  }
+}
+6. Item states & transitions (definitive)
+
+States (frontend names) — transitions allowed shown in parentheses:
+	1.	Queued — item created locally, not yet sent (→ In-Flight or → Cancelled).
+	2.	In-Flight — client has sent action to server and awaiting response (→ Success | → Failed | → Conflict).
+	3.	Success — server returned success + serverAuditEntryId. (Final)
+	4.	Failed — server returned failure (non-conflict) (→ Retry | → Cancel).
+	5.	Conflict — server returned conflict details (→ Open Conflict Resolver → Resolved => Success|Failed).
+	6.	Cancelled — user cancelled before replay or server refused cancel (final).
+
+Automatic transitions: Queued → In-Flight happens on auto-sync or Retry. In-Flight → Success|Failed|Conflict happens on server response.
+
+Important invariants
+	•	Only the server can mark Success or provide serverAuditEntryId. Frontend must not manufacture these values.
+	•	UI may show optimistic temporary badges (e.g., Processing...) but must reconcile with server result and update state accordingly.
+
+⸻
+
+7. Actions & permitted user interactions
+
+Per-item actions (available depending on state):
+	•	Cancel (Queued, Failed): immediately mark Cancelled locally and emit telemetry. Send cancel request to backend if In-Flight or if server supports cancellation. If server returns rejection, display server message and revert to previous state.
+	•	UI: Confirm modal required for Cancel if actionType is destructive (e.g., CREATE_INCIDENT). For non-destructive (comment), allow immediate cancel.
+	•	Retry (Failed, Queued): re-attempt replay. Each retry increments attempts. Show progress spinner and set In-Flight.
+	•	Inspect (All states): expand to show payload & server response JSON.
+	•	Open Conflict (Conflict): open Conflict Resolver (see §8).
+	•	Copy clientActionId (All states)
+	•	Download payload (usually for attachments): download JSON or file.
+	•	Remove from local store (Success, Cancelled): UI may allow Clear Completed which removes local records older than X days (default 30), with confirmation. This is local only; it must not attempt to delete server audit logs.
+
+Global actions:
+	•	Retry All — attempts to replay all queued/failed items in priority order (see §10). Disabled when offline.
+	•	Pause Auto-sync toggle — when on, prevents background replays; manual retry still allowed.
+	•	Clear Completed — removes Success/Cancelled locally older than retention window. Confirm modal required.
+
+Important rules
+	•	Cancellation always requires confirmation if actionType ∈ {CREATE_INCIDENT, RUN_AUTOMATION (if risk ≠ low)}.
+	•	Retry for attachment uploads should support chunked resume (backend detail; UI only shows progress).
+	•	UI must prevent mass destructive cancels — limit Cancel All to 10 items at once; otherwise require Manager role (RBAC).
+
+⸻
+
+8. Conflict handling UI (detailed)
+
+When an item reaches Conflict state, server provides conflict payload: one or more field-level diffs with fieldName, clientValue, serverValue, and optionally aiSuggestion (text + confidence).
+
+8.1 Conflict banner & entry point
+	•	Card shows a red Conflict pill and a contextual short message: Conflict detected: 3 fields differ. Resolve now. Clicking opens Conflict Resolver.
+
+8.2 Conflict Resolver screen (modal or full-screen on mobile)
+
+Layout
+	•	Left: list of conflicting fields (collapsible per field if many).
+	•	Middle (for selected field): side-by-side comparison:
+	•	Field name label.
+	•	Left column: Your value (clientValue).
+	•	Right column: Server value (serverValue).
+	•	Underneath: AI suggestion (if provided): text + confidence badge. Show modelVersion.
+	•	Right: resolution controls:
+	•	Radio buttons: Keep server | Keep mine (local) | Merge (only if merge available).
+	•	If Keep mine selected: show required free-text Override reason (min 8 chars).
+	•	Accept suggestion CTA if AI suggestion available — selecting this counts as Keep server or custom merged value depending on suggestion.
+	•	Bottom controls: Resolve selected field (grey) | Resolve all using AI suggestion (danger) | Cancel.
+
+Behavior rules
+	•	The user must resolve all conflicting fields before sync can complete for that clientActionId. Each resolution is recorded as a separate audit sub-entry with clientActionId, field, chosenValue, reason (if local chosen), timestampUTC.
+	•	If user chooses Keep mine, UI posts resolution to backend; server may accept/reject; if rejected, show server message and keep action in Conflict or Failed.
+	•	If user chooses Keep server, UI still records that choice locally and continues—no reason required.
+	•	Resolve all using AI suggestion must show a confirmation modal with copy: This will apply AI suggestions to all fields and submit resolutions. Are you sure? (Only visible if AI suggestion exists for all fields). This action must require user to check a consent checkbox I understand that AI suggestions are not authoritative.
+
+Edge cases
+	•	If the server returns new conflict diffs while user is resolving (concurrent update), show banner Server updated while you were resolving — refresh diffs with Refresh button. Refresh reloads conflict diff list.
+
+⸻
+
+9. Error handling & messaging (exact copy)
+
+Use plain, actionable language. Always show an error code to help support.
+
+Toast & banner texts (copy exactly)
+	•	Syncing N actions — X succeeded, Y failed. (Banner)
+	•	All queued actions have been applied. (Toast-success)
+	•	Some actions failed during sync. Open Sync Center to resolve. (Toast-warning)
+	•	Sync failed for action <clientActionId>. Error: <errorMessage> (Code: <errorCode>) (Inline card error display)
+	•	Conflict detected for <target>. Resolve now. (Inline)
+	•	Pending sync (badge text)
+	•	Confirmation for cancel: Cancel queued action? This will stop this action from being retried. This is local-only and will not delete any server records. Cancel action: <clientActionId>. Buttons: No, keep | Yes, cancel.
+
+Validation messages
+	•	Override reason required: Please provide a reason (min 8 characters) to keep local changes.
+	•	Pause Auto-sync warning: Auto-sync paused. Queued actions will not be replayed until you resume or manually retry.
+
+Network messages
+	•	When offline: show top banner Offline — actions will be queued locally. Visit Sync Center to view pending actions.
+
+⸻
+
+10. Filters, sorting & grouping rules
+
+Default grouping & sort:
+	•	Group by priority bucket first: Automations (highest), Approvals, Updates, Attachments (lowest). Within group, sort by localCreatedAt ascending (oldest first) for FIFO replay.
+	•	Default filter: show All statuses.
+	•	Filters available: Status (Queued, In-Flight, Failed, Conflict, Success, Cancelled), ActionType (dropdown), Target (search by WorkItemId), Device (dropdown), Date range, Priority group.
+	•	Quick toggles: Show only my device, Show only conflicts, Show failed.
+	•	Search: free-text search across clientActionId, target, payloadPreview.
+
+⸻
+
+11. Bulk actions & limits
+	•	Retry All respects priority order; disabled offline.
+	•	Cancel Selected allowed for selected items up to 10 items. If more than 10 selected, show message: Bulk cancel limited to 10 items. Select fewer or contact admin.
+	•	Clear Completed removes locally stored Success/Cancelled items older than X days (configurable; default 30). Requires confirmation: This will remove X records from this device. Server audit logs remain intact.
+
+RBAC:
+	•	Retry All & Clear Completed may be restricted to Manager role; UI must hide or disable for other roles based on backend claims.
+
+⸻
+
+12. Telemetry events (frontend must emit)
+
+Each event must include tenantId, userId, deviceId, clientActionId (if relevant).
+	•	sync_center.open {countQueued, countConflicts, timestamp}
+	•	sync_action.retry {clientActionId, attempts}
+	•	sync_action.cancel {clientActionId, reasonPresent:Y/N}
+	•	sync_action.inspect {clientActionId}
+	•	sync_action.resolve_conflict {clientActionId, fieldsResolved, method:manual|ai, timeTakenMs}
+	•	sync_center.retry_all {countAttempted}
+	•	sync_center.pause {pausedBy, timestamp}
+	•	sync_center.clear_completed {countCleared}
+
+Batch-and-send opportunistically; opt-out respected.
+
+⸻
+
+13. Accessibility requirements
+	•	Screen reader: announce clientActionId, actionType, status, target, attempts when focusing a list item. Example: Queued action, RUN_AUTOMATION for WI-2025..., status queued, 1 attempt.
+	•	Color: status colors must be accompanied by icon + text (e.g., red circle + Conflict).
+	•	Modals: traps focus; ESC closes; Return/Enter executes default action.
+	•	High-contrast mode: ensure badges and text meet contrast ratio >= 4.5:1.
+
+⸻
+
+14. Performance targets
+	•	Opening the Sync Center (drawers/full screen) must be < 200ms from click on typical device.
+	•	Virtualized list rendering: support 5,000 items with smooth scroll (virtualization required).
+	•	Expand/collapse for a single item must render in < 100ms.
+
+⸻
+
+15. Acceptance criteria (QA-ready)
+	•	AC-SC-01: Sync Center opens from global header and from WorkItem page; counts match number of queued items.
+	•	AC-SC-02: Each queued item shows required fields on collapsed card; expand shows full payload & server response.
+	•	AC-SC-03: Retry All replays items in priority order (Automations → Approvals → Updates → Attachments). (Backend will verify ordering; frontend displays order).
+	•	AC-SC-04: Cancel action cancels queued item locally and sends cancel request when possible; UI updates to Cancelled.
+	•	AC-SC-05: Conflict items open Conflict Resolver and require explicit resolution for each field; audit entries created for resolution choices.
+	•	AC-SC-06: Offline banner displays when offline; queued items show Pending sync.
+	•	AC-SC-07: Telemetry events emitted for open/retry/cancel/resolve actions.
+	•	AC-SC-08: Accessibility tests (keyboard + screenreader) pass for all actions.
+	•	AC-SC-09: Clearing completed removes local records (after confirmation). Server audit logs remain unaffected.
+
+⸻
+
+16. Test cases (step-by-step)
+
+TC-1: Basic view & counts
+	1.	Precondition: device has 5 queued actions (2 automations, 1 approval, 2 attachments).
+	2.	Action: open Sync Center.
+	3.	Expected: header shows 5 queued and groups show 2 automations first. Each card shows clientActionId, actionType, target, attempts=0.
+
+TC-2: Retry single failed item
+	1.	Make one queued item fail on first replay (simulate backend error).
+	2.	In Sync Center expand the failed item.
+	3.	Click Retry.
+	4.	Expected: attempts increments, status becomes In-Flight, on success serverAuditEntryId shown and status becomes Success. Telemetry sync_action.retry emitted.
+
+TC-3: Cancel queued item
+	1.	Select a queued CREATE_INCIDENT item.
+	2.	Click Cancel. Confirm modal.
+	3.	Expected: status becomes Cancelled locally. Attempt to send cancel request (if online). If server rejects cancellation, show server message and restore prior state.
+
+TC-4: Conflict resolution
+	1.	Create offline edit to WorkItem field priority (local= P2). Server changed to P0 while offline. On sync server returns conflict.
+	2.	Open Conflict Resolver. Field list shows priority with client/server values. AI suggestion present.
+	3.	Choose Keep mine, enter reason Field fix needed and resolve.
+	4.	Expected: resolution submitted; UI shows sub-audit entry with reason; if server accepts, status moves to Success; if server rejects, UI shows server error and remains in Conflict.
+
+TC-5: Retry All with ordering
+	1.	With multiple queued items of mixed priority, click Retry All.
+	2.	Expected: UI shows replay progress and order; display Syncing: automation1 → automation2 → approval1 .... On complete verify telemetry sync_center.retry_all.
+
+TC-6: Offline behavior persistence
+	1.	Queue actions while offline. Kill the app. Restart app.
+	2.	Open Sync Center.
+	3.	Expected: queued items persist with localCreatedAt timestamps and Pending sync badges. On reconnect, replays occur.
+
+⸻
+
+17. Jira-ready tasks / subtasks (copy-paste)
+
+Epic: Sync Center UI
+	•	Task SC-001: Implement Sync Center drawer UI + header summary + open/close flows. (AC: AC-SC-01)
+	•	Task SC-002: Implement virtualized queued items list with collapsed card UI and expand detail view. (AC: collapsed card fields visible)
+	•	Task SC-003: Implement per-item actions (Cancel, Retry, Inspect, Copy ID). (AC: AC-SC-03, AC-SC-04)
+	•	Task SC-004: Implement Conflict Resolver modal + per-field resolution workflow. (AC: AC-SC-05)
+	•	Task SC-005: Implement filters, search, grouping & sorting logic (UI only). (AC: groups & filters operate)
+	•	Task SC-006: Implement Sync Center mobile screen + action sheet. (AC: AC-MOB-01)
+	•	Task SC-007: Telemetry instrumentation for all required events. (AC: events visible in telemetry sandbox)
+	•	Task SC-008: Accessibility & keyboard navigation for Sync Center (axe tests). (AC: AC-SC-08)
+	•	Task SC-009: Implement Retry All, Pause Auto-sync, Clear Completed buttons & confirmation flows. (AC: AC-SC-03)
+	•	Task SC-010: QA e2e tests & test data scenarios for all TC steps. (AC: TC-1..TC-6 pass)
+
+For each task add DoD: unit tests, integration tests (msw or backend stub), e2e test, accessibility audit, telemetry checks.
+
+⸻
+
+18. Copy library (modals, toasts, banners) — exact strings
+	•	Title (Sync Center): Sync Center
+	•	Header summary offline: Offline — <N> actions queued
+	•	Header summary syncing: Syncing <done> / <total>
+	•	Pending badge: Pending sync
+	•	Conflict pill: CONFLICT
+	•	Confirm Cancel modal:
+	•	Title: Cancel queued action?
+	•	Body: This will stop this action from being retried. Server audit logs will not be deleted. Cancel action: <clientActionId>.
+	•	Buttons: No, keep | Yes, cancel
+	•	Pause Auto-sync tooltip: When paused, queued actions will not replay automatically. Use Retry to attempt immediate replay.
+	•	Retry All confirm: Retry all queued actions now? Buttons: Cancel | Retry All
+	•	Clear Completed confirm: Remove <X> completed records from this device? Server audit logs remain intact. Buttons: Cancel | Remove
+	•	Conflict resolve confirm (AI all): Apply AI suggestions to all fields? AI suggestions are guidance, not authoritative. Proceed? Checkbox: I understand AI suggestions are non-authoritative. Buttons: Cancel | Apply AI suggestions
+
+⸻
+
+19. Handoff checklist for backend & architect (what frontend needs from backend for Sync Center to work end-to-end)
+
+(Include in ticket to backend; frontend will stub if needed but full behavior requires these.)
+	1.	Replay API endpoints for sending queued actions with idempotency based on clientActionId.
+	2.	Cancel API endpoint that accepts cancel request and returns acceptance/rejection.
+	3.	Conflict payload schema: field-level diffs with fieldName, clientValue, serverValue, optional aiSuggestion {value, confidence, modelVersion}.
+	4.	Server response types: success (with serverAuditEntryId, serverTimestamp), failure with errorCode, message, and optional retryable boolean, and conflict.
+	5.	Priority rules (product-provided): canonical group ordering Automations → Approvals → Updates → Attachments (frontend must use this ordering in UI).
+	6.	Pagination for large WAL lists, or an endpoint to fetch only local relevant queued items for tenant/user if server returns duplicates.
+	7.	Telemetry ingestion endpoint and schema for Sync-related events.
+	8.	Optional: a replay transcript API that returns a transcript of the last sync session (for the Sync Log view).
+
+⸻
+
+Final notes & constraints (explicit)
+	•	The Sync Center UI must not mutate server data directly beyond calling the backend replay/cancel endpoints. The client must not attempt to reconcile conflicts offline without server involvement.
+	•	The Sync Center should be considered a high-trust UI and must log every user action for audit and investigation.
+	•	Anything marked “requires confirmation” or “requires reason” must enforce the validation client-side (min length, presence) before sending to backend.
+
+
+Conflict Resolver — Micro-Interaction Flows (Frontend-Only)
+
+1. Entry Point
+	•	Trigger: user clicks “Resolve Conflict” on a card in Sync Center.
+	•	Transition: open modal (desktop) or full screen (mobile) with Conflict Resolver.
+	•	Focus management: focus lands on first unresolved field.
+
+⸻
+
+2. Field List & Navigation
+	•	List left panel: all conflicting fields, each with:
+	•	Field name.
+	•	Conflict pill (Conflict) + count if multiple diffs.
+	•	Status badge: Unresolved (default), Resolved (once user acts).
+	•	Keyboard: ↑/↓ to navigate fields, Enter to open details.
+	•	Mobile: tap to expand into detail view.
+
+⸻
+
+3. Conflict Detail (Center Panel)
+
+Each field opens side-by-side layout:
+	•	Field header:
+	•	Field label + type (text, dropdown, number, multi-value).
+	•	Tooltip: last modified timestamps (local vs remote).
+	•	Values shown:
+	•	Left column: Local value (client version).
+	•	Right column: Remote value (server version).
+	•	Below both: AI suggestion (if available) → shows suggested merged value + confidence % + model version.
+	•	Resolution controls:
+	•	Radio buttons: Keep Server, Keep Mine, Accept AI Suggestion (if available).
+	•	Optional: Merge Values (only if backend sends mergePossible=true).
+	•	Validation:
+	•	If Keep Mine → mandatory reason text field (min 8 chars).
+	•	If Keep Server → no reason required.
+	•	If Accept AI Suggestion → no reason required, but must show consent checkbox: I understand AI suggestions are guidance, not authoritative.
+
+⸻
+
+4. Action Buttons (Per Field)
+	•	Save Resolution (enabled once selection valid).
+	•	Cancel (discard selection → keeps field unresolved).
+	•	State after save: field marked Resolved in left list; user auto-navigated to next unresolved field.
+
+⸻
+
+5. Global Footer Actions
+	•	Resolve All with AI Suggestions (only visible if all fields have AI suggestions).
+	•	Confirmation modal:
+	•	Copy: This will apply AI suggestions to all conflicting fields. Proceed?
+	•	Requires consent checkbox.
+	•	Discard Changes → returns to Sync Center, leaves conflicts unresolved.
+	•	Submit All Resolutions → disabled until all fields are resolved. On click: closes resolver, updates card to In-Flight or Resolved.
+
+⸻
+
+6. Error States
+	•	Server rejects resolution (rare): show inline error banner:
+	•	Copy: Server rejected resolution for field <fieldName>. Reason: <serverMessage>.
+	•	Field resets to unresolved state.
+	•	Network loss: show toast Connection lost — resolution queued locally, will sync on reconnect.
+	•	Validation error (reason too short): inline error under text box: Please enter at least 8 characters.
+
+⸻
+
+7. Visual Feedback
+	•	Status icons:
+	•	Unresolved → grey dot.
+	•	Resolved → green check.
+	•	Error → red exclamation.
+	•	Progress indicator: top banner Resolved X of Y conflicts.
+
+⸻
+
+8. Accessibility
+	•	Screen reader flow: announce field, local value, remote value, AI suggestion if available.
+	•	Tab order: values → radio options → reason input → save button.
+	•	Keyboard shortcut: Alt+S = Save Resolution, Alt+N = Next Field.
+
+⸻
+
+9. Telemetry Events (Frontend Must Emit)
+	•	conflict_resolver.open {clientActionId, conflictCount}
+	•	conflict_resolver.field_resolved {clientActionId, field, choice, reasonProvided:boolean, usedAI:boolean}
+	•	conflict_resolver.resolve_all_ai {clientActionId, fieldCount}
+	•	conflict_resolver.submit_all {clientActionId, resolvedCount, timeTakenMs}
+	•	conflict_resolver.error {clientActionId, field, errorType, message}
+
+⸻
+
+10. Acceptance Criteria (QA-Ready)
+	•	AC-CR-01: Conflict Resolver opens with all unresolved fields listed, focus on first field.
+	•	AC-CR-02: User cannot submit resolution without selecting an option.
+	•	AC-CR-03: Keep Mine requires reason ≥8 chars.
+	•	AC-CR-04: Accept AI Suggestion requires consent checkbox.
+	•	AC-CR-05: Global Resolve All with AI Suggestions applies to all fields only after explicit confirmation.
+	•	AC-CR-06: On submit, Sync Center card updates to In-Flight (or server-confirmed state).
+	•	AC-CR-07: Telemetry events emitted correctly per action.
+	•	AC-CR-08: Screen reader announces all values and statuses.	

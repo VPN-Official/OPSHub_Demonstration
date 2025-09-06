@@ -1,0 +1,512 @@
+Schedule Center — Micro-Interaction Flows (Frontend Contract, MVP)
+
+⸻
+
+0 — Purpose
+
+The Schedule Center provides a unified operational calendar: shifts, on-call rotations, planned changes, maintenance windows, SLA deadlines, knowledge review tasks, and training sessions.
+It is AI-augmented with conflict detection and governed by conflict acceptance rules.
+
+⸻
+
+1 — Entry Points
+	•	Global nav: Schedule tab.
+	•	Drill-down from SmartQueue (e.g., “Change request” → opens calendar slot).
+	•	From Notifications (e.g., conflict alert).
+	•	Keyboard shortcut: g s → Schedule Center.
+
+⸻
+
+2 — Views & Layout
+	•	Day view: hourly slots.
+	•	Week view: team coverage + changes.
+	•	Month view: long-term deadlines.
+	•	Timeline/Gantt view: dependencies across changes.
+
+UI contract:
+	•	Default = Week view.
+	•	All views must have:
+	•	Filter bar (Event type, Persona relevance, Team).
+	•	Today button.
+	•	Jump-to-date picker.
+	•	Export (CSV, PDF).
+
+⸻
+
+3 — Event Types (Phase 1 Supported)
+	•	Engineer Shifts / On-call.
+	•	Planned Changes.
+	•	Maintenance Windows.
+	•	SLA Deadlines (incidents, approvals).
+	•	Knowledge Reviews / Retirements.
+	•	Meetings / Trainings.
+
+Card fields (always visible):
+	•	Event title.
+	•	Type (color-coded tag).
+	•	Owner / participants.
+	•	Start/end UTC.
+	•	SLA countdown (if applicable).
+	•	Conflict badge (if flagged).
+
+⸻
+
+4 — Core Interactions
+
+4.1 Create Event
+	•	Click + Event (toolbar).
+	•	Modal (config-driven from ITSM/HR schema):
+	•	Fields: Title, Type (dropdown), Start, End, Owner, Notes.
+	•	Required validation: Title, Type, Start, End.
+	•	Copy:
+	•	Title: Create Event
+	•	Buttons: Cancel | Create
+	•	On confirm: UI shows event in calendar; if offline → mark Pending sync.
+
+⸻
+
+4.2 Drag & Drop Reschedule
+	•	Users can drag event to new time/owner.
+	•	Confirmation modal required:
+	•	Title: Confirm Reschedule
+	•	Body: This will reschedule "<title>" from <oldTime> to <newTime>. Proceed?
+	•	On confirm: update event placement; if offline → Pending sync.
+
+⸻
+
+4.3 Conflict Detection & Resolution
+	•	Conflict badge on event: red exclamation. Tooltip: Conflict detected: <reason>.
+	•	Click → open Conflict Panel:
+	•	Show conflict reason (AI + rules).
+	•	Options:
+	•	Resolve (AI suggestion)
+	•	Acknowledge with Reason (mandatory 8+ chars)
+	•	Copy:
+	•	Title: Conflict Detected
+	•	Body: <reason>
+	•	Buttons: Cancel | Resolve / Acknowledge
+	•	On confirm: card shows Acknowledged tag, conflict muted.
+	•	All resolutions logged in Activity Log.
+
+⸻
+
+4.4 Shift Swaps
+	•	Engineer clicks Request Swap.
+	•	Modal: select peer from dropdown, add optional note.
+	•	Sends to Manager for approval.
+	•	Card shows Swap pending approval.
+	•	Tooltip: Awaiting manager decision.
+
+⸻
+
+4.5 Approvals Inline
+	•	Change requests tied to events show Approve/Reject buttons inline.
+	•	Approve → confirm + log.
+	•	Reject → requires reason (≥8 chars).
+	•	SLA countdown visible inline on approval events.
+
+⸻
+
+5 — Offline & Error States
+	•	Offline:
+	•	Calendar loads cached snapshot with banner: Offline — changes will sync when online.
+	•	Create/Reschedule/Swap queued as Pending sync.
+	•	Error:
+	•	Inline error toast: Action failed: <serverMessage> (Code: <ERR_CODE>).
+	•	Retry button on event.
+
+⸻
+
+6 — Accessibility
+	•	Keyboard:
+	•	Arrow keys to move through slots.
+	•	Enter = open event.
+	•	Ctrl+Enter = create new event at selected slot.
+	•	Screen reader:
+	•	Event: <title>, <type>, starts <time>, ends <time>, owned by <user>, conflict detected: <reason>
+
+⸻
+
+7 — Telemetry Events
+	•	schedule.open {persona, viewType}
+	•	schedule.event.create {eventId, type, clientActionId}
+	•	schedule.event.reschedule {eventId, oldTime, newTime, clientActionId}
+	•	schedule.conflict.view {eventId, conflictReason}
+	•	schedule.conflict.resolve {eventId, method: ai|ack, reasonProvided}
+	•	schedule.swap.request {eventId, fromUser, toUser}
+	•	schedule.swap.decision {eventId, approver, decision}
+	•	schedule.approval.decision {eventId, decision, reasonPresent}
+	•	schedule.error {eventId, errorCode}
+
+⸻
+
+8 — Acceptance Criteria
+	•	AC-SCH-01: All supported event types render with required fields.
+	•	AC-SCH-02: Create Event modal requires Title, Type, Start, End.
+	•	AC-SCH-03: Drag-drop reschedule requires confirm modal.
+	•	AC-SCH-04: Conflict acceptance requires reason ≥8 chars.
+	•	AC-SCH-05: Swap request shows pending approval state.
+	•	AC-SCH-06: Inline approvals enforce reject reason.
+	•	AC-SCH-07: Offline snapshot banner always shown; pending sync badges visible.
+	•	AC-SCH-08: Accessibility: keyboard + screen reader flows functional.
+
+⸻
+
+9 — QA Test Cases
+	•	TC-SCH-01: Create event with missing Title blocked.
+	•	TC-SCH-02: Drag event → confirm modal appears → confirm → event moved.
+	•	TC-SCH-03: Conflict resolution with blank reason blocked; ≥8 chars accepted.
+	•	TC-SCH-04: Request shift swap → peer + note submitted → card shows Swap pending approval.
+	•	TC-SCH-05: Reject inline approval with blank reason blocked; with reason accepted.
+	•	TC-SCH-06: Go offline, reschedule event → Pending sync badge appears; reconnect → server updates event.
+
+⸻
+
+10 — Jira Tasks
+	•	SCH-001: Implement Schedule views (Day, Week, Month, Timeline) with event rendering.
+	•	SCH-002: Implement Create Event modal + validations.
+	•	SCH-003: Implement drag-drop reschedule + confirm modal.
+	•	SCH-004: Implement conflict panel (Resolve / Acknowledge with reason).
+	•	SCH-005: Implement shift swap request flow + approval state.
+	•	SCH-006: Implement inline approval decisions with mandatory reason.
+	•	SCH-007: Implement offline + pending sync badges.
+	•	SCH-008: Implement accessibility (keyboard, screen reader).
+	•	SCH-009: Implement telemetry events for Schedule interactions.
+	•	SCH-010: QA regression suite (TC-SCH-01..06).
+
+⸻
+
+11 — Copy Library
+	•	Offline banner: Offline — changes will sync when online.
+	•	Conflict tooltip: Conflict detected: <reason>
+	•	Conflict modal:
+	•	Title: Conflict Detected
+	•	Body: <reason>
+	•	Buttons: Cancel | Resolve | Acknowledge
+	•	Conflict reason error: Please provide at least 8 characters.
+	•	Swap tooltip: Awaiting manager decision.
+	•	Approval reject error: Rejection reason required (min 8 characters).
+	•	Error toast: Action failed: <message> (Code: <ERR_CODE>).
+
+⸻
+
+✅ This spec makes the Schedule Center bulletproof — events, conflicts, swaps, approvals, offline handling, telemetry, and QA coverage all nailed down.
+
+Schedule — Conflict Resolution Storyboard (Maintenance/Change Overlap)
+
+Scenario: Two maintenance windows (or a maintenance + change) overlap and the system (server) flags a conflict. The user (Manager or Engineer) must inspect the conflict, see AI suggestions, and either accept the AI resolution, acknowledge with a reason, or propose a reschedule. The UI must capture an auditable decision and never auto-resolve without explicit user intent.
+
+⸻
+
+At-a-glance rules (non-negotiable)
+	•	Server determines conflicts. The frontend only displays the server-supplied conflict payload (reasons, conflicting events, optional AI suggestion).
+	•	Every resolution action must create an audit event including clientActionId, userId, timestampUTC, chosen resolution, and reason when required.
+	•	No silent overwrites. If user chooses to keep local changes conflicting with server, a reason (≥8 chars) is mandatory.
+	•	AI suggestions are guidance only. Choosing AI suggestion requires user confirmation and logs that choice.
+	•	Undo allowed for a short window (30 seconds) via inline toast; longer reversals require explicit follow-up flows.
+
+⸻
+
+Actors
+	•	Scheduler (Manager) — primary actor resolving conflicts.
+	•	Engineer — may propose reschedule but Manager must approve.
+	•	System (Server) — authoritative; provides conflict payload + AI suggestion (optional).
+
+⸻
+
+Entry point(s)
+	•	Calendar view: conflicting event shows Conflict badge.
+	•	Notification: Conflict detected for Event <ID> with Open CTA.
+	•	Event detail / edit modal: banner “Conflict detected — resolve” with link Open Conflict Resolver.
+
+Clicking any of these opens the Schedule Conflict Resolver.
+
+⸻
+
+Frame 1 — Conflict Resolver Open (Modal / Full-screen)
+
+Presentation (desktop modal or full-screen on mobile):
+	•	Title (exact): Conflict Detected
+	•	Top summary bar: Event: <EventTitle> — Conflict with <N> other events
+	•	Banner (exact): One or more scheduling conflicts were detected by the system. Resolve before proceeding.
+
+Focus: on modal title. Keyboard: ESC closes modal (only if no unsaved decision in progress).
+
+Telemetry emitted: schedule.conflict.view {eventId, conflictCount}
+
+⸻
+
+Frame 2 — Left pane: Conflicting Items List
+	•	Vertical list of all conflicting events (1..N), each row shows:
+	•	EventId (copyable)
+	•	Title
+	•	Type (Maintenance/Change/Shift)
+	•	Owner(s)
+	•	Start / End (local display + hover UTC)
+	•	Impacted services (comma list; show only up to 3 then +N)
+	•	Inline button: View details (opens that event in right pane)
+	•	Each row has status badge: Proposed (the one being created/edited), Existing (others).
+
+Keyboard: Up/Down to navigate rows; Enter selects.
+
+⸻
+
+Frame 3 — Right pane: Selected Event Detail + Server Conflict Reason
+	•	Top: Selected event header (title, owner, start/end).
+	•	Middle: Conflict Details (server-provided and must be displayed verbatim):
+	•	Conflict reason(s) (e.g., Maintenance on Service X overlaps with Planned Change Y; both impact database nodes. Risk: service outage.)
+	•	Severity (Low/Medium/High)
+	•	DetectedAt UTC
+	•	DetectedBy = system or model id
+	•	Bottom: AI Suggestion (if present) (must show):
+	•	Suggested resolution type: Reschedule ProposedTime: <start>-<end> or Shift Ownership to <team> or Split Window.
+	•	Confidence % (rounded integer)
+	•	Top 3 drivers (short bullets)
+	•	modelVersion
+
+Why? control: opens side-panel with more explanation (≤300 chars) and links to responsible playbooks.
+
+Telemetry emitted when Why? opened: schedule.conflict.explain_open {eventId, modelVersion, confidence}
+
+⸻
+
+Frame 4 — Resolution Options (controls, exact copy)
+
+Under the right pane, show three primary resolution actions (mutually available depending on server flags):
+	1.	Accept AI suggestion (if present)
+	•	Button (primary): Accept suggestion
+	•	Tooltip if AI suggestion unavailable: No AI suggestion available for this conflict.
+	2.	Acknowledge conflict with reason
+	•	Button (secondary): Acknowledge with reason
+	•	On click opens inline reason input (multiline). Validation: required, minimum 8 characters.
+	•	Exact prompt: Provide reason for acknowledging this conflict (required, min 8 characters):
+	3.	Propose new schedule (reschedule)
+	•	Button (secondary): Propose reschedule
+	•	Opens small inline reschedule form with Start and End date/time pickers (UTC shown on hover) and optional note (≤500 chars). Validation: Start < End; new time must not be identical to old.
+	•	After propose, tool will show Proposed new time: <start>–<end> and Submit proposal button (primary). Submitting creates a reschedule request (server flow).
+
+Additional controls:
+	•	Open activity log link (bottom-left) — shows past decisions for context.
+	•	Cancel (tertiary) — close resolver, no change.
+
+⸻
+
+Frame 5 — Accept AI suggestion flow (detailed)
+
+User action: Click Accept suggestion.
+
+Confirm modal (exact copy):
+	•	Title: Confirm AI Suggestion
+	•	Body:
+AI suggests: <one-line suggestion summary>. Confidence: <NN>%. This is guidance — the server will apply this change if accepted. Proceed?
+	•	Checkbox (required): I understand AI suggestions are guidance and not authoritative. (must be checked to enable Confirm)
+	•	Buttons: Cancel | Confirm & Apply
+
+Behavior
+	•	Require checkbox checked before enabling Confirm & Apply.
+	•	On Confirm:
+	•	Submit resolution request to backend with payload: {clientActionId, chosenMethod: 'ai', suggestionId, eventId, userId, timestampUTC}
+	•	UI shows temporary banner: Applying AI suggestion… and disables other controls.
+	•	Server response success → show success banner: Suggestion applied — Event updated. Update calendar UI accordingly (reflect server-supplied event data). Add Activity Log entry with serverAuditEntryId.
+	•	If server returns failure (e.g., policy prevents auto-change), show inline error with server message and buttons Retry / Acknowledge instead.
+
+Telemetry
+	•	schedule.conflict.resolve {eventId, method: ai, suggestionId, confidence, result: started|success|failed}
+
+Undo
+	•	Provide inline toast with Undo for 30s: Suggestion applied. Undo? Clicking Undo submits undo request; if server accepts, UI reverts and audit logs the undo.
+
+⸻
+
+Frame 6 — Acknowledge with reason flow (detailed)
+
+User action: Click Acknowledge with reason.
+
+Inline reason box appears (focus moves there). Prompt copy: Provide reason for acknowledging this conflict (required, min 8 characters):
+
+Validation
+	•	Block Submit until ≥8 chars.
+	•	Provide live character count.
+
+On Submit
+	•	Submit payload: {clientActionId, chosenMethod: 'acknowledge', reasonText, eventId, userId, timestampUTC}
+	•	Immediate UI change: event row badge becomes Acknowledged by <user> with subtitle Reason captured. Controls to Edit reason available for 5 minutes (after which edit becomes a new audit entry).
+	•	Activity Log entry created locally with clientActionId and offlineFlag if queued.
+	•	Server responds: on success, status persisted and serverAuditEntryId returned — UI updates to authoritative values. On failure, show inline error with Retry option.
+
+Telemetry
+	•	schedule.conflict.resolve {eventId, method: ack, reasonProvided:Y, result: started|success|failed}
+
+Undo
+	•	Allow Undo for 30s: clicking Undo removes the acknowledgment (local audit) and submits undo to backend.
+
+⸻
+
+Frame 7 — Propose reschedule flow (detailed)
+
+User action: Click Propose reschedule
+
+Inline reschedule form:
+	•	Fields: New Start (datetime), New End (datetime), Optional note (≤500 chars)
+	•	Validation: New Start < New End; require New Start at least 5 minutes in future (configurable).
+	•	Exact prompt: Propose new times to resolve conflict (manager approval may be required).
+
+Submit
+	•	On Submit proposal, send {clientActionId, chosenMethod:'propose_reschedule', proposedStart, proposedEnd, note, eventId, userId, timestampUTC} to backend.
+	•	UI behavior:
+	•	Display Reschedule proposed — awaiting approval on the event, with small View proposal link.
+	•	If server requires approval, UI shows Pending approval by <role>. If auto-accepted by server, calendar updates to new time.
+	•	If user is the owner and server allows tentative local update, calendar may show the proposed time as tentative (dashed outline), but only if server indicates tentative=true. Otherwise, do not change calendar until server confirms.
+
+Telemetry
+	•	schedule.event.reschedule {eventId, proposedStart, proposedEnd, clientActionId, result: queued|accepted|pending_approval}
+
+⸻
+
+Frame 8 — Conflict resolution concurrency & refresh
+	•	If another user resolves the conflict while the resolver is open:
+	•	Show banner: Conflict updated by <user> at <timeUTC>. Refresh to see latest. Buttons: Refresh | Continue anyway
+	•	Refresh reloads server conflict payload; if decision already applied, close resolver and show success message.
+	•	Continue anyway allows user to proceed (may cause server rejection later).
+
+Telemetry
+	•	schedule.conflict.updated_remote {eventId, updatedBy, timestampUTC}
+
+⸻
+
+Frame 9 — Offline behavior
+	•	If offline:
+	•	Resolver still opens and shows last server-supplied conflict payload with a top banner: Offline snapshot — you can prepare a resolution; submission will be queued. Final application requires connectivity.
+	•	Allow Acknowledge with reason and Propose reschedule to be queued (only if backend policy allows). Accept AI suggestion requires online (disabled) unless server allows queued suggestion (rare).
+	•	Queued actions show Queued — pending sync label; Sync Center shows entries.
+	•	On reconnect, client replays; if conflict state changed meanwhile, server returns conflict or success; UI must present server result and may require manual reconciliation.
+
+Copy (offline banner): Offline snapshot — resolution will be queued and applied when online.
+
+⸻
+
+Frame 10 — Success / Post-resolution UI
+	•	On successful resolution:
+	•	Close resolver automatically and show top-level banner: Conflict resolved: <short description> (by <user> at <timeUTC>). View change. CTA: View event — brings user to calendar with updated event highlighted.
+	•	Activity Log receives a definitive entry showing the action, serverAuditEntryId, and any server comments.
+	•	Telemetry final event emitted with result: success.
+
+⸻
+
+Frame 11 — Error handling (server rejects)
+	•	If server rejects an attempted resolution (policy or concurrent change), UI shows inline detailed error:
+	•	Exact copy: Resolution failed: <serverMessage> (Code: <ERR_CODE>).
+	•	Buttons: Retry (re-submit) | Open activity log | Dismiss
+	•	If error is transient (rate-limit), UI suggests Try again in <N> seconds.
+	•	All server messages should be surfaced verbatim, but UI must append helpful guidance if possible (e.g., Contact ops-team@org for help).
+
+Telemetry: schedule.conflict.resolve.error {eventId, errorCode}
+
+⸻
+
+Accessibility & Keyboard
+	•	Modal (role=dialog) with aria-labelledby the title and aria-describedby the banner reason.
+	•	All interactive controls keyboard accessible:
+	•	Tab order: Conflicting list → Selected detail → Why? → Resolution buttons → Forms.
+	•	Shortcuts: A = Acknowledge (focuses reason), S = Suggest/Accept AI (if available), P = Propose reschedule.
+	•	Screen reader announcements:
+	•	On open: Conflict detected for <EventTitle>. <N> conflicting events. First conflict: <one-line reason>.
+	•	On success: Conflict resolved by your action.
+	•	On remote update: Conflict updated by <user>.
+
+⸻
+
+Telemetry (summary)
+
+Emit these events (include tenantId, userId, deviceId, clientActionId where applicable):
+	•	schedule.conflict.view {eventId, conflictCount}
+	•	schedule.conflict.explain_open {eventId, modelVersion, confidence}
+	•	schedule.conflict.resolve.started {eventId, method: ai|ack|propose, suggestionId?}
+	•	schedule.conflict.resolve.result {eventId, method, result: success|failed, serverErrorCode?}
+	•	schedule.event.reschedule {eventId, proposedStart, proposedEnd, clientActionId}
+	•	schedule.conflict.updated_remote {eventId, updatedBy}
+	•	schedule.conflict.undo {eventId, actionReverted}
+
+Batch and send opportunistically; respect telemetry opt-out.
+
+⸻
+
+Acceptance Criteria (QA-ready)
+	•	AC-SCH-CR-01: Resolver opens from calendar or notification and shows all conflicting events and server conflict reasons verbatim.
+	•	AC-SCH-CR-02: AI suggestion (if present) renders with Confidence %, top-3 drivers, and modelVersion.
+	•	AC-SCH-CR-03: Accepting AI suggestion requires user checkbox acknowledgment and creates an audit event; calendar updates on server success.
+	•	AC-SCH-CR-04: Acknowledging conflict requires a reason ≥8 characters and produces an audit entry.
+	•	AC-SCH-CR-05: Proposing a reschedule validates Start < End and submits proposal; UI shows Proposed — pending approval when server requires approval.
+	•	AC-SCH-CR-06: If remote update happens while user is resolving, resolver shows update banner and allows Refresh or Continue; Refresh pulls latest payload.
+	•	AC-SCH-CR-07: Offline: resolver indicates snapshot and queues allowable actions; queued actions visible in Sync Center.
+	•	AC-SCH-CR-08: Undo is available for 30s after an applied resolution and works (reverts state and logs undo).
+	•	AC-SCH-CR-09: All events generate the telemetry listed.
+
+⸻
+
+QA Test Cases (step-by-step)
+
+TC-CR-01 — View conflict from calendar
+	1.	From calendar click event with red Conflict badge.
+	2.	Expect: Conflict Resolver opens; left pane lists conflicting events; right pane shows server conflict reason.
+
+TC-CR-02 — Accept AI suggestion (happy path)
+	1.	Resolver shows AI suggestion. Click Accept suggestion.
+	2.	Check required checkbox and click Confirm & Apply.
+	3.	Expect: Applying AI suggestion… banner, then success banner; calendar updated; Activity Log contains serverAuditEntryId. Telemetry emitted.
+
+TC-CR-03 — Acknowledge with reason (validation)
+	1.	Click Acknowledge with reason. Try to submit empty/ <8 char reason → blocked.
+	2.	Enter ≥8 chars → submit.
+	3.	Expect: Acknowledged by <user> badge and Activity Log entry. Telemetry emitted.
+
+TC-CR-04 — Propose reschedule & approval
+	1.	Click Propose reschedule. Enter valid new start/end. Submit.
+	2.	If server requires approval → event shows Proposed — awaiting approval and View proposal link. Telemetry emitted.
+
+TC-CR-05 — Remote update during resolution
+	1.	Open resolver. Simulate other user applying resolution.
+	2.	Expect: banner Conflict updated by <user> at <UTC> with Refresh option. Clicking Refresh reloads payload and closes or updates resolver accordingly.
+
+TC-CR-06 — Offline prepare + queue
+	1.	Go offline and open resolver (cached payload). Acknowledge with reason and submit.
+	2.	Expected: action queued with Pending sync; Sync Center shows queued item. On reconnect, replay; if server accepts, event shows acknowledged.
+
+TC-CR-07 — Undo applied resolution
+	1.	Accept AI suggestion (or submit ack) and let success happen. Click Undo in toast within 30s.
+	2.	Expect: undo request sent, calendar reverts, Activity Log shows undo action, telemetry emitted.
+
+TC-CR-08 — Server rejection
+	1.	Attempt to accept AI suggestion; server rejects with message.
+	2.	Expect: inline error Resolution failed: <message> (Code: <ERR_CODE>) and Retry option.
+
+⸻
+
+Jira Tasks (ready-to-paste)
+	•	SCH-CR-001: UI component — Conflict Resolver modal (layout, left list, right detail pane). (AC-SCH-CR-01)
+	•	SCH-CR-002: Display server conflict payload & AI suggestion UI (confidence, drivers, modelVersion). (AC-SCH-CR-02)
+	•	SCH-CR-003: Accept AI suggestion flow — confirm modal with required checkbox, apply request, success & undo. (AC-SCH-CR-03)
+	•	SCH-CR-004: Acknowledge flow — reason input, validation, submit & audit log. (AC-SCH-CR-04)
+	•	SCH-CR-005: Propose reschedule — inline form, validation, submit proposal & show pending state. (AC-SCH-CR-05)
+	•	SCH-CR-006: Remote-update banner & refresh flow. (AC-SCH-CR-06)
+	•	SCH-CR-007: Offline queuing behavior & Sync Center integration for conflict resolutions. (AC-SCH-CR-07)
+	•	SCH-CR-008: Undo implementation (30s toast) & audit logging. (AC-SCH-CR-08)
+	•	SCH-CR-009: Telemetry instrumentation for conflict events. (AC-SCH-CR-09)
+	•	SCH-CR-010: Accessibility & keyboard navigation for resolver modal.
+	•	SCH-CR-011: QA e2e tests for TC-CR-01..08.
+
+Each task DoD: unit tests, integration tests (backend stubs), e2e test, accessibility check (axe), telemetry verified, PO demo.
+
+⸻
+
+Exact copy snippets (use verbatim)
+	•	Modal title: Conflict Detected
+	•	Top banner: One or more scheduling conflicts were detected by the system. Resolve before proceeding.
+	•	AI confirmation modal title: Confirm AI Suggestion
+	•	AI confirmation body: AI suggests: <summary>. Confidence: <NN>%. This is guidance — the server will apply this change if accepted. Proceed?
+	•	AI checkbox label: I understand AI suggestions are guidance and not authoritative.
+	•	Acknowledge prompt: Provide reason for acknowledging this conflict (required, min 8 characters):
+	•	Propose reschedule prompt: Propose new times to resolve conflict (manager approval may be required).
+	•	Undo toast: Suggestion applied. Undo?
+	•	Error inline: Resolution failed: <message> (Code: <ERR_CODE>).
+	•	Offline banner: Offline snapshot — resolution will be queued and applied when online.

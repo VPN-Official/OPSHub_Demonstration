@@ -1,0 +1,454 @@
+OpsHub — Frontend UI/UX Contract (Phase 1 MVP)
+
+Frontend-only — strict separation of concerns: UI must not contain business rules that change server state or make final decisions. It must display, validate inputs, collect reasons, queue actions, and show server responses. All policy/decisioning lives in backend.
+
+⸻
+
+Table of contents (quick)
+	1.	Overarching rules & separation of concerns
+	2.	Cross-cutting requirements (audit, explainability, RBAC, telemetry, i18n, accessibility)
+	3.	Module contracts
+
+	•	SmartQueue (list / card / filters / bulk actions)
+	•	WorkItem Detail (header, tabs, AI sidebar, attachments, actions)
+	•	Pulse (widgets, drilldowns)
+	•	Intelligence (automations, adoption, nudges)
+	•	Schedule (calendar, conflict flows)
+	•	Notifications (inbox, suppression, inline actions)
+
+	4.	Mobile / PWA UI contract (parity, offline affordances)
+	5.	Offline & sync UX contract (what to show, allowed offline actions, conflict arbitration UI)
+	6.	Non-functional frontend SLAs (performance, accessibility, security UX, error UX)
+	7.	Telemetry & events (required front telemetry schema)
+	8.	QA matrix & test cases (copy-pasteable)
+	9.	Jira story templates (paste into tickets)
+	10.	Glossary of UI terms & exact copy for critical modals/messages
+
+⸻
+
+1 — Overarching rules & separation of concerns (must be enforced)
+	•	UI = presentation & validation only. Any logic that determines correctness, authorization, business rules, prioritization, or final outcomes is authoritative only when returned from the backend. The frontend may render server-provided decisions (e.g., SmartScore, riskTier), but must never compute them as truth.
+	•	All mutating requests must be passed through backend for final verdict. Frontend may optimistic-update (only for pre-approved low-risk flows) but must reconcile with server response and surface mismatches for user action.
+	•	UI must always show provenance: for any AI suggestion, automation, or decision visible to user show source: <system>, modelVersion: <vX>, confidence: NN%.
+	•	Validation in UI is limited to format & required fields (e.g., non-empty reason, text length). Business validation (e.g., “this automation cannot run because policy X”) must come from backend and be displayed as server error.
+
+⸻
+
+2 — Cross-cutting requirements
+
+2.1 Audit & Activity UI
+	•	Every mutating action must produce an Activity Log entry visible on WorkItem Activity tab with fields:
+	•	actorDisplayName, actorId, actionType, clientActionId (GUID), offlineFlag (Y/N), timestampUTC, serverAuditEntryId (when available), status (queued|in-flight|success|failed), extra (free-text reason if provided).
+	•	Activity entries are append-only in UI. Edits appear as new entries with “edited” notation, previous entries remain visible.
+
+2.2 Explainability (AI)
+	•	All AI outputs shown to user must include:
+	•	Visible: confidence % (rounded to nearest integer), top 3 drivers (short labels), modelVersion (text).
+	•	Control: Why? button (opens side-panel). Panel shows up to 300 chars of human-readable explanation and a “More details” link (which navigates to Intelligence).
+	•	If user rejects AI rec, require a short reason (min 8 chars) captured client-side and sent to backend as feedback metadata.
+
+2.3 RBAC / Visibility
+	•	UI must hide or disable actions not permitted by backend role claims. Disabled controls show tooltip: “Insufficient permission — contact team@org”.
+	•	Do not show privileged UIs (e.g., advanced rollback run) unless backend flags permission true for current user. The frontend must never assume permission.
+
+2.4 Telemetry (frontend)
+	•	Emit structured telemetry events for: page_view, ui.action (with clientActionId if present), sync.enqueue, sync.replay, conflict.occurred, ai.suggestion.viewed/decision. See §7 for schema.
+
+2.5 Localization & Accessibility
+	•	All strings externalized with keys; support locale switching. UI must render RTL layout correctly.
+	•	WCAG 2.1 AA for all P1 flows. Keyboard-only navigation must be supported; aria labels present for all interactive controls; color should not be the only indicator of state.
+
+⸻
+
+3 — Module contracts
+
+Each module includes: required screens, exact fields, permissible inline actions, UI states to support, validations, acceptance criteria, and QA tests.
+
+⸻
+
+3.A SmartQueue — Unified Work Hub
+
+Purpose (UI): show prioritized list of WorkItems for persona; enable quick triage actions and drill-down.
+
+Screens & views
+	•	SmartQueue: My Work (default for Engineer)
+	•	SmartQueue: Team Work
+	•	SmartQueue: Incidents + Automations
+	•	SmartQueue: Approvals
+	•	SmartQueue: Compact / Table / Card toggle (desktop default table; mobile default card)
+
+Required fields per row/card (must always be visible)
+	1.	WorkItemId — left-most, copy icon, clickable to open Detail.
+	2.	Title — single line, ellipsis; hover or tap shows full title tooltip.
+	3.	Type — small tag (Incident/Request/Change/Knowledge/Automation/Nudge).
+	4.	Priority — P0–P4 colored tag (purple/red/orange/gray). Color is decorative only — also include text.
+	5.	SLARemaining — HH:MM live countdown; when ≤ 00:15 show amber; when breached show red “BREACHED”. Hover shows absolute UTC deadline.
+	6.	SmartScore (0–10) + Confidence% (small pill). Clicking Why? expands minipanel with top-3 drivers + modelVersion.
+	7.	AssignedTo — display name + team tag if team assignment.
+	8.	LastUpdatedBy + timeAgo (e.g., “2h ago”), hover shows full UTC timestamp.
+	9.	QuickActions — contextual action menu: Assign / Comment / Approve / Reject / Run Automation / View.
+
+Allowed inline actions (client must request backend)
+	•	Assign to me — client asks backend; UI may optimistic update only if backend permits low-risk optimistic policy. Show queued badge when offline.
+	•	Approve / Reject — Reject must prompt for mandatory reason (min 8 characters). Always send to backend.
+	•	Run low-risk automation — Confirm modal with clear risk, rollback availability. If backend indicates run is allowed, send request.
+	•	Create Incident from Alert — opens a thin prefilled modal/route; submit to backend.
+
+Filters & persistence
+	•	Filter bar: Assignment, Type, Priority, SLA window (Overdue, Due Today), Service, AI-only toggle (only show items with AI rec).
+	•	Filters persist per-user across navigation and app restarts (local preference). UI must provide “Reset filters” control.
+
+List behaviors & states
+	•	Loading: skeleton rows (non-blocking).
+	•	Empty: informative empty-state with CTA “Create Incident” or “Clear filters”.
+	•	Partial-error-per-row: show row-level error pill (e.g., fetch failed).
+	•	Bulk selection: checkbox with limit (max 25 items). When >25 selected UI prevents bulk action and shows message: “Bulk actions limited to 25 items.”
+
+Acceptance criteria (SmartQueue)
+	•	AC-SQ-01: Each row must include all required fields (above) and Why? expands with top-3 drivers and modelVersion.
+	•	AC-SQ-02: Reject requires reason; submit blocked until min chars satisfied.
+	•	AC-SQ-03: Bulk assign disabled >25; per-item results shown after bulk op.
+	•	AC-SQ-04: Drill-down to WorkItem preserves filters and selection context.
+
+QA test cases (SmartQueue)
+	•	TC-SQ-01: Verify Why? shows drivers and modelVersion; clicking a driver shows its tooltip.
+	•	TC-SQ-02: Offline: Assign to me → item shows Pending sync badge; after reconnect verify server confirmation reflected in Activity Log entry.
+	•	TC-SQ-03: Select 30 items → UI blocks and shows message Max 25.
+
+⸻
+
+3.B WorkItem Detail — Investigation & Resolution
+
+Purpose (UI): single workspace to resolve WorkItems: header + tabs + AI sidebar + sticky action panel.
+
+Layout & required elements
+	•	Header (always visible, sticky)
+	•	WorkItemId (copyable), externalRef (if present), status (text), workflowProgress (visual breadcrumb), priority, SmartScore pill, SLARemaining (HH:MM), AssignedTo (avatar + team), businessImpactLabel (users affected or $ impact if available).
+	•	Main area: Left — Tabs; Right — AI Sidebar.
+	•	Tabs (visible & ordered): Details, Activity Log, AI Recommendations, System Logs (snapshot), Attachments, Approvals, Related Items.
+	•	Sticky Action Panel (bottom or right): Assign, Run Automation, Approve/Reject, Change Status, Add Comment, Attach File, Join War Room.
+
+Tab field requirements
+	•	Details
+	•	FullDescription (rendered, preserve line breaks), Service(s) affected (list), Reporter + contact, CreatedAt (UTC).
+	•	Activity Log
+	•	Chronological list with audit fields: actor, actionType, clientActionId, offlineFlag, timestampUTC, serverAuditEntryId, payload (short).
+	•	Each log entry expands to show full metadata (JSON view optional).
+	•	AI Recommendations
+	•	Each rec: recId, text, confidence%, riskTier (low/med/high), rollbackAvailable (Y/N), modelVersion, Why? control.
+	•	Run button disabled unless riskTier=low or user has explicit permission; backend authoritative.
+	•	System Logs
+	•	Snapshot list (timestamped snippets). Full log link opens external viewer (backend governed).
+	•	Attachments
+	•	List with name, uploadedBy, uploadedAt (UTC), size, mimeType, status (uploaded|pending|failed). Pending shows progress and cancel.
+	•	Approvals
+	•	List of approvers, status (pending/approved/rejected), SLA timers. Reject requires reason.
+
+Required confirmation modals (exact copy)
+	•	Run Automation (if risk ≠ low or rollback N)
+Title: Confirm Automation Run
+Body: Automation: <name>. Risk: <Low/Medium/High>. Rollback available: <Yes/No>. This action will be executed and logged. Proceed?
+Buttons: Cancel | Confirm & Run
+If risk ≠ low, show a secondary statement: This requires approval by <role> — you will submit an execution request.
+	•	Reject (approvals / knowledge)
+Title: Reject <approvalType>
+Body: Provide reason (required, min 8 characters):
+Buttons: Cancel | Submit Rejection
+
+Attachment UX rules
+	•	Attachments can be captured offline. When offline:
+	•	Show Pending upload with thumbnail, local GUID, timestamp.
+	•	Metadata must capture deviceConsent: whether GPS was allowed (show lock icon if not).
+	•	On reconnect, show upload progress. Failed uploads show Retry & Remove.
+
+Conflict arbitration UI (WorkItem)
+	•	When backend reports field conflicts on sync, present field-level side-by-side view:
+	•	For each field: FieldName / Your value / Server value / AI Suggestion (if available, confidence%).
+	•	Controls: Keep local | Keep server | Merge (when mergeable).
+	•	If user chooses local over server, require reason (min 8 chars). Generate audit entry with choice.
+	•	Conflicts must be dismissible only after resolution; they are surfaced in Activity Log.
+
+Acceptance criteria (WorkItem)
+	•	AC-WI-01: Header contains all required elements and SLA is always visible while scrolling.
+	•	AC-WI-02: AI recs show confidence, risk, rollback and Why?.
+	•	AC-WI-03: Attachment offline flow: pending → upload → server metadata displayed when done.
+	•	AC-WI-04: Conflict arbitration prevents silent overwrite and requires explicit user decision.
+
+QA test cases (WorkItem)
+	•	TC-WI-01: Run low-risk automation — confirm optimistic UI (if allowed) shows pending audit entry and server auditId after result.
+	•	TC-WI-02: Offline attach photo → reconnect → verify upload, server metadata inserted and Activity Log updated.
+	•	TC-WI-03: Simulate server-side change during offline edit → on sync verify conflict UI with field-level diffs appears and that selecting keep local with reason creates audit entry.
+
+⸻
+
+3.C Pulse — Operational Cockpit
+
+Purpose (UI): read-only, persona-specific dashboards, drill-downs to SmartQueue/Intelligence.
+
+Widgets & data the UI must show
+	•	Widget header: title, lastUpdatedAt (UTC), dataConfidence (if AI-derived).
+	•	Metric: value + unit.
+	•	Trend: tiny sparkline + delta % vs baseline.
+	•	Drill-down CTA: View items → links to SmartQueue with preserved filters and timeframe.
+
+Widget rules
+	•	Widgets that are AI-forecasted must show AI Forecast badge and Why? link.
+	•	Mandatory widgets (SLA compliance, MTTR, Downtime cost avoided) cannot be removed by user; others may be collapsed/hidden but still present in configuration (PO permission).
+	•	Widgets should have a compact summary accessible from keyboard.
+
+Acceptance criteria
+	•	AC-P-01: Clicking a widget opens SmartQueue or Intelligence with filters preserved.
+	•	AC-P-02: Offline: show cached snapshot + Last updated timestamp and disable forecast-only widgets (show tooltip: Live forecast unavailable offline).
+
+QA tests
+	•	TC-P-01: Click SLA widget → verify SmartQueue filters apply exactly (timeframe, service filter).
+
+⸻
+
+3.D Intelligence — Automations, Adoption & Nudges
+
+Purpose (UI): analytics, reviews, nudge management; create / accept / reject model-driven suggestions.
+
+Core screens & requirements
+	•	Automations tab: list of automations with name, runCount, success%, rollback%, avgRuntime, riskTier.
+	•	Click automation → show run logs (who, when, result), Run button (backend validated), and Flag for review.
+	•	AI Adoption tab: charts + top rejection reasons; each rejection reason line shows count and sample WorkItem links.
+	•	Nudges: card list showing nudgeId, title, confidence%, suggestedAction (pre-filled WorkItem fields), CTA: Accept / Snooze / Reject.
+	•	Accept creates prefilled WorkItem in SmartQueue. Reject requires reason.
+
+Acceptance criteria
+	•	AC-INT-01: Accepting a nudge creates a pre-filled WorkItem with nudgeId attribution visible in WorkItem header or Activity Log.
+	•	AC-INT-02: Rejecting requires reason; reason is sent as feedback metadata to backend.
+
+QA tests
+	•	TC-INT-01: Accept nudge → new WorkItem in SmartQueue; verify createdFromNudge attribution & SLA timer started.
+	•	TC-INT-02: Reject nudge with reason → backend receives feedback (stub) and UI shows confirmation.
+
+⸻
+
+3.E Schedule — Calendar / Conflict View
+
+Purpose (UI): unified calendar for shifts, changes, maintenance windows; surface conflicts & enable governance flows.
+
+Views & must-show fields
+	•	Views: Day / Week / Month / Timeline.
+	•	Event card fields: EventId, Title, Type (Shift/Change/Maintenance), Owner, Start UTC, End UTC, ImpactedServices, ConflictFlag (Y/N).
+	•	Conflict overlay: highlight events with ConflictFlag; clicking opens Conflict detail modal.
+
+Conflict acceptance flow (UI)
+	•	When user accepts conflict: show modal Accept Conflict with:
+	•	Conflict summary, Impacted items, Suggested mitigation (AI text), Reason (mandatory, min 8 chars), Acknowledge checkbox and Confirm.
+	•	On confirm, event marked acknowledged and audit entry created.
+
+Acceptance criteria
+	•	AC-SCH-01: Dragging/rescheduling event must present confirmation modal summarizing impact and require reason only when ConflictFlag would be set by the change.
+	•	AC-SCH-02: Offline calendar is read-only (create/reschedule disabled) — UI should show disabled controls with tooltip “Offline — changes queued on reconnect” only if backend explicitly permits queueing for schedule (default: read-only).
+
+QA tests
+	•	TC-SCH-01: Create overlapping maintenance windows → conflict overlay appears; Accept conflict with reason → event marked acknowledged and audit entry present.
+
+⸻
+
+3.F Notifications — Inbox, Suppression, Inline Actions
+
+Purpose (UI): central feed for alerts, grouped notifications, suppressed items, and nudges; enable inline actions.
+
+Feed structure & fields
+	•	Notification card fields: NotiId, Category (Critical/Info/Nudge), Summary, RelatedWorkItemId (deep link), SuppressedBy (if suppressed), SuppressionReason, DeliveredChannels.
+	•	Grouping UI: grouped items show summary like 12 similar P3 alerts for Service A with expand control.
+	•	Suppression Log: list of suppressed notification bundles with Why? explanation (AI reasoning) and Recover action.
+
+Inline actions
+	•	Approve / Reject (with mandatory reason on reject)
+	•	Assign / Reassign (assign opens selection modal)
+	•	Trigger low-risk automation (confirmation modal)
+	•	Dismiss (undo available for 30s)
+
+Acceptance criteria
+	•	AC-NOT-01: Suppressed items always accessible in Suppression Log; Recover re-enables delivery and logs audit entry.
+	•	AC-NOT-02: Critical escalations cannot be suppressed; UI shows disabled suppress action with tooltip.
+
+QA tests
+	•	TC-NOT-01: Suppress a repetitive alert → check Suppression Log shows original items + AI reasoning + Recover works.
+
+⸻
+
+4 — Mobile / PWA UI contract
+
+Principles
+	•	Behavioral parity for core flows (SmartQueue My Work, WorkItem basic tabs, Approvals low-risk, Notifications). Mobile should not invent features; it shows the same required fields but in mobile-friendly layout.
+	•	Mobile offline affordances: show offline badge on actions that queue; attachments capture via camera allowed (consent modal must be shown).
+
+Mobile specifics
+	•	Card view default for SmartQueue; show essential fields only (WorkItemId, Title, Priority, SLARemaining, SmartScore pill, AssignedTo). Tap expands card into detail.
+	•	Swipe actions: left swipe = quick assign; right swipe = quick comment (customizable).
+	•	Pull-to-refresh to manually sync and fetch updates.
+	•	Push notifications: opened deep link must navigate to corresponding WorkItem or SmartQueue filter.
+	•	Mobile must include a Sync Center view where user can see pending queued actions and cancel any queued item before replay.
+
+Acceptance
+	•	AC-MOB-01: All offline queued actions visible in Sync Center with clear statuses and Cancel action.
+	•	AC-MOB-02: Camera attachment consent required once per session; consent records visible in attachment metadata.
+
+⸻
+
+5 — Offline & Sync UX contract (complete)
+
+Top-level obligations (frontend)
+	1.	Display last successful snapshot for cached content (SmartQueue, recently opened WorkItems, Pulse widgets).
+	2.	Allow a defined set of actions offline: assign to me, status update, comment, create incident (from alert), run low-risk approval — these are UI-only allowed lists; backend finalizes. (Product owner defines exact offline-allowed actions; UI shows action disabled if backend denies.)
+	3.	All offline actions must be queued with clientActionId (GUID), deviceId and timestampUTC. UI must show queued state for these actions.
+	4.	Provide a visible Sync Center showing queued actions, their priority, and per-item cancel.
+	5.	On reconnect, UI shall show replay progress (percent/number) and per-action results (success/failure/conflict).
+	6.	Conflicts: field-level arbitration UI mandatory (see WorkItem Section). UI must never auto-resolve conflicts without explicit user decision (unless server indicates safe auto-merge — UI shows this as server-decision).
+	7.	Retry / backoff: UI must indicate retry attempts for failed actions and expose a Retry Now control for user-initiated immediate retry.
+
+Sync UX messages (copy)
+	•	Queued badge: Pending sync (hover: Queued on <dateUTC> by <deviceId>).
+	•	Sync in progress banner: Syncing 3 actions — 2 succeeded, 1 conflict.
+	•	Conflict notification: Title: Action Conflict: <WorkItemId> Body: One or more of your queued changes conflict with server state. Resolve now. Buttons: Open Conflict | Resolve Later.
+	•	Sync success toast: All queued actions have been applied.
+	•	Sync partial failure toast: Some actions failed during sync. Open Sync Center to resolve.
+
+Acceptance
+	•	AC-OFF-01: Queued actions persist across app termination + restart (simulate restart).
+	•	AC-OFF-02: Sync Center shows correct final statuses after replay.
+	•	AC-OFF-03: Conflict arbitration requires explicit user choice for each conflicting field and logs chosen resolution.
+
+⸻
+
+6 — Non-functional front-end SLAs (exact targets)
+
+Performance
+	•	First meaningful paint (FMP) of app shell (login → landing) ≤ 3s on simulated 3G (Lighthouse) for typical tenant landing (cached assets warm).
+	•	Primary nav (SmartQueue → WorkItem) render interactive ≤ 1s on average network.
+	•	SmartQueue scrolling with 500 list items must maintain ≥ 55 fps perceived smoothness (no jank).
+
+Accessibility
+	•	WCAG 2.1 AA — 0 P1 violations on core flows (SmartQueue, WorkItem actions, Approvals, Sync Center).
+	•	Keyboard focus order logical; visibility of focus ring for all interactive elements.
+
+Reliability & offline
+	•	Offline durability: queued actions must survive app restart & device reboot (QA sim).
+	•	Sync success target: ≥95% queued actions successfully replay within 10 minutes of reconnect on stable network for standard payloads.
+
+Security-UX
+	•	MFA modal must appear for any privileged action where server indicates MFA required. Modal must not store tokens in local unencrypted storage.
+	•	Sensitive data masking: fields flagged sensitive by server must be masked; reveal action logs telemetry event.
+
+Localization
+	•	All visible strings externalized; date/times show UTC in tooltip; number formats localized.
+
+⸻
+
+7 — Telemetry & events (frontend must emit)
+
+Each telemetry event includes tenantId, userId, deviceId, clientActionId (if present), timestampUTC.
+
+Minimal required events (examples):
+	•	page_view {pageId, persona, routeParams}
+	•	ui.action {actionType, targetId (workItemId?), clientActionId, outcome: started|success|failure, latencyMs}
+	•	sync.enqueue {clientActionId, actionType, sizeBytes, priority}
+	•	sync.replay {clientActionId, result: success|conflict|failed, serverErrorCode?}
+	•	conflict.occurred {workItemId, fieldsCount, clientActionId}
+	•	ai.suggestion.viewed {suggestionId, modelVersion, confidence}
+	•	ai.suggestion.decision {suggestionId, decision: accepted|rejected, reasonPresent: Y/N}
+	•	sensitive_field_revealed {fieldName, userId, timestamp}
+
+Telemetry format: JSON, batched opportunistically, and sent to backend telemetry endpoint. Frontend must allow opt-out (respect user privacy settings).
+
+⸻
+
+8 — QA Matrix & tests (copy-pasteable)
+
+Below are high-value test cases — include in acceptance testing & E2E.
+
+SmartQueue
+	•	TC-SQ-01: Verify row fields (ID, Title, Type, Priority, SLA, SmartScore, AssignedTo, LastUpdated).
+	•	TC-SQ-02 (Offline): Assign to me while offline; restart app; reconnect → verify action replayed and Activity Log has serverAuditEntryId.
+	•	TC-SQ-03: Bulk select 26 items → UI prevents action and shows message.
+
+WorkItem
+	•	TC-WI-01: Header SLA always visible while scroll, sticky behavior correct.
+	•	TC-WI-02: Run low-risk automation: confirm modal shows risk & rollback; after confirm verify audit entry created.
+	•	TC-WI-03 (Conflict): Edit field A offline; server changes field A; on sync conflict modal appears; choose local with reason → verify audit entry records override reason.
+
+Attachments
+	•	TC-ATT-01: Attach photo offline; pending state visible; on reconnect, upload succeeds and server metadata visible.
+	•	TC-ATT-02: Large file upload failure → verify UI offers Retry and Remove.
+
+Intelligence / Nudges
+	•	TC-INT-01: Accept nudge → WorkItem created in SmartQueue; Check createdFromNudge attribute present and referenced in WorkItem Activity.
+
+Schedule
+	•	TC-SCH-01: Drag event into conflict → confirmation modal requires reason → accepted conflict logged.
+
+Notifications
+	•	TC-NOT-01: Suppress a repeating alert → Suppression Log entry created with AI reason; Recover re-enables notifications.
+
+Offline & Sync
+	•	TC-SYNC-01: Queue multiple actions of different priority; reconnect → verify order: automations → approvals → updates → attachments. (Backend provides timestamps; UI must show order.)
+	•	TC-SYNC-02: Partial success (two succeed, one fails) → Sync Center reflects per-item status and allows Retry Now for failed.
+
+Accessibility
+	•	TC-ACC-01: Keyboard tab sequence allows Approve/Reject actions and opens confirmation dialogs.
+	•	TC-ACC-02: Screen reader announces Why? control and explains AI confidence.
+
+Localization
+	•	TC-LOC-01: Switch to RTL locale → layout mirrors correctly, text not truncated.
+
+⸻
+
+9 — Jira story templates (ready to paste)
+
+Paste into ticket description; adapt acceptance checks.
+
+Title: SQ-XXX — SmartQueue: My Work list (read-only)
+
+Description: Implement SmartQueue My Work list UI showing required fields: WorkItemId, Title, Type, Priority, SLARemaining, SmartScore+Confidence, AssignedTo, LastUpdated. Provide Table and Card views. Filters: Assignment, Type, Priority, SLA window, Service. Persist filters per-user.
+
+Acceptance Criteria:
+	•	AC1: Each row shows required fields and Why? opens top-3 drivers + modelVersion.
+	•	AC2: Clicking row navigates to WorkItem Detail with filters preserved.
+	•	AC3: Loading skeletons show on initial fetch.
+	•	AC4: Filters persist across navigation and restarts.
+	•	AC5: Unit tests and UI tests included.
+
+DoD: UI tests pass; Accessibility (axe) checks pass; telemetry event page_view emitted.
+
+⸻
+
+Title: WI-XXX — WorkItem Detail: AI Recommendations & Run Automation
+
+Description: Implement AI Recommendations tab with rec cards showing text, confidence %, riskTier, rollbackAvailable, modelVersion, Why? control, and Run button when permitted.
+
+Acceptance Criteria:
+	•	AC1: Rec card shows required fields.
+	•	AC2: Run button disabled if riskTier != low or user lacks permission (backend authoritative).
+	•	AC3: Running shows confirmation modal with exact copy; upon confirm, browser makes request with clientActionId; Activity Log shows queued entry.
+	•	AC4: Tests for offline queueing and server reconcile.
+
+DoD: QA sign-off; Telemetry ai.suggestion.decision emitted; Accessibility verified.
+
+⸻
+
+10 — Glossary & exact copy snippets
+
+Terms
+	•	clientActionId — GUID assigned by client for every mutating action queued/sent.
+	•	SLARemaining — time until SLA expiry (HH:MM).
+	•	SmartScore — server-provided priority score (0–10).
+	•	Why? panel — standardized side panel for AI explainability.
+
+Copy: common messages & modals
+	•	Pending sync (badge) — tooltip: Queued on <dateUTC> from <deviceName>.
+	•	Confirm Automation Run modal (see WorkItem above).
+	•	Reject — Reason required validation: Please provide a rejection reason (at least 8 characters).
+	•	Conflict banner: A conflict was detected for this item. Resolve now to continue.
+
+⸻
+
+Final notes — hard constraints you must enforce now
+	1.	Frontend must never make a final decision that changes data without backend confirmation. UI-only optimistic updates are allowed only for explicitly defined low-risk flows and must be reversible on server rejection.
+	2.	Any enforcement of governance (SLA timers, approval rules) must be displayed as server-provided facts. UI can show warnings but not alter or assume governance.
+	3.	All required fields and behaviors in this contract are non-negotiable for MVP. If any field or behavior cannot be implemented by the architect, it becomes a formal scope change to be approved by PO.

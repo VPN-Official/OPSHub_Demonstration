@@ -1,0 +1,578 @@
+Notifications — Micro-Interaction Flows (Frontend Contract, MVP)
+
+⸻
+
+0 — Purpose
+
+Notifications are the awareness backbone of OpsHub ￼.
+They ensure:
+	•	No SLA breach, escalation, or approval is missed.
+	•	AI reduces noise via grouping/suppression but stays transparent (Suppression Log).
+	•	Users can act inline without leaving the notification.
+
+⸻
+
+1 — Entry Points
+	•	Global Nav: bell icon → opens Notification Center.
+	•	Push (mobile PWA): banner alert → tapping opens Notification Detail.
+	•	Email (exec-only): critical P0/P1 approvals.
+
+⸻
+
+2 — Categories (tabs in Notification Center)
+	•	All → full feed.
+	•	Critical → SLA breaches, P0/P1, exec approvals.
+	•	Grouped → bundled notifications (e.g., “12 P3 alerts grouped”).
+	•	Suppressed → auto-muted by AI (with “Why?”).
+	•	Nudges → AI improvement opportunities (accept/snooze/reject).
+
+⸻
+
+3 — Notification Card (Collapsed View)
+
+Mandatory fields:
+	•	Title (short, ≤80 chars).
+	•	WorkItem ID (copyable).
+	•	Type/Severity (P0–P4, Approval, Nudge).
+	•	SLA countdown (if applicable).
+	•	Timestamp UTC (hover: show full).
+	•	Status (New, Acknowledged, Actioned, Suppressed).
+	•	Inline CTAs (per type):
+	•	Approve/Reject (approval).
+	•	Assign/Reassign.
+	•	Run Automation (if low-risk).
+	•	Comment.
+	•	Dismiss (with Undo).
+	•	Open in SmartQueue/WorkItem (deep link).
+
+⸻
+
+4 — Inline Action Flows
+
+4.1 Approve / Reject
+	•	Approve: one-click; toast: Approval submitted.
+	•	Reject: modal required.
+	•	Title: Reject Approval.
+	•	Body: Provide reason (min 8 characters).
+	•	Validation: block <8 chars.
+	•	SLA countdown always visible.
+	•	Audit entry logged with reason.
+
+4.2 Assign/Reassign
+	•	Modal: Assign WorkItem.
+	•	Dropdown search user/team.
+	•	Confirm button → assignment applied.
+	•	Offline → Pending sync.
+
+4.3 Run Automation
+	•	Only if riskTier=Low.
+	•	Confirm modal:
+	•	Title: Run Automation
+	•	Body: Automation: <name>, Risk: Low, Rollback: <Yes/No>. Proceed?
+	•	On confirm: toast: Automation triggered.
+
+4.4 Comment
+	•	Inline text field.
+	•	Submit → adds to WorkItem activity log.
+	•	Offline → Pending sync badge.
+
+4.5 Dismiss
+	•	One-click; card greyed with Undo option (30s).
+	•	Audit log: dismissedBy, timestamp.
+
+⸻
+
+5 — Grouped Notifications
+	•	Collapsed card: 12 P3 incidents for Service A.
+	•	Expandable list: shows each constituent.
+	•	Actions: bulk Dismiss, bulk Acknowledge.
+	•	Tooltip: AI reasoning: “Grouped based on service + severity in 10 min window.”
+
+⸻
+
+6 — Suppressed Notifications
+	•	Listed under “Suppressed” tab.
+	•	Each entry shows:
+	•	Original notification text.
+	•	Suppression reason (AI explanation).
+	•	Suppression timestamp.
+	•	Actions: Recover (restores to main feed).
+	•	Tooltip: “Suppressed due to duplicate alert pattern (model vX.Y).”
+
+⸻
+
+7 — Escalations
+	•	Critical Escalations (P0/P1, SLA breaches, exec approvals) cannot be dismissed or suppressed.
+	•	Delivery rules:
+	•	T-15 min → pre-breach.
+	•	T-5 min → warning.
+	•	At breach → escalation.
+	•	Escalation chain: Engineer → Manager → Exec.
+	•	Visual: red badge + mandatory modal until acknowledged.
+
+⸻
+
+8 — Offline & Error States
+	•	Offline: Notification Center still visible with cached feed. Actions queued with Pending sync. Escalations buffered → sent on reconnect.
+	•	Error:
+	•	Inline error: Action failed: <message> (Code: <ERR_CODE>)
+	•	Retry button available.
+
+⸻
+
+9 — Accessibility
+	•	Cards tabbable; announce: “Notification, P1 Incident, SLA breach in 12m, ID WI-12345, actions available.”
+	•	Keyboard shortcuts:
+	•	a = Approve.
+	•	r = Reject.
+	•	c = Comment.
+	•	d = Dismiss.
+	•	Screen reader must read suppression reason in Suppressed tab.
+
+⸻
+
+10 — Telemetry
+	•	notification.view {userId, category, count}
+	•	notification.open {notificationId}
+	•	notification.approve {notificationId, workItemId}
+	•	notification.reject {notificationId, workItemId, reasonLength}
+	•	notification.assign {notificationId, workItemId, assigneeId}
+	•	notification.automation.run {notificationId, automationId}
+	•	notification.comment {notificationId, length}
+	•	notification.dismiss {notificationId}
+	•	notification.group.expand {groupId, count}
+	•	notification.suppression.recover {notificationId}
+	•	notification.error {notificationId, errorCode}
+
+⸻
+
+11 — Acceptance Criteria
+	•	AC-NOT-01: All notification cards show mandatory fields.
+	•	AC-NOT-02: Approvals enforce mandatory reject reason (≥8 chars).
+	•	AC-NOT-03: Low-risk automation requires confirm modal.
+	•	AC-NOT-04: Dismiss always undoable for 30s.
+	•	AC-NOT-05: Grouped notifications expandable; AI reason visible.
+	•	AC-NOT-06: Suppressed tab lists items with AI reasoning; Recover restores to All tab.
+	•	AC-NOT-07: Escalations cannot be dismissed/suppressed.
+	•	AC-NOT-08: Offline actions queued with Pending sync.
+	•	AC-NOT-09: Accessibility roles/labels implemented.
+
+⸻
+
+12 — QA Test Cases
+	•	TC-NOT-01: Reject approval with <8 chars reason blocked; ≥8 accepted.
+	•	TC-NOT-02: Run low-risk automation → confirm modal → toast success.
+	•	TC-NOT-03: Dismiss card → Undo within 30s restores.
+	•	TC-NOT-04: Grouped notification expands; shows AI reason tooltip.
+	•	TC-NOT-05: Suppressed notification shows original + AI reason; Recover restores.
+	•	TC-NOT-06: Escalation notification cannot be dismissed; persists until acted.
+	•	TC-NOT-07: Offline → Assign action queued → on reconnect applied.
+	•	TC-NOT-08: Error case shows inline error + Retry button.
+
+⸻
+
+13 — Jira Tasks
+	•	NOT-001: Implement Notification Center UI (tabs: All, Critical, Grouped, Suppressed, Nudges).
+	•	NOT-002: Implement notification card UI with required fields + CTAs.
+	•	NOT-003: Implement Approve/Reject flows with validation.
+	•	NOT-004: Implement Assign/Reassign modal.
+	•	NOT-005: Implement low-risk automation run modal.
+	•	NOT-006: Implement Comment inline flow with offline queueing.
+	•	NOT-007: Implement Dismiss/Undo + audit logging.
+	•	NOT-008: Implement Grouped notifications expansion + AI reasoning.
+	•	NOT-009: Implement Suppressed tab + Suppression Log with Recover.
+	•	NOT-010: Implement Escalation notification UX (non-dismissable).
+	•	NOT-011: Offline + error state handling for all actions.
+	•	NOT-012: Accessibility instrumentation.
+	•	NOT-013: Telemetry instrumentation.
+	•	NOT-014: QA regression (TC-NOT-01..08).
+
+⸻
+
+14 — Copy Library
+	•	Reject modal: Provide reason (min 8 characters).
+	•	Automation modal: Automation: <name>, Risk: Low, Rollback: <Yes/No>. Proceed?
+	•	Dismiss undo: Notification dismissed. Undo?
+	•	Group tooltip: Grouped based on service + severity in 10 min window.
+	•	Suppression tooltip: Suppressed due to duplicate alert pattern (model vX.Y).
+	•	Offline banner: Offline — actions queued until reconnect.
+	•	Error inline: Action failed: <message> (Code: <ERR_CODE>)
+
+⸻
+
+✅ With this, the Notifications module is bulletproof: cards, actions, suppression, escalation, offline/error handling, telemetry, QA, and Jira coverage are locked.
+
+Notifications — Inline Action Storyboards (frontend-only, frame-by-frame)
+
+Below are designer-ready, QA-ready, developer-actionable storyboards for the most important notification inline actions. Each flow has frames (UI states), exact copy, validation rules, telemetry hooks, undo/edge behavior, offline handling and QA checks. Use these to make Figma frames, write stories, and implement tests — no ambiguity.
+
+⸻
+
+1. APPROVE FROM NOTIFICATION — Storyboard
+
+Frame A1 — Notification Card (collapsed)
+	•	Visible: Title, WorkItem ID, Severity (P0..), SLA countdown, Approve (green) and Reject (red) CTAs, Open link.
+	•	Action: user presses Approve.
+
+Telemetry: notification.open (card focused) if not already emitted.
+
+⸻
+
+Frame A2 — Instant Inline Confirm (optimistic)
+	•	If backend indicates “simple-approve” flow allowed:
+	•	Clicking Approve immediately shows a disabled inline Approving… spinner on the card.
+	•	Toast (aria-live polite): Approval submitted.
+	•	If backend requires MFA or extra verification (server flag):
+	•	Interstitial modal opens (see A3).
+
+Telemetry: notification.approve.started {notificationId, workItemId}
+
+⸻
+
+Frame A3 — MFA / Interstitial (if required)
+	•	Modal title: Approval verification required
+	•	Body: This approval requires verification. Please complete MFA to proceed.
+	•	Buttons: Cancel | Continue to verify
+	•	UX: After Continue, open MFA modal (system auth), then return to card.
+
+Accessibility: focus moves into modal; ESC closes.
+
+⸻
+
+Frame A4 — Server Response (success)
+	•	Inline: spinner replaced by Approved badge (green) and small note Approved by <You> • <timeUTC>.
+	•	Activity Log receives new audit entry (visible from work item).
+	•	Toast: Approval submitted. See Activity Log. (with link View activity)
+
+Telemetry: notification.approve {notificationId, workItemId, result: success}
+
+⸻
+
+Frame A5 — Server Response (failure)
+	•	Inline error displayed under card: Approval failed: <message> (Code: <ERR_CODE>)
+	•	Buttons: Retry | Open WorkItem
+	•	Toast: Approval failed — see error.
+
+Telemetry: notification.approve {notificationId, workItemId, result: failed, errorCode}
+
+⸻
+
+Undo behavior
+	•	After success, show inline undo affordance on badge for 30s: Undo (link).
+	•	Clicking Undo sends a revert request. While reverting: badge Reverting…. On success, card returns to prior state and Activity Log gets undo entry.
+
+Telemetry: notification.approve.undo {notificationId, workItemId, result}
+
+⸻
+
+Offline behavior
+	•	If offline and backend disallows offline approval: Approve button disabled; tooltip: Offline — approval unavailable.
+	•	If offline and allowed: Approve enqueues action, card shows Pending sync badge and toast Approval queued — will submit on reconnect. Telemetry notification.approve {result: queued}.
+
+⸻
+
+Exact copy (must use)
+	•	Approve success toast: Approval submitted. See Activity Log.
+	•	Approval failure inline: Approval failed: <message> (Code: <ERR_CODE>)
+	•	MFA modal title: Approval verification required
+	•	Offline tooltip: Offline — approval unavailable
+
+⸻
+
+QA checklist (copy/paste)
+	•	TC-APP-01: Approve online → card shows Approved + Activity Log entry.
+	•	TC-APP-02: Approve when MFA required → modal shown and flow completes after verification.
+	•	TC-APP-03: Approve offline when disallowed → button disabled with tooltip.
+	•	TC-APP-04: Approve failure (simulate) → inline error shown; Retry works.
+	•	TC-APP-05: Undo works within 30s and logs undo.
+
+⸻
+
+2. REJECT FROM NOTIFICATION — Storyboard
+
+Frame R1 — Notification Card (collapsed)
+	•	Visible: Reject CTA next to Approve.
+
+Action: user clicks Reject.
+
+⸻
+
+Frame R2 — Reject Modal (mandatory reason)
+	•	Modal title: Reject Approval
+	•	Body: Provide reason (min 8 characters).
+	•	Inputs: Reason (multi-line, required, min 8 chars) — live char count; Optional note (optional).
+	•	Buttons: Cancel | Submit Rejection (disabled until valid).
+
+Accessibility: focus on Reason input; aria-describedby with requirement.
+
+Telemetry: notification.reject.open {notificationId}
+
+⸻
+
+Frame R3 — Submitting
+	•	User submits valid reason. Modal closes. Card shows Rejecting… spinner and toast Submitting rejection….
+
+Telemetry: notification.reject {notificationId, workItemId, reasonLength}
+
+⸻
+
+Frame R4 — Server Response (success)
+	•	Card updates to Rejected badge and small note Rejected by <You> • <timeUTC>.
+	•	Activity Log shows rejection with reason (truncated) and serverAuditEntryId.
+	•	Toast: Rejection submitted.
+
+⸻
+
+Frame R5 — Server Response (failure)
+	•	Inline error under card: Rejection failed: <message> (Code: <ERR_CODE>) with Retry button.
+
+Telemetry: notification.reject {result: failed, errorCode}
+
+⸻
+
+Offline handling
+	•	If offline, reject enqueues (if backend policy allows). Card shows Pending sync and Rejected (queued) visual cue; Activity Log shows pending entry.
+
+⸻
+
+Exact copy
+	•	Modal title: Reject Approval
+	•	Body: Provide reason (min 8 characters).
+	•	Validation: Please provide at least 8 characters.
+	•	Success toast: Rejection submitted.
+
+⸻
+
+QA checklist
+	•	TC-REJ-01: Reject with blank reason blocked.
+	•	TC-REJ-02: Reject with ≥8 chars accepted → card Rejected.
+	•	TC-REJ-03: Offline queued reject → pending entry shows in Sync Center.
+	•	TC-REJ-04: Failure shows inline error + Retry.
+
+⸻
+
+3. RUN AUTOMATION FROM NOTIFICATION — Storyboard
+
+Frame A1 — Notification Card (automation type)
+	•	CTA Run visible only if server flag riskTier=low and user permission exists. If not allowed, hide or disable with tooltip.
+
+Action: user clicks Run.
+
+⸻
+
+Frame A2 — Confirm Automation Run Modal (always)
+	•	Title: Run Automation
+	•	Body lines:
+	•	Automation: <name>
+	•	Risk: <Low|Medium|High>
+	•	Rollback available: <Yes|No>
+	•	This action will be executed and logged.
+	•	Buttons: Cancel | Confirm & Run
+	•	If risk != low, Confirm & Run is replaced with Request run (since approval required).
+
+Telemetry: notification.automation.run.open {notificationId, automationId, riskTier}
+
+⸻
+
+Frame A3 — Processing
+	•	On confirm: card shows Running… spinner; toast Automation triggered — see Activity Log.
+	•	Activity Log pending entry created.
+
+Telemetry: notification.automation.run {notificationId, automationId, result: started|queued}
+
+⸻
+
+Frame A4 — Success / Failure
+	•	Success: card notes Automation started — serverAuditEntryId and toast success.
+	•	Failure: inline error Automation failed: <message> (Code) with Retry and Open WorkItem actions.
+
+⸻
+
+Undo
+	•	For automations that support undo/rollback and server indicates rollback available, show toast with Cancel run or Rollback where applicable (rare). Undo only valid per server rules.
+
+⸻
+
+Offline
+	•	If offline and backend disallows queuing runs: Run disabled with tooltip Unavailable offline.
+	•	If allowed, enqueue with Pending sync.
+
+⸻
+
+Exact copy
+	•	Modal title: Run Automation
+	•	Confirm button: Confirm & Run (or Request run)
+	•	Toast: Automation triggered — see Activity Log.
+
+⸻
+
+QA
+	•	TC-AUT-01: Run (low-risk) opens modal and confirms; success updates Activity Log.
+	•	TC-AUT-02: Run blocked offline when disallowed.
+	•	TC-AUT-03: Failure displays inline error and Retry works.
+
+⸻
+
+4. ASSIGN / REASSIGN FROM NOTIFICATION — Storyboard
+
+Frame S1 — Card shows Assign CTA
+	•	Action: user clicks Assign.
+
+⸻
+
+Frame S2 — Assign Modal
+	•	Title: Assign WorkItem
+	•	Body: search input + list of users/teams (typeahead).
+	•	Buttons: Cancel | Assign (disabled until selection chosen)
+
+Telemetry: notification.assign.open {notificationId}
+
+⸻
+
+Frame S3 — Submitting
+	•	On Assign, card shows Assigning… and toast Assigning…
+	•	On success: Assigned to <User> rendered; Activity Log entry appended.
+	•	On failure: inline error with Retry.
+
+⸻
+
+Offline
+	•	If offline allowed: enqueues; card shows Assigned (queued) — Pending sync. Else disabled.
+
+⸻
+
+Exact copy
+	•	Modal title: Assign WorkItem
+	•	Offline tooltip: Offline — assignment queued (if allowed) or Unavailable offline (if not).
+
+⸻
+
+QA
+	•	TC-ASG-01: Search finds user; assignment succeeds.
+	•	TC-ASG-02: Assignment queued offline shows Pending sync.
+	•	TC-ASG-03: Failure shows inline error.
+
+⸻
+
+5. COMMENT FROM NOTIFICATION — Storyboard
+
+Frame C1 — Inline comment field (expanded)
+	•	Small textarea placeholder: Add a comment… (Enter to post) visible on click.
+
+⸻
+
+Frame C2 — Posting
+	•	Submit: optimistic append to notification preview with Pending sync if offline; Activity Log updated on success.
+
+Telemetry: notification.comment {notificationId, lengthChars}
+
+⸻
+
+Frame C3 — Failure
+	•	Inline error next to comment: Comment failed: <message> (Code). Retry option.
+
+⸻
+
+Offline
+	•	If offline: comment enqueued, shown with Pending sync badge and message Queued on <UTC> from <device>.
+
+⸻
+
+Accessibility
+	•	Textarea labeled Add comment for notification <ID>; Enter/Shift+Enter behavior documented (Enter posts, Shift+Enter new line).
+
+⸻
+
+QA
+	•	TC-COM-01: Add comment online → appears in Activity Log.
+	•	TC-COM-02: Add comment offline → queued & syncs on reconnect.
+	•	TC-COM-03: Error shows retry.
+
+⸻
+
+6. DISMISS FROM NOTIFICATION — Storyboard
+
+Frame D1 — Dismiss CTA
+	•	User clicks Dismiss (visible for non-critical notifications).
+
+⸻
+
+Frame D2 — Immediate Dismiss + Undo affordance
+	•	Card fades and shows Dismissed small label; toast: Notification dismissed. Undo? with Undo action.
+	•	Undo available for 30s.
+
+Telemetry: notification.dismiss {notificationId}
+
+⸻
+
+Frame D3 — Undo
+	•	Click Undo within 30s → card restored to prior state. Telemetry emitted.
+
+⸻
+
+Frame D4 — Permanent dismissal
+	•	After 30s, card either removed from feed or moved to archived list (PO decision). Dismiss action recorded in audit log.
+
+⸻
+
+Offline
+	•	Dismiss queued if offline; undo still possible until queued processed.
+
+⸻
+
+QA
+	•	TC-DIS-01: Dismiss shows toast + undo; undo restores.
+	•	TC-DIS-02: Dismiss cannot be performed on Critical category (button disabled with tooltip Cannot dismiss critical notifications).
+
+⸻
+
+Common cross-cutting rules (applies to all inline flows)
+	1.	Server authoritative. Frontend may show optimistic UI for explicitly allowed low-risk actions but must reconcile with server response; do not assume success.
+	2.	clientActionId must be attached to every mutating action (assign/approve/reject/run/comment/dismiss) and included in telemetry entries.
+	3.	Audit logging: Every mutating action must append a pending Activity Log entry; on server success the entry must be replaced/updated with serverAuditEntryId.
+	4.	Accessibility: All modals use role=dialog, focus trap, ESC to close, and keyboard tabbable controls. Screen reader announcements for toasts and inline state changes.
+	5.	Telemetry: Emit the events referenced in each flow; batch and send opportunistically; respect opt-out. Include tenantId, userId, deviceId, clientActionId where appropriate.
+	6.	Offline behavior: Disabled controls must show precise tooltip copy describing whether action is unavailable or queued; queued items appear in Sync Center and in Activity Log with Pending sync.
+	7.	Error messaging: Surface server message verbatim plus helpful next step when available (e.g., contact ops-team@org). Always show errorCode.
+	8.	Undo window: Default 30s for dismiss/approve/accept actions; only undo button in toast; longer reversals must be explicit actions and create new audit entries.
+	9.	Rate-limits & throttling: If server returns rate-limit, show Please try again in <N> seconds. and disable quick retries programmatically.
+
+⸻
+
+Copy snippets (centralized — use verbatim)
+	•	Approve success toast: Approval submitted. See Activity Log.
+	•	Approval failure: Approval failed: <message> (Code: <ERR_CODE>)
+	•	Reject modal: title Reject Approval; body Provide reason (min 8 characters).
+	•	Reject validation: Please provide at least 8 characters.
+	•	Run Automation modal title: Run Automation
+	•	Run modal body: Automation: <name>. Risk: <Low|Medium|High>. Rollback available: <Yes|No>. Proceed?
+	•	Dismiss toast: Notification dismissed. Undo?
+	•	Offline tooltip (generic): Offline — action unavailable or Offline — action queued (use correct variant)
+	•	Pending sync badge tooltip: Queued on <dateUTC> from <deviceName>
+	•	Generic error inline: Action failed: <message> (Code: <ERR_CODE>)
+
+⸻
+
+Telemetry quick-reference (must be emitted per flow)
+	•	notification.open {notificationId, category}
+	•	notification.approve {notificationId, workItemId, clientActionId, result}
+	•	notification.reject {notificationId, workItemId, clientActionId, reasonLength, result}
+	•	notification.automation.run {notificationId, automationId, clientActionId, riskTier, result}
+	•	notification.assign {notificationId, workItemId, clientActionId, assigneeId, result}
+	•	notification.comment {notificationId, lengthChars, clientActionId, result}
+	•	notification.dismiss {notificationId, clientActionId, result}
+	•	notification.error {notificationId, errorCode}
+
+⸻
+
+Jira tasks (copy/paste)
+	•	NOT-FLOW-001: Implement Approve inline flow + MFA interstitial + undo.
+	•	NOT-FLOW-002: Implement Reject modal + validation + audit logging.
+	•	NOT-FLOW-003: Implement Run Automation modal + confirm behavior + rollback/undo handling.
+	•	NOT-FLOW-004: Implement Assign modal + offline queueing.
+	•	NOT-FLOW-005: Implement Inline Comment editor + sync behavior.
+	•	NOT-FLOW-006: Implement Dismiss + undo + archiving behavior.
+	•	NOT-FLOW-007: Sync Center integration for queued notification actions.
+	•	NOT-FLOW-008: Telemetry instrumentation for all notification flows.
+	•	NOT-FLOW-009: Accessibility audit & fixes for all notification modals.
+	•	NOT-FLOW-010: QA e2e tests for all TC cases listed in each flow.

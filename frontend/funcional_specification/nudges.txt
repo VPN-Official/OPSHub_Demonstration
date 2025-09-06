@@ -1,0 +1,649 @@
+0 — Purpose
+
+Surface AI nudges (automation candidates, process balancing, knowledge gaps, approval governance issues) in a transparent, explainable, and governed way. Users can:
+	•	Accept → creates a pre-filled WorkItem in SmartQueue.
+	•	Snooze → hides the nudge temporarily.
+	•	Reject → requires reason; logged for AI learning.
+
+⸻
+
+1 — Entry Points
+	•	Intelligence Center → Nudges Tab.
+	•	Notifications feed → Nudge cards.
+	•	Pulse widget → drill-down to Nudges tab.
+
+⸻
+
+2 — Nudge Card (Collapsed View)
+
+Fields always visible:
+	1.	nudgeId (copyable, hover tooltip).
+	2.	Title / summary (1–2 lines).
+	3.	Confidence % badge.
+	4.	ModelVersion.
+	5.	Suggested action (short human text).
+	6.	Status (Pending | Accepted | Snoozed | Rejected).
+	7.	CTAs: Accept | Snooze | Reject | Inspect.
+
+⸻
+
+3 — Inspect Flow
+	•	Click Inspect → opens side panel or modal.
+	•	Shows:
+	•	Full nudge text.
+	•	Top 3 drivers.
+	•	Sample incidents/articles supporting.
+	•	ModelVersion + training date.
+	•	Disclaimer: “Suggestions are guidance only. Confirm before acting.”
+	•	Close with ESC / swipe down.
+
+⸻
+
+4 — Accept Flow
+
+Step 1: User clicks Accept.
+Step 2: Modal opens showing WorkItem prefill:
+	•	Title, Type, Priority, Suggested SLA, Suggested Assignee (if any).
+	•	Modal copy:
+	•	Title: Accept Nudge
+	•	Body: This will create a pre-filled WorkItem in SmartQueue: "<title>". SLA will start when created. Proceed?
+	•	Buttons: Cancel | Create WorkItem.
+
+Step 3: On confirm:
+	•	Online → WorkItem created; toast: “WorkItem created from nudge — ID WI-12345” with link to open.
+	•	Offline → if allowed, enqueue with Pending sync badge. If disallowed, disable button with tooltip “Accept unavailable offline.”
+
+Validation: None; Accept always requires explicit confirm.
+
+Telemetry: ai.nudge.accept {nudgeId, modelVersion, confidence, result}.
+
+⸻
+
+5 — Snooze Flow
+
+Step 1: User clicks Snooze.
+Step 2: Modal appears with options:
+	•	1 day, 7 days, 30 days, Custom date.
+	•	Optional: free-text reason (not mandatory).
+	•	Buttons: Cancel | Snooze.
+
+Step 3: On confirm:
+	•	Card shows dimmed state with badge: “Snoozed until ”.
+	•	Snoozed nudges hidden until expiry.
+
+Telemetry: ai.nudge.snooze {nudgeId, snoozeUntil}.
+
+⸻
+
+6 — Reject Flow
+
+Step 1: User clicks Reject.
+Step 2: Modal opens:
+	•	Title: Reject Nudge.
+	•	Fields:
+	•	Reason (mandatory, ≥8 chars).
+	•	Suggested improvement (optional).
+	•	Buttons: Cancel | Submit Rejection.
+
+Step 3: On submit:
+	•	Card updates to Rejected state (greyed out).
+	•	Feedback stored and logged for AI retraining.
+
+Validation: Must enforce min 8 chars reason.
+
+Telemetry: ai.nudge.reject {nudgeId, reasonLength, modelVersion}.
+
+⸻
+
+7 — Bulk Actions
+	•	Allowed: Bulk Snooze, Bulk Reject.
+	•	Limit: 25 items max.
+	•	Bulk Reject: requires single shared reason.
+	•	Bulk Accept: disabled (must be individual).
+
+Error copy: “Bulk actions limited to 25 nudges. Reduce selection.”
+
+⸻
+
+8 — Error & Offline States
+	•	Offline: Nudges list shows cached snapshot. Accept disabled unless policy allows queued creation. Snooze/Reject always disabled offline.
+	•	Error: Show inline message: “Action failed:  (Code: <ERR_CODE>)” with Retry button.
+
+⸻
+
+9 — Accessibility
+	•	Nudge cards focusable.
+	•	Screen reader: “Nudge , , Confidence NN%, Suggested action: . Status: Pending.”
+	•	Keyboard shortcuts:
+	•	Enter → Inspect.
+	•	a → Accept.
+	•	s → Snooze.
+	•	r → Reject.
+
+⸻
+
+10 — Telemetry Events
+	•	nudge.list.open {countPending}.
+	•	ai.nudge.inspect {nudgeId, modelVersion, confidence}.
+	•	ai.nudge.accept {nudgeId, modelVersion, result}.
+	•	ai.nudge.snooze {nudgeId, snoozeUntil}.
+	•	ai.nudge.reject {nudgeId, reasonLength}.
+	•	nudge.error {nudgeId, errorCode}.
+
+⸻
+
+11 — Acceptance Criteria
+	•	AC-NDG-01: Nudge card always shows required fields.
+	•	AC-NDG-02: Inspect opens side panel with full explanation.
+	•	AC-NDG-03: Accept modal creates WorkItem only on confirm.
+	•	AC-NDG-04: Reject blocked until reason ≥8 chars.
+	•	AC-NDG-05: Snooze shows snoozed badge until expiry.
+	•	AC-NDG-06: Bulk operations limited to 25 items.
+	•	AC-NDG-07: Offline disables Accept/Snooze/Reject if not allowed.
+
+⸻
+
+12 — QA Test Cases
+	•	TC-NDG-01: Inspect nudge → verify Why? shows drivers + modelVersion.
+	•	TC-NDG-02: Accept nudge → modal confirm → WorkItem created + toast with ID.
+	•	TC-NDG-03: Reject with blank reason blocked; with ≥8 chars accepted.
+	•	TC-NDG-04: Snooze 7 days → badge shows “Snoozed until ”.
+	•	TC-NDG-05: Bulk Reject >25 nudges blocked.
+	•	TC-NDG-06: Offline → Accept disabled, tooltip “Unavailable offline”.
+
+⸻
+
+13 — Jira Tasks
+	•	NDG-001: Implement nudge card UI (collapsed view).
+	•	NDG-002: Implement Inspect panel with Why? + drivers.
+	•	NDG-003: Implement Accept modal → create WorkItem flow.
+	•	NDG-004: Implement Reject modal (reason validation).
+	•	NDG-005: Implement Snooze modal + snoozed badge.
+	•	NDG-006: Implement bulk actions (Reject, Snooze) with 25-item limit.
+	•	NDG-007: Implement offline & error states.
+	•	NDG-008: Accessibility & telemetry instrumentation.
+	•	NDG-009: QA test suite for TC-NDG-01..06.
+
+⸻
+
+14 — Copy Library
+	•	Inspect disclaimer: “Suggestions are guidance only — confirm before acting.”
+	•	Accept modal: “This will create a pre-filled WorkItem in SmartQueue: “”. SLA will start when created. Do you want to proceed?”
+	•	Snooze modal: “Select snooze duration” → options 1d / 7d / 30d / Custom.
+	•	Reject modal: “Provide a reason for rejection (min 8 characters).”
+	•	Offline tooltip: “Action unavailable offline.”
+	•	Error inline: “Action failed:  (Code: <ERR_CODE>)”.
+
+⸻
+
+✅ This spec makes Nudges bulletproof — every field, action, validation, offline rule, telemetry event, QA case, and Jira task is nailed down.
+
+Frame 1 — Nudge Card (Collapsed)
+	•	Visible fields:
+	•	Title: “Automate restart for Service X”
+	•	Confidence: 88% (badge)
+	•	ModelVersion: v2025.3.2
+	•	Suggested action: “Run automation auto-23 for Service X”
+	•	CTAs: Accept | Snooze | Reject | Inspect
+
+Action: User clicks Accept.
+
+⸻
+
+Frame 2 — Accept Modal (Confirmation)
+	•	Title: Accept Nudge
+	•	Body text:
+“This will create a pre-filled WorkItem in SmartQueue: “Restart Service X Automation”. SLA will start when created. Do you want to proceed?”
+	•	Prefill fields visible (read-only preview):
+	•	WorkItem Title
+	•	Type (Automation candidate)
+	•	Suggested Priority (e.g., P2)
+	•	Suggested SLA (e.g., 4h)
+	•	Suggested Assignee (if provided)
+	•	Buttons: Cancel (secondary), Create WorkItem (primary)
+	•	Focus: lands on modal title for screen reader; tab order goes to buttons.
+
+Validation: no inputs; just confirm or cancel.
+
+Telemetry emitted: ai.nudge.accept.open {nudgeId, modelVersion, confidence}
+
+⸻
+
+Frame 3 — Processing State
+	•	After user clicks Create WorkItem:
+	•	Modal closes, Nudge card shows temporary badge: Creating WorkItem… with spinner.
+	•	Toast: “Processing accept…”
+
+If offline:
+	•	Instead of creating immediately, Nudge card shows Pending sync badge.
+	•	Tooltip: “Queued on  from  — will create WorkItem when online.”
+	•	Telemetry: ai.nudge.accept {nudgeId, result: queued}
+
+⸻
+
+Frame 4 — Success (Online Flow)
+	•	Backend responds with created WorkItem ID (e.g., WI-12345).
+	•	Nudge card updates status → Accepted.
+	•	Toast (success): “WorkItem created from nudge — ID WI-12345”
+	•	CTA in toast: Open WorkItem (deep link to SmartQueue detail).
+
+UI update in Intelligence list:
+	•	Card greyed out with badge: Accepted → WI-12345.
+	•	Accept button removed; only Inspect remains.
+
+Telemetry emitted: ai.nudge.accept {nudgeId, result: created, workItemId}
+
+⸻
+
+Frame 5 — Failure (Edge Case)
+
+If backend rejects request:
+	•	Card reverts to Pending state.
+	•	Inline error shown: “Action failed: Policy restricts this automation (Code: AUTOPOLICY-403).”
+	•	Buttons: Retry | Cancel.
+	•	Toast: “WorkItem creation failed — see error.”
+
+Telemetry: ai.nudge.accept {nudgeId, result: failed, errorCode}
+
+⸻
+
+Frame 6 — Post-Success Journey
+	•	User clicks Open WorkItem (toast CTA).
+	•	Navigation: SmartQueue → WorkItem Detail page with new WorkItem selected.
+	•	Context preserved: createdFromNudgeId visible in WorkItem header.
+
+Telemetry: workitem.open {workItemId, createdFromNudgeId}
+
+⸻
+
+Copy Library (exact strings)
+	•	Modal title: Accept Nudge
+	•	Modal body: “This will create a pre-filled WorkItem in SmartQueue: “”. SLA will start when created. Do you want to proceed?”
+	•	Toast success: “WorkItem created from nudge — ID WI-12345”
+	•	Toast error: “WorkItem creation failed — see error.”
+	•	Badge (queued): Pending sync
+	•	Badge (success): Accepted → WI-12345
+	•	Tooltip (offline queued): “Queued on  from  — will create WorkItem when online.”
+
+⸻
+
+QA Acceptance Criteria
+	•	AC-NDG-ACC-01: Accept opens modal with WorkItem prefill preview.
+	•	AC-NDG-ACC-02: Confirming creates WorkItem (if online) → success toast with ID + Open link.
+	•	AC-NDG-ACC-03: Offline accept enqueues action; Nudge card shows Pending sync.
+	•	AC-NDG-ACC-04: Reject <8 char reason blocks (covered in Reject flow spec).
+	•	AC-NDG-ACC-05: Errors show inline with errorCode; Retry button available.
+	•	AC-NDG-ACC-06: Telemetry events emitted at open, queued, created, or failed.
+
+⸻
+
+QA Test Cases
+	•	TC-ACC-01: Online Accept → verify modal opens → confirm → toast shows WorkItem ID → card marked Accepted.
+	•	TC-ACC-02: Offline Accept → toast “Queued” → card shows Pending sync badge → reconnect → WorkItem created + card updates.
+	•	TC-ACC-03: Backend rejection → error shown inline + Retry button works.
+	•	TC-ACC-04: Telemetry events visible in logs for each action (open, success, fail).
+	•	TC-ACC-05: Screen reader announces modal title and WorkItem fields.
+
+⸻
+
+Jira Tasks (ready-to-paste)
+	•	NDG-ACC-001: Implement Accept modal with WorkItem prefill preview.
+	•	NDG-ACC-002: Implement card state transitions (Pending → Accepted → Error).
+	•	NDG-ACC-003: Implement offline queued accept with Pending sync badge.
+	•	NDG-ACC-004: Implement success toast with ID + Open CTA.
+	•	NDG-ACC-005: Implement inline error & Retry button.
+	•	NDG-ACC-006: Implement telemetry for accept events.
+	•	NDG-ACC-007: Implement accessibility (focus, screen reader announcements).
+	•	NDG-ACC-008: QA end-to-end scenarios TC-ACC-01..05.
+
+Frame 1 — Nudge Card (Collapsed)
+	•	Visible fields:
+	•	Nudge title (e.g., “Standardize deployment script for Service A”)
+	•	Confidence % badge (e.g., 72%)
+	•	Suggested action (short text)
+	•	Buttons: Accept | Snooze | Reject | Inspect
+
+Action: User clicks Reject.
+
+⸻
+
+Frame 2 — Reject Modal (Confirmation)
+	•	Title: Reject Nudge
+	•	Body copy:
+“Provide a reason for rejection (required, min 8 characters).”
+	•	Fields:
+	•	Reason (required): multi-line input. Validation: min 8 characters.
+	•	Suggested improvement (optional): secondary input field.
+	•	Buttons: Cancel (secondary) | Submit Rejection (primary).
+	•	Focus: lands on modal title for screen reader; tab order → Reason → Suggested improvement → buttons.
+
+Telemetry emitted: ai.nudge.reject.open {nudgeId, modelVersion, confidence}
+
+⸻
+
+Frame 3 — Validation
+	•	If user clicks Submit Rejection with blank or <8 char reason:
+	•	Inline error message under field: “Please provide at least 8 characters.”
+	•	Focus returns to Reason field.
+	•	If reason ≥8 chars → form valid.
+
+⸻
+
+Frame 4 — Processing State
+	•	On submit, modal closes.
+	•	Nudge card shows temporary badge: Rejecting… with spinner.
+	•	Toast: “Submitting rejection…”
+
+⸻
+
+Frame 5 — Success
+	•	Backend confirms rejection logged.
+	•	Card updates to Rejected state:
+	•	Greyed out background.
+	•	Status badge: Rejected.
+	•	Buttons removed except Inspect.
+	•	Toast (success): “Nudge rejected. Feedback logged for model training.”
+
+Telemetry emitted:
+	•	ai.nudge.reject {nudgeId, reasonLength, modelVersion, result: success}
+
+⸻
+
+Frame 6 — Failure (Edge Case)
+	•	If backend returns error:
+	•	Card remains in Pending state.
+	•	Inline error banner: “Action failed:  (Code: <ERR_CODE>). Retry?”
+	•	Buttons: Retry | Cancel.
+	•	Telemetry: ai.nudge.reject {nudgeId, result: failed, errorCode}
+
+⸻
+
+Frame 7 — Post-Success Journey
+	•	User can Inspect rejected nudge (read-only).
+	•	Feedback reason not editable.
+	•	Inspect panel shows: “Rejected by  on  — reason: ”.
+
+⸻
+
+Copy Library (exact strings)
+	•	Modal title: Reject Nudge
+	•	Modal body: Provide a reason for rejection (required, min 8 characters).
+	•	Reason validation error: Please provide at least 8 characters.
+	•	Suggested improvement placeholder: Optional: suggest how this nudge could be improved…
+	•	Toast success: Nudge rejected. Feedback logged for model training.
+	•	Inline error: Action failed: <message> (Code: <ERR_CODE>). Retry?
+	•	Badge: Rejected
+
+⸻
+
+QA Acceptance Criteria
+	•	AC-NDG-REJ-01: Reject modal requires reason; <8 chars blocked with validation error.
+	•	AC-NDG-REJ-02: On submit, Nudge card transitions to Rejected state (greyed out, badge shown).
+	•	AC-NDG-REJ-03: Rejected card persists across refresh and is read-only (Inspect only).
+	•	AC-NDG-REJ-04: Error case shows inline error with Retry.
+	•	AC-NDG-REJ-05: Telemetry events emitted at open, fail, and success.
+	•	AC-NDG-REJ-06: Screen reader announces modal title and reason field requirement.
+
+⸻
+
+QA Test Cases
+	•	TC-REJ-01: Click Reject → modal opens with required fields.
+	•	TC-REJ-02: Try to submit with blank reason → error shown.
+	•	TC-REJ-03: Enter 5 chars → blocked. Enter 8+ chars → accepted.
+	•	TC-REJ-04: On success, card shows Rejected badge + greyed out. Toast: “Feedback logged”.
+	•	TC-REJ-05: On backend error, inline error appears + Retry works.
+	•	TC-REJ-06: Inspect rejected nudge shows rejection metadata.
+
+⸻
+
+Jira Tasks (ready-to-paste)
+	•	NDG-REJ-001: Implement Reject modal (Reason mandatory, Improvement optional).
+	•	NDG-REJ-002: Implement validation (min 8 chars reason).
+	•	NDG-REJ-003: Implement card state transitions (Pending → Rejecting → Rejected).
+	•	NDG-REJ-004: Implement toast + badge updates.
+	•	NDG-REJ-005: Implement error handling with Retry button.
+	•	NDG-REJ-006: Implement Inspect metadata for rejected nudges.
+	•	NDG-REJ-007: Implement telemetry instrumentation.
+	•	NDG-REJ-008: QA test suite TC-REJ-01..06.
+
+⸻
+
+✅ This storyboard makes Reject Nudge bulletproof — mandatory reason validation, feedback logging, error handling, telemetry, and accessibility all nailed down.
+
+Nudge Snooze → Temporarily Hidden — Storyboard Flow
+
+⸻
+
+Summary (1-line)
+
+User snoozes a nudge to hide it temporarily; UI shows snooze state with expiry, supports custom date, allows undo, and emits telemetry. If snooze action fails, UI shows inline error and retry.
+
+⸻
+
+Frame 1 — Nudge Card (Collapsed)
+	•	Visible fields:
+	•	nudgeId (copyable)
+	•	Title / Summary (1–2 lines)
+	•	Confidence % badge
+	•	ModelVersion
+	•	Suggested action snippet
+	•	CTAs: Accept | Snooze | Reject | Inspect
+	•	User action: Click Snooze
+
+Telemetry emitted: ai.nudge.snooze.open {nudgeId, modelVersion, confidence, timeframeDefault}
+
+⸻
+
+Frame 2 — Snooze Modal (Options)
+	•	Modal appearance: centered (desktop) / full-screen sheet (mobile)
+	•	Title (exact): Snooze Nudge
+	•	Body copy (exact): Select duration to snooze this nudge. It will be hidden until the chosen date/time.
+	•	Controls (UI):
+	•	Radio / button options: 1 day | 7 days | 30 days | Custom…
+	•	If Custom selected → show date & time picker (UTC displayed) with validation (must be future date/time).
+	•	Optional free-text Reason (optional) — placeholder: Optional: why are you snoozing this nudge?
+	•	Buttons: Cancel (secondary) | Snooze (primary, disabled until a valid option selected)
+	•	Focus behavior: focus lands on first option; keyboard arrow keys change selection; Tab goes to Reason then Snooze button.
+
+Client-side validations
+	•	Custom date must be strictly > current UTC time.
+	•	If user picks Custom but doesn’t select a time → show inline error under picker: Please pick a future date and time.
+
+Telemetry emitted on Snooze modal open: ai.nudge.snooze.modal_open {nudgeId, defaultOption}
+
+⸻
+
+Frame 3 — Confirm Snooze (Processing UI)
+	•	User selects option (e.g., 7 days) and clicks Snooze.
+	•	Modal closes.
+	•	Nudge card shows temporary state: badge Snoozing… with spinner (accessibility: aria-live="polite" announces Snoozing nudge).
+	•	Toast (transient): Snoozing nudge…
+
+If offline
+	•	If policy allows enqueueing snooze: badge becomes Snooze queued (info icon). Tooltip: Queued on <UTC timestamp> from <device>. Will apply on reconnect. Telemetry: ai.nudge.snooze {nudgeId, snoozeUntil, result: queued}
+	•	If offline snooze not allowed: disable Snooze button with tooltip: Snooze unavailable offline. (UI should have prevented modal submit)
+
+⸻
+
+Frame 4 — Success (Server confirms)
+	•	Server responds with success and a snoozeUntil timestamp (UTC).
+	•	Card state updates:
+	•	Card visually dimmed (reduced opacity) but still accessible via Inspect.
+	•	Status badge: Snoozed until <date> (show human-friendly date; hover shows full UTC).
+	•	Small subtitle under title: Snoozed by <userDisplayName> on <dateUTC> — reason: "<text>" (only show reason if provided).
+	•	Accept / Reject actions removed/disabled; Inspect remains; small Undo link appears near badge for quick revert.
+	•	Toast success: Nudge snoozed until <dateLocal>.
+	•	Telemetry emitted: ai.nudge.snooze {nudgeId, snoozeUntil, result: success}
+
+Visual example for badge: Snoozed until Sep 13, 2025 (hover → 2025-09-13T14:00:00Z)
+
+⸻
+
+Frame 5 — Undo Snooze (Quick Revert)
+	•	Undo link visible for snoozed card.
+	•	Click Undo:
+	•	Confirm inline small modal if snoozeDuration > 7 days:
+	•	Title: Undo Snooze
+	•	Body: Are you sure you want to unsnooze this nudge now?
+	•	Buttons: Cancel | Unsnooze
+	•	On confirm, UI sends unsnooze request to backend.
+	•	While in-flight show badge Unsnoozing… and toast Unsnoozing nudge…
+	•	On success card returns to Pending state (normal card).
+	•	Telemetry: ai.nudge.snooze.undo {nudgeId, result: success}
+
+⸻
+
+Frame 6 — Snooze Expiry (Auto-Return)
+	•	On snoozeUntil timestamp reached:
+	•	Card automatically returns to Pending state.
+	•	Small banner appears at top of Intelligence list (or local toast if visible): 1 nudge is no longer snoozed — view (CTA View filters list to returned item).
+	•	Telemetry: ai.nudge.snooze.expired {nudgeId, snoozeUntil}
+
+Note: Server authoritative — client should refresh nudge status on list refresh or via push.
+
+⸻
+
+Frame 7 — Failure (Server rejects or error)
+	•	If server responds with error (policy, validation, rate-limit):
+	•	Card shows inline error under badge: Snooze failed: <serverMessage> (Code: <ERR_CODE>)
+	•	Buttons shown: Retry | Cancel Snooze Attempt
+	•	Retry re-attempts the snooze (same parameters).
+	•	If user cancels, card reverts to Pending state.
+	•	Telemetry: ai.nudge.snooze {nudgeId, result: failed, errorCode}
+
+Examples of server messages
+	•	Policy requires manager approval to snooze >30 days. (UI must show this message verbatim from server.)
+	•	Rate limit exceeded — try again later.
+
+⸻
+
+Frame 8 — Bulk Snooze
+	•	User selects multiple nudge cards (checkboxes appear when selection mode enabled).
+	•	Click Bulk Snooze CTA in toolbar: open same Snooze Modal but shows summary: You are about to snooze 12 nudges until <date>.
+	•	Limit: If selection >25, UI prevents entry and shows message: Bulk actions limited to 25 nudges. Reduce selection.
+	•	On confirm: enqueue server requests (batched) and show progress modal with per-item success/failure.
+	•	Telemetry: ai.nudge.snooze.bulk {countSelected, snoozeUntil, resultSummary}
+
+⸻
+
+Accessibility — required behaviors
+	•	Modal accessible: role=dialog, aria-labelledby points to modal title, aria-describedby to body text.
+	•	Date picker keyboard accessible; custom date error announced.
+	•	Snoozed until <date> badge has aria-label with full UTC timestamp.
+	•	Screen reader announcements: on successful snooze: Nudge snoozed until <date>.
+	•	Undo accessible via keyboard and announced by screen reader.
+
+⸻
+
+Exact copy (use verbatim)
+
+Snooze Modal
+	•	Title: Snooze Nudge
+	•	Body: Select duration to snooze this nudge. It will be hidden until the chosen date/time.
+	•	Options: 1 day, 7 days, 30 days, Custom…
+	•	Reason placeholder: Optional: why are you snoozing this nudge?
+	•	Validation error (date): Please pick a future date and time.
+	•	Primary button: Snooze
+	•	Secondary button: Cancel
+
+Processing / Toasts
+	•	Processing toast: Snoozing nudge…
+	•	Success toast: Nudge snoozed until <dateLocal>.
+	•	Offline queued badge tooltip: Queued on <UTC timestamp> from <device> — will apply on reconnect.
+
+Undo
+	•	Undo confirm title: Undo Snooze
+	•	Undo body: Are you sure you want to unsnooze this nudge now?
+	•	Undo buttons: Cancel | Unsnooze
+
+Failure inline
+	•	Snooze failed: <message> (Code: <ERR_CODE>)
+	•	Retry label: Retry
+	•	Cancel label: Cancel Snooze Attempt
+
+Bulk limit message
+	•	Bulk actions limited to 25 nudges. Reduce selection.
+
+Expiry banner
+	•	1 nudge is no longer snoozed — view
+
+⸻
+
+Telemetry (events & minimal payloads)
+
+All events MUST include tenantId, userId, deviceId, nudgeId(s), timestampUTC and optionally modelVersion, confidence.
+	•	ai.nudge.snooze.open {nudgeId, defaultOption}
+	•	ai.nudge.snooze.submit {nudgeId, snoozeUntil, reasonProvided:Y/N}
+	•	ai.nudge.snooze.result {nudgeId, result: success|failed|queued, errorCode?}
+	•	ai.nudge.snooze.undo {nudgeId, result}
+	•	ai.nudge.snooze.expired {nudgeId, snoozeUntil}
+	•	ai.nudge.snooze.bulk {countSelected, snoozeUntil, resultSummary}
+	•	ai.nudge.snooze.error {nudgeId, errorCode, message}
+
+Telemetry must be batched and sent opportunistically; respect telemetry opt-out.
+
+⸻
+
+QA Acceptance Criteria (copy-pasteable)
+	•	AC-SNZ-01: Snooze modal opens when user clicks Snooze on a nudge.
+	•	AC-SNZ-02: Default options selectable; Custom requires future date/time; invalid input blocks Snooze with inline error.
+	•	AC-SNZ-03: After confirming and server success, card shows Snoozed until <date>, Accept/Reject actions disabled, Inspect remains, and Undo appears.
+	•	AC-SNZ-04: Undo works and restores card to Pending state; telemetry emitted.
+	•	AC-SNZ-05: If offline and enqueue allowed, card shows Snooze queued and tooltip includes queued timestamp and device. On reconnection, snooze applies and card updates.
+	•	AC-SNZ-06: Server error displays inline message and offers Retry and Cancel Snooze Attempt controls.
+	•	AC-SNZ-07: Bulk snooze limited to 25 items; UI prevents larger batches.
+	•	AC-SNZ-08: Snooze expiry automatically returns card to Pending state and fires expiry telemetry.
+	•	AC-SNZ-09: Accessibility: modal announces title & description, date errors announced, and badge aria-label includes full UTC.
+
+⸻
+
+QA Test Cases (step-by-step)
+
+TC-SNZ-01 — Basic Snooze (1 day)
+	1.	Preconditions: User online, single nudge visible.
+	2.	Action: Click Snooze → select 1 day → click Snooze.
+	3.	Expected: Card shows Snoozed until <date> (local), toast shows success, Undo visible. Telemetry ai.nudge.snooze.result with success emitted.
+
+TC-SNZ-02 — Custom Future Date Validation
+	1.	Click Snooze → choose Custom → pick past date.
+	2.	Expected: Inline error Please pick a future date and time., Snooze button disabled. Correct with future date → Snooze enabled.
+
+TC-SNZ-03 — Offline Snooze Queued
+	1.	Go offline. Attempt Snooze.
+	2.	If policy allows: confirm → card shows Snooze queued with queued tooltip, telemetry queued event. On reconnect, verify card updates to Snoozed until <date> after server confirms.
+	3.	If policy disallows: Snooze button disabled with tooltip Snooze unavailable offline.
+
+TC-SNZ-04 — Undo Snooze
+	1.	After successful snooze, click Undo.
+	2.	Confirm Unsnooze modal if required.
+	3.	Expected: card returns to Pending state, Undo disappears, telemetry emitted.
+
+TC-SNZ-05 — Server Rejection
+	1.	Simulate server rejecting snooze (e.g., policy for >30 days).
+	2.	Expected: inline error Snooze failed: <serverMessage> (Code: <ERR_CODE>); Retry and Cancel Snooze Attempt buttons visible. Retry reattempts with telemetry.
+
+TC-SNZ-06 — Bulk Snooze Limit
+	1.	Select 26 nudges and click Bulk Snooze.
+	2.	Expected: UI prevents action and shows Bulk actions limited to 25 nudges. Reduce selection.
+
+TC-SNZ-07 — Snooze Expiry
+	1.	Snooze for short window (e.g., 1 minute in test env) or simulate expiry.
+	2.	Expected: card returns to Pending, expiry banner or toast appears, telemetry ai.nudge.snooze.expired emitted.
+
+⸻
+
+Jira Tasks (ready-to-paste)
+	•	NDG-SNZ-001: Implement Snooze modal UI (options: 1d, 7d, 30d, Custom) with date/time picker & validation.
+	•	NDG-SNZ-002: Implement client-side validations for custom date/time and enable/disable Snooze button accordingly.
+	•	NDG-SNZ-003: Implement processing states: Snoozing…, Snooze queued (if offline), Snoozed until <date>.
+	•	NDG-SNZ-004: Implement Undo Snooze flow + confirm modal for long snoozes.
+	•	NDG-SNZ-005: Implement snooze expiry handling (UI refresh & banner/toast).
+	•	NDG-SNZ-006: Implement failure handling with inline error, Retry & Cancel Snooze Attempt.
+	•	NDG-SNZ-007: Implement Bulk Snooze with 25-item limit and progress modal.
+	•	NDG-SNZ-008: Accessibility & keyboard behavior for modal and badge aria-labels.
+	•	NDG-SNZ-009: Telemetry instrumentation for all snooze events.
+	•	NDG-SNZ-010: QA e2e tests & test data scenarios (TC-SNZ-01..07).
+
+Each task DoD: unit tests, integration (msw/backend stubs), e2e tests, accessibility checks, telemetry visible in sandbox, PO demo.
+
+⸻

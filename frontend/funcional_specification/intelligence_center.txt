@@ -1,0 +1,350 @@
+0 — Purpose & Scope
+
+The Intelligence Center is the read/act analytics and recommendation hub. It surfaces automation performance, AI adoption metrics, knowledge health, and nudges (actionable AI recommendations). It allows users (Managers, SMEs, SREs) to review, accept, snooze or reject nudges; inspect automation runs and trend metrics; and push accepted nudges into SmartQueue as pre-filled WorkItems. The frontend is strictly a presentation & interaction layer; all decisions, validations and final effects are authoritative from backend.
+
+⸻
+
+1 — Entry Points & Navigation
+	•	Global nav → Intelligence tile.
+	•	Deep links from Pulse (drill-down) or WorkItem (link back to Intelligence nudge).
+	•	Keyboard shortcut: g i opens Intelligence.
+
+On open default: Overview (top-level summary) with tabs: Automations, AI Adoption, Knowledge Health, Nudges, Approvals Analytics.
+
+⸻
+
+2 — Layout & Primary Screens
+	•	Top-level: header with persona selector + timeframe control (Last 7/30/90 days) + quick export (CSV/PDF).
+	•	Left nav or top tabs: Overview, Automations, AI Adoption, Knowledge, Nudges, Approvals.
+	•	Main area: widgets, lists, and detail panes. Right rail: contextual explainability and drill-down controls.
+
+⸻
+
+3 — Core Modules & Micro-Interactions
+
+3.A Overview Screen
+
+Must show
+	•	KPI cards: Automation ROI (hrs saved), AI Adoption %, Knowledge Health %, Avg MTTR, Nudges Accepted %.
+	•	Each card: title, metric, trend delta, lastUpdated timestamp, Why? (if AI-derived), and CTA View details.
+
+Drill-down
+	•	Click Automation ROI → Automations tab pre-filtered.
+	•	Click AI Adoption → Adoption tab with team breakdown.
+
+Offline
+	•	Show cached snapshot with Last updated (offline).
+
+QA
+	•	AC-OV-01: Cards display required fields and View details navigates correctly.
+
+⸻
+
+3.B Automations Tab
+
+Purpose: Show automation catalog, run performance, rollbacks, and per-automation run logs.
+
+List view (rows) shows
+	•	automationId, name, runCount, success%, avgRuntime, rollback%, riskTier, lastRunAt (UTC).
+	•	View Runs CTA (opens run log), Flag for Review (opens modal), Run Now (if allowed and backend permits).
+
+Run Log detail
+	•	Chronological list: runId, triggeredBy, result, duration, serverAuditEntryId, artifacts (if any).
+	•	Filter: success/failure/time range.
+
+Run Now flow
+	•	Click Run Now → confirmation modal (shows riskTier and rollback). If backend allows run (and action is low-risk), on confirm send request. UI shows Run queued or Run started based on server response. If offline, disable with tooltip Run unavailable offline.
+
+Flag for Review
+	•	Opens modal: required short reason (min 8 chars). On submit, send to backend.
+
+Explainability
+	•	Why this automation? control opens right rail with training metrics and top failure causes.
+
+Acceptance
+	•	AC-AUT-01: Run log shows required run fields.
+	•	AC-AUT-02: Run Now disabled offline and when backend disallows.
+
+QA
+	•	TC-AUT-01: Flag for Review with reason ≥8 chars accepted; <8 blocked.
+	•	TC-AUT-02: Run Now shows confirmation modal and telemetry emitted.
+
+⸻
+
+3.C AI Adoption Tab
+
+Purpose: Show adoption metrics by team, time, and suggested training areas.
+
+Widgets
+	•	Adoption % by team (bar chart).
+	•	Accepted vs rejected suggestions over time (line chart).
+	•	Top rejection reasons list (click to view sample WorkItems).
+
+Interactions
+	•	Hover bar → tooltip with numbers.
+	•	Click team bar → filter Nudges / Automations to that team / timeframe.
+	•	Export CSV of adoption rates.
+
+Explainability
+	•	Click Top rejection reason → panel with sample rejected nudge cards and example rejection reasons.
+
+Offline
+	•	Read-only cached snapshot.
+
+Acceptance
+	•	AC-ADP-01: Charts render with correct labels; clicking filters accordingly.
+
+QA
+	•	TC-ADP-01: Click rejection reason → sample list loads and deep-links to WorkItems.
+
+⸻
+
+3.D Knowledge Health Tab
+
+Purpose: Surface stale KB articles, review backlog, and knowledge compliance.
+
+List
+	•	ArticleId, title, lastReviewedAt, reviewStatus (Up-to-date / Stale / Under Review), linked WorkItems count, owner.
+
+Actions
+	•	Open Article (link), Request Review, Mark Reviewed (requires reason if status was Stale).
+
+Nudge Creation
+	•	From an accepted nudge, UI may show Create Knowledge Draft (opens a prefilled knowledge item creation flow — backend handles creation).
+
+Acceptance
+	•	AC-KN-01: Stale articles flagged and review actions available.
+
+QA
+	•	TC-KN-01: Request Review modal requires justification if owner is not available.
+
+⸻
+
+3.E Nudges Tab (most interaction-heavy)
+
+Purpose: Show model-generated actionable suggestions (nudges) and allow users to Accept, Snooze, or Reject them.
+
+List View
+	•	Nudge card fields: nudgeId, title/summary, confidence%, createdAt (UTC), suggestedAction (short human text), suggestedWorkItemPrefill (if any), modelVersion, sampleMatches (count of matching incidents), CTA: Accept, Snooze, Reject, Inspect.
+
+Nudge Inspect flow
+	•	Click Inspect → open detail panel showing: full suggestion text, top-3 drivers, example incidents, modelVersion, training status link, and Why? expand.
+
+Accept Nudge flow (core)
+	1.	Click Accept.
+	2.	Open Confirm modal showing prefilled WorkItem summary (fields that will be created: Title, Type, Priority, Suggested Assignee (optional), SLA).
+	•	Modal copy (exact):
+	•	Title: Accept Nudge
+	•	Body: This will create a pre-filled WorkItem in SmartQueue: <title>. SLA will start when created. Do you want to proceed?
+	•	Buttons: Cancel | Create WorkItem
+	3.	On Confirm: send accept request to backend.
+	•	On success: show toast WorkItem created from nudge — ID WI-xxxxx and provide CTA Open WorkItem. The new WorkItem appears in SmartQueue for relevant users (backend responsibility).
+	•	On failure: show detailed error inline with Retry option.
+	4.	Telemetry: emit ai.nudge.accept with nudgeId, modelVersion, confidence, result.
+
+Snooze flow
+	•	Click Snooze → open modal with snooze options: 1 day, 7 days, 30 days, Custom (date selector). Must select reason optional.
+	•	On confirm: UI shows Snoozed until <date> on card.
+
+Reject flow
+	•	Click Reject → open modal requiring reason (min 8 chars). Also optional Suggest improvement text field.
+	•	On submit: send reject feedback to backend for training. UI updates card to Rejected and moves to Rejected list or archives based on user preference.
+	•	Telemetry: ai.nudge.reject emitted with reason length and modelVersion.
+
+Batch operations
+	•	Allow selecting multiple nudges for bulk Snooze or Bulk Reject with same reason. Limit: 25 items per bulk op.
+
+Edge behaviors
+	•	If Accept requires approval (backend flag), Accept opens a secondary modal: Accept requires approval from <role>. Submit request? On confirm it creates a request (not a WorkItem) — UI shows Accept Request Submitted.
+
+Offline
+	•	Accept disabled if backend disallows offline creation; otherwise enqueue with Pending sync (rare, PO to decide policy). UI must show disabled/tooltip accordingly.
+
+Acceptance
+	•	AC-NDG-01: Accept creates a prefilled WorkItem (backend side effect); UI shows created ID and provides Open link.
+	•	AC-NDG-02: Reject requires reason ≥8 chars.
+	•	AC-NDG-03: Snooze options work and update card.
+
+QA
+	•	TC-NDG-01: Accept nudge → verify WorkItem created (backend stub) and SmartQueue shows it.
+	•	TC-NDG-02: Reject nudge without reason blocked.
+	•	TC-NDG-03: Snooze 7 days → card shows snoozed indicator.
+
+⸻
+
+3.F Approvals Analytics Tab
+
+Purpose: show approval throughput, avg approval time, and bottlenecks.
+
+Widgets
+	•	Average approval time (bar by team).
+	•	Pending approvals queue (linked to SmartQueue).
+	•	Top approvers (by time to approve).
+
+Interactions
+	•	Click approver → show list of approvals they handled (deep link to related WorkItems).
+
+Acceptance
+	•	AC-APPR-01: Click approver → list opens and deep-link works.
+
+QA
+	•	TC-APPR-01: Approvals average time calculation visible (read-only).
+
+⸻
+
+4 — Explainability Requirements (everywhere)
+	•	Any AI-generated metric, forecast, or suggestion must show: confidence %, top-3 drivers, modelVersion. Why? opens side panel with human-readable reasoning (≤300 chars).
+	•	When user rejects nudge, UI must capture reason (min 8 chars) and send as feedback payload (frontend must validate input length).
+	•	For bulk reject, record that multiple feedback entries were created (one per nudge) with same reason text.
+
+⸻
+
+5 — Offline & Error UX
+	•	Intelligence is mostly read-only offline. Cached snapshots should be visible with Last updated (offline) banner.
+	•	For action flows (Accept/Snooze/Reject), default policy: actions require online. If PO explicitly allows enqueueing Accepts, show Pending sync badge and ensure server reconciliation.
+	•	On API errors show inline error messages with errorCode. Provide Retry and Report (pre-filled email link with telemetry context).
+
+Exact error copy:
+	•	Action failed: <message> (Code: <ERR_CODE>)
+	•	Unable to load data — retry (button)
+
+⸻
+
+6 — Filters, Sorting, Grouping
+	•	Timeframe control (Last 7/30/90). Default 30 days.
+	•	Filters: Team, Service, RiskTier, Confidence range (slider), Status (Pending/Accepted/Snoozed/Rejected).
+	•	Sorting: confidence desc, createdAt desc, relevance.
+
+⸻
+
+7 — Bulk Actions & Limits
+	•	Bulk Snooze / Bulk Reject / Bulk Export supported. Bulk operations limited to 25 items per action (UI prevents >25).
+	•	Bulk Accept is disabled (must be individual to ensure proper prefilled WorkItem checks).
+
+⸻
+
+8 — Accessibility & Keyboard
+	•	List items focusable; cards announce summary.
+	•	Keyboard: j/k navigate nudges, Enter inspect, a accept (opens modal), s snooze, r reject.
+	•	Screen reader: announce nudgeId + title + confidence + suggested action.
+
+⸻
+
+9 — Visual Micro-Interaction Guidance
+	•	Nudge card hover: elevation + subtle border.
+	•	Accept success: toast WorkItem created from nudge — WI-xxxxx with link.
+	•	Snooze animation: card dims slightly with Snoozed until <date> badge.
+	•	Reject: card fades to Rejected state and moves to archived list.
+
+Provide reduce-motion option.
+
+⸻
+
+10 — Telemetry Events (must emit)
+
+All events include tenantId, userId, deviceId, timestampUTC. For actionable events include nudgeId or automationId.
+	•	intelligence.open {persona, timeframe}
+	•	intelligence.widget.view {widgetId}
+	•	automation.run.now {automationId, userId}
+	•	automation.flag {automationId, reasonPresent}
+	•	ai.nudge.inspect {nudgeId, modelVersion, confidence}
+	•	ai.nudge.accept {nudgeId, modelVersion, confidence, result: created|queued|failed}
+	•	ai.nudge.snooze {nudgeId, snoozeUntil}
+	•	ai.nudge.reject {nudgeId, reasonLength}
+	•	ai.adoption.view {teamId}
+	•	intelligence.export {format, filters}
+	•	intelligence.error {component, errorCode}
+
+Telemetry must be batched and sent opportunistically.
+
+⸻
+
+11 — QA Test Matrix (copy-pasteable)
+
+Automations
+	•	TC-AUT-01: Click Run Now on a low-risk automation → confirm modal → on success run log updated.
+	•	TC-AUT-02: Flag for Review with reason <8 chars blocked; ≥8 accepted.
+
+Nudges
+	•	TC-NDG-01: Inspect nudge → Why? panel shows top-3 drivers + modelVersion.
+	•	TC-NDG-02: Accept nudge → confirm prefilled WorkItem modal → on success toast shows ID; SmartQueue contains new WorkItem (backend stub).
+	•	TC-NDG-03: Reject without reason blocked; with reason accepted and feedback recorded (verify telemetry).
+	•	TC-NDG-04: Snooze 7 days → card shows Snoozed until <date> badge.
+	•	TC-NDG-05: Bulk Reject >25 items blocked.
+
+AI Adoption
+	•	TC-ADP-01: Click team bar → Nudges list filtered by team.
+	•	TC-ADP-02: Export CSV returns appropriate dataset (stubbed in test env).
+
+Knowledge
+	•	TC-KN-01: Mark article reviewed → UI shows Reviewed badge; telemetry emitted.
+
+General
+	•	TC-GEN-01: Offline snapshot visible; action attempts (Accept) disabled with tooltip.
+	•	TC-GEN-02: Error flows show error code + Retry button.
+
+⸻
+
+12 — Jira Tasks (ready-to-paste)
+
+Epic: Intelligence Center UI
+	•	INT-001: Overview screen implement KPI cards + drill-downs. (AC-OV-01)
+	•	INT-002: Automations tab — list + run log + Run Now modal + Flag for Review. (AC-AUT-01)
+	•	INT-003: AI Adoption tab — charts + team filters + export. (AC-ADP-01)
+	•	INT-004: Knowledge Health tab — list stale articles + review actions. (AC-KN-01)
+	•	INT-005: Nudges tab — nudge cards + Inspect + Accept/Snooze/Reject flows + prefilled WorkItem confirm. (AC-NDG-01..03)
+	•	INT-006: Approvals analytics tab — approval throughput widgets + deep links. (AC-APPR-01)
+	•	INT-007: Filters & timeframe control across Intelligence.
+	•	INT-008: Telemetry instrumentation for all Intelligence events.
+	•	INT-009: Accessibility & keyboard interactions.
+	•	INT-010: QA e2e tests for all TC items.
+
+Each task DoD: unit tests, integration tests (msw or stubs), e2e, accessibility checks, telemetry verification, PO demo.
+
+⸻
+
+13 — Copy Library (exact strings)
+
+Nudge Inspect
+	•	Why? panel header: Why this nudge?
+	•	AI disclaimer: Suggestions are guidance only — confirm before acting.
+
+Accept Nudge modal
+	•	Title: Accept Nudge
+	•	Body: This will create a pre-filled WorkItem in SmartQueue: "<title>". SLA will start when created. Do you want to proceed?
+	•	Buttons: Cancel | Create WorkItem
+
+Snooze modal
+	•	Title: Snooze Nudge
+	•	Body: Select duration to snooze this nudge.
+	•	Options: 1 day, 7 days, 30 days, Custom (date picker)
+	•	Buttons: Cancel | Snooze
+
+Reject modal
+	•	Title: Reject Nudge
+	•	Body: Provide a reason for rejection (required, min 8 characters). Optional: suggest improvement.
+	•	Fields: Reason (required) / Suggested improvement (optional)
+	•	Buttons: Cancel | Submit Rejection
+
+Automation Run
+	•	Confirm modal: Automation: <name> / Risk: <Low/Medium/High> / Rollback available: <Yes/No> / Buttons: Cancel | Confirm & Run
+
+Error
+	•	Action failed: <message> (Code: <ERR_CODE>)
+	•	Unable to load data — retry
+
+⸻
+
+14 — Accessibility Notes
+	•	All charts must have accessible table fallback download and aria-labels.
+	•	Nudge cards must be keyboard navigable; Inspect opens panel and focus lands on first interactive element inside.
+	•	Date pickers accessible and keyboard operable.
+	•	Color not the only indicator of riskTier; use icons and text.
+
+⸻
+
+15 — Final Constraints & Non-negotiables
+	•	Frontend must not create WorkItems without backend confirmation. Accept Nudge sends request — only server returns created WorkItem ID. UI shows it when server confirms.
+	•	Reject reasons must be validated on client (min 8 chars) and sent as feedback payload.
+	•	Bulk operations limited to 25 items. UI prevents larger batches.
+	•	Telemetry mandatory for all user actions; batch events and respect privacy opt-outs.

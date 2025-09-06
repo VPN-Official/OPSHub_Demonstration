@@ -1,0 +1,335 @@
+SmartQueue — Micro-Interaction Flows (Frontend-Only, MVP)
+
+0 — Purpose & scope
+
+SmartQueue is the user’s primary triage surface. This spec defines all micro-interactions for item listing, inline actions, filters, bulk actions, offline affordances, and transitions from list → WorkItem. It is strictly a UI contract: the frontend displays and validates only; final decisions come from backend.
+
+⸻
+
+Contents
+	1.	Entry points & navigation
+	2.	Layout & visual hierarchy
+	3.	Row/Card collapsed view (what is visible)
+	4.	Row/Card expanded preview (mini-detail)
+	5.	Core inline actions (Assign to me, Comment, Run Automation, Approve, Reject, View)
+	6.	Bulk actions & limits
+	7.	Filters, search, sort, pagination behaviours
+	8.	Offline affordances & queued-action UX
+	9.	Error states & messaging (exact copy)
+	10.	Accessibility & keyboard flows
+	11.	Visual & animation guidance (micro-interactions)
+	12.	Telemetry events (required)
+	13.	Acceptance criteria (QA-ready)
+	14.	Test cases (step-by-step)
+	15.	Jira tasks / subtasks (ready to paste)
+	16.	Copy library (modals, tooltips, toasts)
+
+⸻
+
+1 — Entry points & navigation
+	•	Global nav / persona landing page → SmartQueue tab default for Engineer persona.
+	•	Drill-down from Pulse widgets or Intelligence → SmartQueue with preserved filters.
+	•	Deep link from notifications → SmartQueue filtered to related item(s).
+	•	Keyboard shortcut: g q opens SmartQueue.
+
+On open: show header with persona selector, filter bar, view toggle (Table / Card / Compact), and primary list.
+
+⸻
+
+2 — Layout & visual hierarchy (desktop + mobile)
+	•	Desktop: header + persistent filter bar, table/list main area, right sticky preview panel (optional on wide screens).
+	•	Mobile: header + collapsible filter drawer, default Card view, tap to expand to mini-detail.
+	•	Focus order: header → filter bar → list → pagination / infinite scroll control.
+
+⸻
+
+3 — Row / Card — Collapsed View (MUST show)
+
+Collapsed row/card fields (visible without expansion):
+	1.	WorkItemId — copy icon + link.
+	2.	Title — single line with ellipsis; hover/tap to expand.
+	3.	Type — kata tag (Incident/Request/Change/Automation/Nudge).
+	4.	Priority — P0–P4 tag (text + color).
+	5.	SLARemaining — HH:MM countdown; show status: normal/amber/red (breached). Hover shows absolute UTC deadline.
+	6.	SmartScore (0–10) + Confidence% pill; Why? control opens explain panel.
+	7.	AssignedTo — avatar + display name (or Unassigned).
+	8.	LastUpdatedBy + timeAgo — hover shows full UTC timestamp.
+	9.	QuickActions menu (icon) — opens contextual menu with permitted actions.
+	10.	Queued Badge — if action on this item has local queued changes show Pending sync small badge.
+
+Accessible touch targets for each element.
+
+⸻
+
+4 — Row / Card — Expanded Preview (mini-detail)
+
+Expand opens inline preview or right-side preview:
+	•	Show short description (first 300 chars), top 2 AI recommendations summary, small activity snapshot (last 3 entries), attachments count, Approvals status summary.
+	•	Primary CTAs: Open Full WorkItem, Assign, Run Automation (if permitted), Approve/Reject.
+	•	Close collapses back to list.
+
+⸻
+
+5 — Core inline actions (flows & exact copy)
+
+Important: the UI may optimistically update only for explicitly permitted low-risk actions. Backend finalizes.
+
+5.1 Assign → Assign to me
+	•	Trigger: click Assign to me quick action.
+	•	Flow:
+	1.	Confirmation toast/modal only if backend signals that assign has workflow impact (via server flag); otherwise immediate action.
+	2.	If online: send request to backend, show transient Assigning… state on row. On success replace with Assigned to <you> and append Activity Log entry with clientActionId (if provided). On failure show inline error.
+	3.	If offline: enqueue action, mark row with Pending sync and show toast Assigned locally — will sync when online.
+	•	Validation: none beyond RBAC check.
+	•	Exact copy — confirmation modal (only when needed):
+	•	Title: Assign to yourself?
+	•	Body: Assigning will transfer ownership to you. This action will be logged. Proceed?
+	•	Buttons: Cancel | Assign to me
+
+5.2 Comment → Quick Comment
+	•	Trigger: click comment icon → opens inline comment editor (single-line or small text area).
+	•	Flow:
+	•	Input validation: required non-empty, max 2000 chars.
+	•	Submit: optimistic append of comment to inline activity preview with Pending sync indicator if offline or while in-flight.
+	•	On server response: update activity with server timestamp and audit id; on error show inline error and Retry button next to comment.
+	•	Copy: placeholder Add a comment… (Enter to post)
+
+5.3 Run Automation → Run (low-risk inline)
+	•	Visibility: Run button only visible if backend indicates riskTier: low for this automation AND user has execution permission.
+	•	Flow:
+	1.	Click Run → open Confirm Automation Run modal (always). (Exact modal copy below)
+	2.	On Confirm: if online, send run request; show inline state Automation: Running with spinner; append pending audit entry. If offline, enqueue as queued action (show Pending sync).
+	3.	On success: show toast Automation run started — see Activity Log and update row state as per server response.
+	4.	On failure: show detailed inline error linking to reason.
+	•	Confirm modal copy (must be exact):
+	•	Title: Confirm Automation Run
+	•	Body lines:
+	•	Automation: <name>
+	•	Risk: <Low|Medium|High>
+	•	Rollback available: <Yes|No>
+	•	This action will be executed and logged. Proceed?
+	•	Buttons: Cancel | Confirm & Run
+
+5.4 Approve / Reject
+	•	Approve:
+	•	Click Approve → if backend requires MFA or approval rules, UI must show an interstitial indicating Approval pending MFA (backend decides). Otherwise confirm inline and append audit entry.
+	•	If offline: enqueue (only allowed if backend allowed offline approvals; otherwise disable with tooltip Offline approvals not allowed).
+	•	Reject:
+	•	Click Reject → open Reject modal (mandatory reason).
+	•	Modal copy:
+	•	Title: Reject <type>
+	•	Body: Please provide a rejection reason (required).
+	•	Input: multi-line text area, min 8 chars.
+	•	Buttons: Cancel | Submit Rejection
+	•	On submit: send to backend, show inline state Rejected and log audit. If offline enqueue, mark Pending sync.
+
+5.5 View → Open WorkItem
+	•	Clicking WorkItemId / Title opens full WorkItem Detail route. Must preserve current filters and scroll position (so back returns to same place).
+
+⸻
+
+6 — Bulk actions & limits
+
+Bulk selection
+	•	Checkbox on each row and master checkbox in header.
+	•	Max bulk selection limit: 25 items. When user tries to select more than 25, immediately show inline message: Bulk actions limited to 25 items. Adjust selection. and prevent further selection.
+
+Bulk actions
+	•	Supported: Bulk Assign, Bulk Approve (if all items are approvable), Bulk Run Automation (only if same automation available & all are low-risk), Bulk Comment (applies same comment to all).
+	•	Flow:
+	•	Click Bulk action → open Bulk Action Summary modal listing items (show truncated list with Show more), required inputs (e.g., assignee), and estimated per-item outcomes.
+	•	Confirmation required for any bulk automation run or approval.
+	•	On submit, UI enqueues/batches requests and shows progress modal with per-item results (success/failure), retry for failures.
+	•	Exact copy — Bulk limit tooltip: Maximum 25 items per bulk operation to prevent accidental mass changes.
+
+⸻
+
+7 — Filters, search, sort & pagination behaviours
+
+Filters
+	•	Filter bar fields: Assignment (Me/Team/Unassigned), Type, Priority, SLA window (Overdue, Due Today, Next 24h), Service, RiskTier, AI-only toggle (only items with AI recs).
+	•	Filters persist per-user (store client-side preference).
+	•	Changing filters triggers list refresh; show skeleton and animate in. Preserve previous scroll position only if same filter set.
+
+Search
+	•	Free-text search across WorkItemId, Title, Tags, Assignee. Search is debounced (400ms) client-side.
+	•	Show No results CTA Clear filters and Create new incident when search yields none.
+
+Sorting
+	•	Default sort: SmartScore desc then SLARemaining asc.
+	•	Sort options: SmartScore, SLA time, Last updated, Priority. Sorting indicator shows arrow and active sort field.
+
+Pagination / Infinite scroll
+	•	Desktop: prefer cursor-based infinite scroll with “Load more” control; maintain stable sort keys to avoid duplicates on refresh.
+	•	Mobile: page size smaller with “Load more”.
+
+⸻
+
+8 — Offline affordances & queued-action UX
+
+Visuals
+	•	Row badge Pending sync appears on any item with local queued mutations. Tooltip: Queued on <UTC timestamp> from <deviceName>.
+	•	Global offline banner: Offline — actions will be queued locally. View Sync Center to manage.
+
+Behavior
+	•	When offline, disable actions that backend does not allow offline (backend-provided flag). Disabled actions show tooltip Offline — action unavailable or Available offline depending on policy.
+	•	When performing an allowed offline action: UI must create a local queued entry (clientActionId), show optimistic change (if allowed) and show Pending sync. If optimistic update not allowed for action, show local pending indicator without changing authoritative displayed state until server confirms.
+
+Sync reconcilation messaging
+	•	Upon reconnect, if queued actions replay successfully, replace Pending sync with server audit id in Activity Log. If conflicts occur, surface at row with Conflict pill and deep link to Sync Center conflict resolution.
+
+⸻
+
+9 — Error states & messaging (exact copy)
+
+Inline / row errors
+	•	Action failed: <short server message> (Code: <ERR_CODE>) — show inline under row quick actions with Retry button.
+	•	Network error — action queued — show toast when trying to perform an online-only action offline.
+
+Toasts & banners
+	•	Success toast: Action completed — see Activity Log for details.
+	•	Offline toast: You are offline — actions will be queued.
+	•	Bulk partial failure: Bulk operation completed: X succeeded, Y failed. Open details.
+
+Validation messages
+	•	Reject reason: Please provide a rejection reason (at least 8 characters).
+	•	Bulk limit: Bulk actions limited to 25 items. Reduce selection.
+
+⸻
+
+10 — Accessibility
+
+Screen reader
+	•	When focusing a row announce: WorkItem <WorkItemId>, <Title>, Priority <P>, SLA <hours remaining> , SmartScore <value> confidence <NN percent>.
+	•	Why? control announces show AI reasoning. The side panel reads first 200 chars of explanation.
+
+Focus management
+	•	Modals trap focus. On close, focus returns to triggering control. On Open WorkItem, focus moves to WorkItem header.
+
+⸻
+
+11 — Visual & animation guidance (micro-interactions)
+	•	Row hover: subtle elevation + soft shadow. Transition 120ms.
+	•	Expand/collapse: slide & fade 160ms.
+	•	Pending sync badge: pulse animation (slow) to indicate background activity.
+	•	Confirmation modals: fade-in 120ms, focus on primary CTA.
+
+Keep motion subtle and provide reduce-motion preference support.
+
+⸻
+
+12 — Telemetry events (frontend must emit)
+
+Each event must include tenantId, userId, deviceId, clientActionId (if relevant), workItemId, timestampUTC.
+	•	smartqueue.open {persona, filtersAppliedCount}
+	•	smartqueue.row_expand {workItemId}
+	•	smartqueue.assign {workItemId, clientActionId, result: started|success|failed}
+	•	smartqueue.quick_comment {workItemId, clientActionId, lengthChars}
+	•	smartqueue.run_automation.open_confirm {automationId, riskTier}
+	•	smartqueue.run_automation.decide {automationId, clientActionId, result: started|queued|failed}
+	•	smartqueue.approve {workItemId, clientActionId, result}
+	•	smartqueue.reject {workItemId, clientActionId, reasonPresent: Y/N}
+	•	smartqueue.bulk_action {actionType, countSelected, clientBatchId, resultSummary}
+	•	smartqueue.filter_change {filters}
+	•	smartqueue.offline_action_enqueued {clientActionId, actionType}
+	•	smartqueue.error {workItemId?, actionType?, errorCode}
+
+Batch and send opportunistically; opt-out respected.
+
+⸻
+
+13 — Acceptance criteria (QA-ready)
+	•	AC-SQ-01: Collapsed row shows all required fields (WorkItemId, Title, Type, Priority, SLARemaining, SmartScore, AssignedTo, LastUpdated, QuickActions).
+	•	AC-SQ-02: Why? toggles explain panel showing top-3 drivers + modelVersion.
+	•	AC-SQ-03: Assign to me updates assignment in UI; when offline shows Pending sync and enqueues action.
+	•	AC-SQ-04: Reject requires reason >=8 chars. Submit blocked until valid.
+	•	AC-SQ-05: Run Automation shows confirmation modal; run only allowed if backend indicated low risk.
+	•	AC-SQ-06: Bulk selection limited to 25 items; UI prevents selecting >25.
+	•	AC-SQ-07: Filters persist across navigation and app restarts.
+	•	AC-SQ-08: Keyboard navigation and screen-reader announcements function as specified.
+
+⸻
+
+14 — Test cases (step-by-step)
+
+TC-SQ-01: Collapsed Row Fields
+	1.	Open SmartQueue as Engineer.
+	2.	Confirm first 10 rows display required fields; hover SLARemaining to see UTC deadline.
+
+TC-SQ-02: Why? explainability
+	1.	Click Why? on a row with SmartScore.
+	2.	Expect side panel with top-3 drivers, confidence %, modelVersion.
+
+TC-SQ-03: Assign to me online
+	1.	Ensure online. Click Assign to me on an unassigned row.
+	2.	Expect temporary Assigning… state, then Assigned to you and Activity Log entry appended.
+
+TC-SQ-04: Assign to me offline
+	1.	Go offline. Click Assign to me.
+	2.	Expect Assigned locally — will sync when online toast, Pending sync badge on row, and Sync Center shows queued action.
+
+TC-SQ-05: Run automation confirmation
+	1.	On a row with automation allowed (low-risk), click Run.
+	2.	Confirm modal content. Click Confirm & Run.
+	3.	Expect Automation: Running state and Automation run started toast on success.
+
+TC-SQ-06: Reject requires reason
+	1.	Click Reject on a row.
+	2.	Try submit with empty reason — expect validation error. Enter 5 chars — still blocked. Enter 8+ char reason and submit — expect success confirmation and Activity Log entry.
+
+TC-SQ-07: Bulk limit
+	1.	Select 26 items.
+	2.	Expect UI to prevent selection after 25 + message Bulk actions limited to 25 items.
+
+TC-SQ-08: Keyboard navigation
+	1.	Use j/k to move focus between rows; Enter expands; c opens comment editor; type and Enter posts comment. Screen reader reads appropriate announcements.
+
+⸻
+
+15 — Jira tasks / subtasks (ready to paste)
+
+Epic: SmartQueue UI
+	•	SQ-001: Implement SmartQueue list UI (collapsed rows) — includes required fields & Why? control. (AC-SQ-01, AC-SQ-02)
+	•	SQ-002: Implement Row expansion mini-detail + sticky preview panel. (AC-SQ-01)
+	•	SQ-003: Inline actions: Assign to me, Quick Comment, Approve/Reject flows (incl. Reject modal validation). (AC-SQ-03, AC-SQ-04)
+	•	SQ-004: Run Automation flow including Confirm modal and permission gating. (AC-SQ-05)
+	•	SQ-005: Bulk selection and bulk action modal + per-item result reporting (limit 25). (AC-SQ-06)
+	•	SQ-006: Filters, persistence, search & sorting behavior. (AC-SQ-07)
+	•	SQ-007: Offline affordances: queued badge, enqueuing telemetry, Sync Center integration. (AC-SQ-04)
+	•	SQ-008: Accessibility & keyboard interactions + screen-reader announcements. (AC-SQ-08)
+	•	SQ-009: Telemetry instrumentation for all smartqueue events.
+	•	SQ-010: E2E tests & QA scripts (TC-SQ-01 through TC-SQ-08).
+
+For each task include DoD: unit tests, integration tests (mock server), e2e, accessibility checks, telemetry verification, PO demo.
+
+⸻
+
+16 — Copy library (exact strings)
+
+Tooltips & badges
+	•	Pending sync — tooltip: Queued on <dateUTC> from <deviceName>
+	•	Why? control tooltip: Explain SmartScore
+
+Toasts
+	•	Assigned locally — will sync when online
+	•	Assigned to you. See Activity Log for details.
+	•	Automation run started — see Activity Log
+	•	Action failed: <short server message> (Code: <ERR_CODE>)
+
+Modals
+	•	Confirm Automation Run (see §5.3)
+	•	Assign to yourself (see §5.1)
+	•	Reject — reason required: Please provide a rejection reason (at least 8 characters).
+
+Bulk limit message
+	•	Bulk actions limited to 25 items. Reduce selection.
+
+Offline banner
+	•	Offline — actions will be queued locally. Open Sync Center to manage queued items.
+
+⸻
+
+Final notes & constraints (enforceable)
+	•	Frontend must not perform business rules (e.g., compute SmartScore, decide automation safety). All such values are display-only from server payloads. If UI needs to gate actions (show/hide/run), it must rely on server-provided flags/claims.
+	•	All mutating actions must be associated with a clientActionId and telemetry must include it where applicable.
+	•	Rejects and conflict overrides require mandatory reasons when the spec says so; client must validate length and presence before sending.

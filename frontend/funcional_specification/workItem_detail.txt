@@ -1,0 +1,466 @@
+0 — Purpose
+
+Provide a single workspace for engineers, managers, SMEs to resolve a WorkItem. The page combines:
+	•	Header (status & SLA context),
+	•	Tabs (details, logs, approvals, etc.),
+	•	AI Sidebar (recommendations, knowledge, automations),
+	•	Action Panel (assign, approve, reject, run automation, comment, escalate).
+
+All governance, audit, and explainability rules apply here.
+
+⸻
+
+1 — Entry Points
+	•	From SmartQueue row/card click → open WorkItem in new route (must preserve filter context).
+	•	From Notifications deep link → open WorkItem detail.
+	•	From Intelligence (nudge accepted) → open pre-filled WorkItem.
+
+Focus rule: focus lands on header strip for screen readers.
+
+⸻
+
+2 — Layout & Required Elements
+
+2.1 Header Strip (always visible, sticky)
+	•	WorkItemId (copyable).
+	•	ExternalRef (e.g., SNOW ID, link icon).
+	•	Status + workflow breadcrumb (e.g., New → In Progress → Resolved).
+	•	Priority Tag (P0–P4).
+	•	SLARemaining (HH:MM, red if breached, amber if <15m). Tooltip: UTC deadline.
+	•	SmartScore pill (value + confidence%) + Why? link.
+	•	AssignedTo (avatar + display name).
+	•	BusinessImpact (users/services affected, $ if available).
+
+2.2 Tabs (left/main)
+	•	Details — description, reporter, affected services.
+	•	Activity Log — immutable entries.
+	•	AI Recommendations — list of recs (see §3).
+	•	System Logs — snapshot (not streaming on mobile).
+	•	Attachments — list, preview, statuses.
+	•	Approvals — approvers + decisions.
+	•	Related Items — linked tickets & incidents.
+
+2.3 AI Sidebar (right)
+	•	Shows top 3 recommendations.
+	•	Each card: text, confidence%, riskTier, rollbackAvailable Y/N, modelVersion, Why? control.
+	•	CTAs: Run automation (if low risk & permitted), View knowledge, Apply recommendation.
+
+2.4 Sticky Action Panel (bottom/right)
+	•	Buttons: Assign, Approve, Reject, Run Automation, Add Comment, Attach File, Escalate/Join War Room.
+
+⸻
+
+3 — Core Interactions & Micro-Flows
+
+3.1 Assign/Reassign
+	•	Click Assign → open selection modal:
+	•	Search bar + user/team list.
+	•	Current assignment pre-selected.
+	•	Confirm → update UI; if offline, mark Pending sync.
+	•	Copy:
+	•	Title: Assign WorkItem
+	•	Body: Choose assignee
+	•	Buttons: Cancel | Assign
+
+3.2 Approve
+	•	Click Approve → if backend requires MFA, show modal:
+	•	“Approval requires verification. Please complete MFA.”
+	•	Otherwise → inline success: row in Approvals tab updates, Activity Log entry added.
+	•	Offline approvals: only if backend flag allowOfflineApproval=true. Otherwise disable with tooltip “Offline approvals not allowed.”
+
+3.3 Reject
+	•	Click Reject → open modal (mandatory reason).
+	•	Copy:
+	•	Title: Reject WorkItem
+	•	Body: Please provide a rejection reason (min 8 characters).
+	•	Buttons: Cancel | Submit
+	•	Validation: must type ≥8 chars.
+
+3.4 Run Automation (from Sidebar or Action Panel)
+	•	Only visible if backend says riskTier=low AND user has permission.
+	•	Modal copy (always required):
+	•	Title: Confirm Automation Run
+	•	Body:
+	•	Automation: <name>
+	•	Risk: Low
+	•	Rollback available: Yes/No
+	•	This action will be executed and logged. Proceed?
+	•	Buttons: Cancel | Confirm & Run
+	•	On confirm: append pending audit entry; success → toast Automation run started; failure → inline error.
+	•	Offline: enqueue with Pending sync badge.
+
+3.5 Add Comment
+	•	Click Add Comment → inline text box.
+	•	Validation: non-empty, ≤2000 chars.
+	•	On submit: append comment to Activity Log with Pending sync badge if offline.
+	•	Copy: placeholder Write a comment…
+
+3.6 Attach File / Photo
+	•	Click Attach → file picker / mobile camera.
+	•	Show attachment row: name, size, status (Pending upload, Uploading…, Uploaded).
+	•	Offline: show Pending upload until sync.
+	•	Tooltip: GPS/location metadata captured if consent given.
+
+3.7 Escalate / Join War Room
+	•	Click CTA → open modal:
+	•	Title: Join War Room
+	•	Body: Joining will notify your team and create a collaboration space.
+	•	Buttons: Cancel | Join
+	•	Drill-down: navigates to external collab tool (backend link).
+
+⸻
+
+4 — Activity Log Behaviour
+	•	Append-only. Each entry shows:
+	•	Actor, actionType, clientActionId, offlineFlag, timestampUTC, serverAuditEntryId (when returned).
+	•	Queued actions appear with badge Pending sync.
+	•	On success → replace with server audit id.
+	•	On failure → entry turns red with error code + Retry button.
+
+⸻
+
+5 — Conflict Handling (inline)
+	•	If sync conflict detected on this WorkItem:
+	•	Banner at top: “Conflicts detected — resolve in Sync Center.”
+	•	CTA: Open Sync Center → navigates to Conflict Resolver.
+
+⸻
+
+6 — Offline & Error States
+	•	Offline:
+	•	Page loads from cached snapshot.
+	•	Tabs show last cached data (marked Offline snapshot).
+	•	Mutations: queued with Pending sync badges.
+	•	Errors:
+	•	If WorkItem not found → error screen: “WorkItem not available. Check filters or refresh.”
+	•	If API error → inline error per tab: “Unable to load . Retry.”
+
+⸻
+
+7 — Accessibility & Keyboard
+	•	Tab order: Header → Tabs → Sidebar → Action Panel.
+	•	Keyboard:
+	•	a → Assign
+	•	c → Add Comment
+	•	r → Run Automation
+	•	p → Approve
+	•	x → Reject
+	•	Screen reader:
+	•	Header reads: “WorkItem WI-12345, Status: In Progress, Priority P1, SLA remaining 01:22, SmartScore 8.5 with 92% confidence.”
+	•	Each Activity Log entry announced with action & timestamp.
+
+⸻
+
+8 — Telemetry Events
+	•	workitem.open {workItemId, persona}
+	•	workitem.assign {workItemId, clientActionId, result}
+	•	workitem.approve {workItemId, clientActionId, result}
+	•	workitem.reject {workItemId, clientActionId, reasonPresent}
+	•	workitem.comment.add {workItemId, clientActionId, lengthChars}
+	•	workitem.attachment.add {workItemId, clientActionId, fileSize}
+	•	workitem.run_automation.confirm {workItemId, automationId, riskTier}
+	•	workitem.run_automation.result {workItemId, automationId, clientActionId, result}
+	•	workitem.escalate {workItemId, warRoomId}
+
+⸻
+
+9 — Acceptance Criteria
+	•	AC-WI-01: Header always visible & SLA timer non-pausable.
+	•	AC-WI-02: All tabs accessible; Activity Log append-only.
+	•	AC-WI-03: AI rec cards show text, confidence, risk, rollback flag, modelVersion, Why? link.
+	•	AC-WI-04: Approve executes only if backend confirms; Reject blocked until ≥8 chars reason.
+	•	AC-WI-05: Run Automation always shows confirm modal; offline shows Pending sync.
+	•	AC-WI-06: Attachments captured offline visible as Pending upload.
+	•	AC-WI-07: Conflict banner appears if sync conflict.
+	•	AC-WI-08: Accessibility flows work (screen reader reads header, log entries).
+
+⸻
+
+10 — Test Cases (QA-ready)
+
+TC-WI-01: Header SLA
+	1.	Open WorkItem.
+	2.	Verify SLA countdown visible, sticky on scroll, tooltip shows UTC deadline.
+
+TC-WI-02: Reject with reason validation
+	1.	Click Reject. Try to submit with blank reason → error shown.
+	2.	Enter 7 chars → still blocked.
+	3.	Enter 8 chars → success.
+
+TC-WI-03: Offline comment
+	1.	Go offline. Add comment.
+	2.	Comment appears in log with Pending sync.
+	3.	Reconnect → comment shows server audit id.
+
+TC-WI-04: Run automation
+	1.	Click Run → confirm modal shown.
+	2.	Confirm → pending audit entry created.
+	3.	Server success → toast shown, audit id inserted.
+
+TC-WI-05: Attachment offline
+	1.	Add file offline.
+	2.	File row shows Pending upload.
+	3.	Reconnect → upload completes, row updates with size & timestamp.
+
+⸻
+
+11 — Jira Tasks (ready to paste)
+
+Epic: WorkItem Detail UI
+	•	WI-001: Implement WorkItem header strip (sticky) with SLA, SmartScore, Assign, externalRef. (AC-WI-01)
+	•	WI-002: Implement tabs (Details, Activity Log, AI recs, Logs, Attachments, Approvals, Related). (AC-WI-02, AC-WI-03)
+	•	WI-003: Implement Assign/Reassign flow (modal, offline badge). (AC-WI-01, AC-WI-02)
+	•	WI-004: Implement Approve & Reject flows (modal, reason validation). (AC-WI-04)
+	•	WI-005: Implement Run Automation confirm modal & result states. (AC-WI-05)
+	•	WI-006: Implement Add Comment inline editor + offline queueing. (AC-WI-04)
+	•	WI-007: Implement Attach File flow (offline, pending, retry). (AC-WI-06)
+	•	WI-008: Implement Escalate/War Room modal + external link.
+	•	WI-009: Implement Conflict banner + deep link to Sync Center. (AC-WI-07)
+	•	WI-010: Accessibility & telemetry instrumentation. (AC-WI-08)
+
+⸻
+
+12 — Copy Library (must use exact)
+	•	Assign modal: “Assign WorkItem” / “Choose assignee” / Buttons: Cancel | Assign
+	•	Approve toast: “Approval submitted.”
+	•	Reject modal: “Reject WorkItem” / “Please provide a rejection reason (min 8 characters).”
+	•	Run Automation modal (see §3.4).
+	•	Comment placeholder: “Write a comment…”
+	•	Attachment status: “Pending upload” / “Uploading…” / “Uploaded”
+	•	Escalate modal: “Join War Room” / “Joining will notify your team and create a collaboration space.”
+
+1. Details Tab
+
+Purpose: Show descriptive fields of the WorkItem.
+
+Frame 1 — Entry
+	•	Title area: “Details” (tab selected).
+	•	Fields visible:
+	•	FullDescription (preserve line breaks).
+	•	Reporter (name + contact link).
+	•	CreatedAt (UTC timestamp).
+	•	Affected Services (list, truncated with +N).
+	•	Impacted Users (number).
+
+Interactions:
+	•	Expand “+N services” → reveal full list.
+	•	Copy button for Reporter contact.
+
+Error/Offline:
+	•	If offline, show cached data with banner: “Offline snapshot — may not reflect latest details.”
+	•	If load error, show inline message: “Unable to load details. Retry.”
+
+QA Acceptance:
+	•	AC-DET-01: All required fields visible.
+	•	AC-DET-02: Copy actions function.
+	•	AC-DET-03: Offline snapshot banner visible when offline.
+
+⸻
+
+2. Activity Log Tab
+
+Purpose: Immutable chronological log of actions.
+
+Frame 1 — Entry
+	•	List of log entries, newest on top.
+	•	Each entry shows:
+	•	Actor name + avatar.
+	•	ActionType (Assign, Comment, Approve, etc.).
+	•	clientActionId (copyable).
+	•	offlineFlag (if Y → show “Queued” pill).
+	•	timestampUTC.
+	•	serverAuditEntryId (once confirmed).
+	•	Short summary (e.g., “Assigned to Ramesh”).
+
+Frame 2 — Expand Entry
+	•	Show raw payload (JSON) + server response if present.
+
+Offline:
+	•	Pending items marked with Pending sync pill.
+	•	On reconnect → pill replaced with server audit id.
+
+Errors:
+	•	If server rejects → entry turns red + error code. Button Retry.
+
+QA Acceptance:
+	•	AC-LOG-01: Entries immutable, append-only.
+	•	AC-LOG-02: Pending sync pill visible for offline actions.
+	•	AC-LOG-03: Retry restores action to in-flight.
+
+⸻
+
+3. AI Recommendations Tab
+
+Purpose: Surface AI-driven suggestions.
+
+Frame 1 — Entry
+	•	List of rec cards (3 max at top).
+	•	Each card shows:
+	•	Suggestion text.
+	•	Confidence% (badge).
+	•	RiskTier (Low/Med/High).
+	•	RollbackAvailable (Yes/No).
+	•	ModelVersion.
+	•	“Why?” control.
+
+Frame 2 — Explainability
+	•	Click “Why?” → side panel opens:
+	•	Top-3 drivers.
+	•	Confidence.
+	•	ModelVersion.
+	•	AI disclaimer: “Suggestions are guidance only. Confirm before executing.”
+
+Frame 3 — Run Rec
+	•	If riskTier=Low & permitted: Run button visible.
+	•	Run opens confirm modal (see earlier spec).
+
+Errors/Offline:
+	•	If offline: rec cards still visible but Run disabled → tooltip “Execution unavailable offline.”
+
+QA Acceptance:
+	•	AC-AI-01: Cards show required fields.
+	•	AC-AI-02: Why? panel opens correctly.
+	•	AC-AI-03: Run button disabled when riskTier≠Low.
+
+⸻
+
+4. System Logs Tab
+
+Purpose: Show technical log snippets.
+
+Frame 1 — Entry
+	•	List view with timestampUTC + logLine.
+	•	Filter control: Error | Warning | Info.
+
+Frame 2 — Expand Entry
+	•	Show log snippet full text (scrollable).
+
+Mobile Note: streaming disabled → show “Snapshot only” banner.
+
+Offline:
+	•	Show last cached snapshot with banner: “Offline snapshot — not live.”
+
+QA Acceptance:
+	•	AC-LOGS-01: Logs list renders with timestamp.
+	•	AC-LOGS-02: Filter changes visible immediately.
+	•	AC-LOGS-03: Mobile shows snapshot banner.
+
+⸻
+
+5. Attachments Tab
+
+Purpose: Manage evidence & files.
+
+Frame 1 — Entry
+	•	List of attachments:
+	•	File name.
+	•	UploadedBy.
+	•	UploadedAt UTC.
+	•	File size.
+	•	Status (Uploaded, Pending, Failed).
+
+Frame 2 — Upload Flow
+	•	Click Attach → choose file.
+	•	Show progress bar (Uploading…).
+	•	On success → status “Uploaded” + server metadata.
+	•	On failure → status “Failed” + Retry button.
+
+Offline:
+	•	Attachment immediately listed as Pending upload.
+	•	Tooltip: “Queued — will upload when online.”
+
+QA Acceptance:
+	•	AC-ATT-01: Offline upload shows pending badge.
+	•	AC-ATT-02: Retry works after failure.
+	•	AC-ATT-03: GPS consent metadata visible if captured.
+
+⸻
+
+6. Approvals Tab
+
+Purpose: Show approval chain & enable approve/reject.
+
+Frame 1 — Entry
+	•	List of approvers: name, role, decision (Pending/Approved/Rejected), SLA timer.
+	•	Approve button (green), Reject button (red).
+
+Frame 2 — Approve Flow
+	•	Click Approve → if MFA required → modal.
+	•	Otherwise inline confirm → row updates to Approved.
+
+Frame 3 — Reject Flow
+	•	Click Reject → modal:
+	•	Title: Reject Approval.
+	•	Text box (min 8 chars).
+	•	Buttons: Cancel | Submit.
+	•	On submit → row updates to Rejected.
+
+Offline:
+	•	If backend disallows offline approvals → disable with tooltip “Offline approvals not allowed.”
+	•	Otherwise → enqueue action.
+
+QA Acceptance:
+	•	AC-APP-01: Approve only works if backend permits.
+	•	AC-APP-02: Reject blocked until reason ≥8 chars.
+	•	AC-APP-03: SLA timers visible for all approvers.
+
+⸻
+
+7. Related Items Tab
+
+Purpose: Show linked WorkItems and incidents.
+
+Frame 1 — Entry
+	•	Table/list: ID, Title, Type, Status, Link.
+	•	Clicking ID opens corresponding WorkItem in new tab.
+
+Offline:
+	•	Cached list only. Banner: “Offline — related items may be outdated.”
+
+QA Acceptance:
+	•	AC-REL-01: Related IDs clickable to open details.
+	•	AC-REL-02: Offline banner visible when offline.
+
+⸻
+
+8. Global States & Banners
+	•	Conflict Banner (top): “Conflicts detected — resolve in Sync Center.” CTA → Sync Center.
+	•	Offline Banner (top): “Offline snapshot — updates will sync when online.”
+
+⸻
+
+9. Telemetry Events (tab-level)
+	•	workitem.tab_open {workItemId, tabId}
+	•	workitem.activity.retry {workItemId, clientActionId}
+	•	workitem.ai.why_open {workItemId, recId, modelVersion}
+	•	workitem.logs.filter {workItemId, filterType}
+	•	workitem.attachment.add {workItemId, clientActionId, fileSize}
+	•	workitem.approval.decision {workItemId, approverId, decision, reasonPresent}
+	•	workitem.related.open {workItemId, relatedId}
+
+⸻
+
+10. QA Matrix (Tab-Level)
+	•	Details: verify full description + offline snapshot banner.
+	•	Activity Log: add offline comment → queued entry → replay on reconnect.
+	•	AI Rec Tab: open Why? → drivers + modelVersion visible.
+	•	System Logs: verify snapshot banner on mobile.
+	•	Attachments: upload offline → pending → retry after failure.
+	•	Approvals: reject with <8 chars reason blocked.
+	•	Related Items: click related ID opens WorkItem.
+
+⸻
+
+11. Jira Tasks (Tab-Level)
+	•	WI-TAB-001: Implement Details tab (fields + offline banner).
+	•	WI-TAB-002: Implement Activity Log tab (append-only + pending sync).
+	•	WI-TAB-003: Implement AI Rec tab (cards + Why? explainability).
+	•	WI-TAB-004: Implement System Logs tab (snapshot + filter).
+	•	WI-TAB-005: Implement Attachments tab (upload, retry, offline).
+	•	WI-TAB-006: Implement Approvals tab (Approve/Reject with validation).
+	•	WI-TAB-007: Implement Related Items tab (links + offline).
+	•	WI-TAB-008: Accessibility + telemetry instrumentation across tabs.
+
+⸻
+
+✅ This makes the WorkItem Detail Tabs bulletproof — every tab has mandatory fields, flows, errors, offline rules, telemetry, and QA checks.    
