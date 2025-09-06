@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { ExternalSystemFields } from "../types/externalSystem";
@@ -97,13 +98,7 @@ export interface ActivityEvent extends ExternalSystemFields {
 /**
  * Frontend async state wrapper for better UX
  */
-interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused filter interface for client-side responsiveness

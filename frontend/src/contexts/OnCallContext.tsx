@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -22,13 +23,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // ---------------------------------
 // 1. Frontend State Management Types
 // ---------------------------------
-interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 interface OptimisticUpdate<T> {
   id: string;

@@ -1,5 +1,6 @@
 // src/contexts/CostCentersContext.tsx (ENTERPRISE FRONTEND REFACTOR)
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -14,13 +15,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
  * Async state wrapper for handling loading, error, and data states
  * Used throughout the application for consistent state management
  */
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * API call status for optimistic updates

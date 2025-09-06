@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -28,13 +29,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
  * Async state wrapper for all data operations
  * Provides loading, error, and staleness information for UI consumers
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused cache configuration
@@ -177,49 +172,6 @@ const CACHE_CONFIG: CacheConfig = {
   enableOptimistic: true,
 };
 
-/**
- * Creates empty async state
- */
-const createEmptyAsyncState = <T,>(initialData: T): AsyncState<T> => ({
-  data: initialData,
-  loading: false,
-  error: null,
-  lastFetch: null,
-  stale: false,
-});
-
-/**
- * Creates loading async state
- */
-const createLoadingState = <T,>(currentData: T): AsyncState<T> => ({
-  data: currentData,
-  loading: true,
-  error: null,
-  lastFetch: null,
-  stale: false,
-});
-
-/**
- * Creates success async state
- */
-const createSuccessState = <T,>(data: T, previousLastFetch?: string | null): AsyncState<T> => ({
-  data,
-  loading: false,
-  error: null,
-  lastFetch: new Date().toISOString(),
-  stale: false,
-});
-
-/**
- * Creates error async state
- */
-const createErrorState = <T,>(currentData: T, error: string): AsyncState<T> => ({
-  data: currentData,
-  loading: false,
-  error,
-  lastFetch: null,
-  stale: true,
-});
 
 // ---------------------------------
 // 6. Provider Implementation
@@ -232,7 +184,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
   
   // State management
   const [skills, setSkills] = useState<AsyncState<Skill[]>>(
-    createEmptyAsyncState([])
+    AsyncStateHelpers.createEmpty([])
   );
   const [skillCache] = useState(new Map<string, { skill: Skill; timestamp: number }>());
   const pendingOperationsRef = useRef(0);
@@ -290,30 +242,30 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
   const refreshSkills = useCallback(async () => {
     if (!tenantId) return;
     
-    setSkills(current => createLoadingState(current.data));
+    setSkills(current => AsyncStateHelpers.createLoading(current.data));
     
     try {
       // Backend handles all business logic, filtering, sorting
       const apiSkills = await getAll<Skill>(tenantId, "skills");
-      setSkills(createSuccessState(apiSkills));
+      setSkills(AsyncStateHelpers.createSuccess(apiSkills));
       
       console.log(`✅ Refreshed ${apiSkills.length} skills from backend`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to refresh skills';
-      setSkills(current => createErrorState(current.data, errorMessage));
+      setSkills(current => AsyncStateHelpers.createError(current.data, errorMessage));
       console.error("❌ Skills refresh failed:", errorMessage);
     }
   }, [tenantId]);
 
   const getSkill = useCallback(async (id: string): Promise<AsyncState<Skill | null>> => {
     if (!tenantId) {
-      return createEmptyAsyncState(null);
+      return AsyncStateHelpers.createEmpty(null);
     }
 
     // Check cache first
     const cached = skillCache.get(id);
     if (cached && Date.now() - cached.timestamp < CACHE_CONFIG.ttl) {
-      return createSuccessState(cached.skill);
+      return AsyncStateHelpers.createSuccess(cached.skill);
     }
 
     try {
@@ -322,13 +274,13 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
       if (skill) {
         // Cache the result
         skillCache.set(id, { skill, timestamp: Date.now() });
-        return createSuccessState(skill);
+        return AsyncStateHelpers.createSuccess(skill);
       } else {
-        return createSuccessState(null);
+        return AsyncStateHelpers.createSuccess(null);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get skill';
-      return createErrorState(null, errorMessage);
+      return AsyncStateHelpers.createError(null, errorMessage);
     }
   }, [tenantId, skillCache]);
 
@@ -361,7 +313,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistic UI update
     if (CACHE_CONFIG.enableOptimistic) {
-      setSkills(current => createSuccessState([...current.data, skillToAdd], current.lastFetch));
+      setSkills(current => AsyncStateHelpers.createSuccess([...current.data, skillToAdd], current.lastFetch));
     }
 
     try {
@@ -382,7 +334,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       // Rollback optimistic update on failure
       if (CACHE_CONFIG.enableOptimistic) {
-        setSkills(current => createSuccessState(
+        setSkills(current => AsyncStateHelpers.createSuccess(
           current.data.filter(s => s.id !== skillToAdd.id),
           current.lastFetch
         ));
@@ -419,7 +371,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistic UI update
     if (CACHE_CONFIG.enableOptimistic) {
-      setSkills(current => createSuccessState(
+      setSkills(current => AsyncStateHelpers.createSuccess(
         current.data.map(s => s.id === skill.id ? updatedSkill : s),
         current.lastFetch
       ));
@@ -447,7 +399,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
       if (CACHE_CONFIG.enableOptimistic) {
         const original = skills.data.find(s => s.id === skill.id);
         if (original) {
-          setSkills(current => createSuccessState(
+          setSkills(current => AsyncStateHelpers.createSuccess(
             current.data.map(s => s.id === skill.id ? original : s),
             current.lastFetch
           ));
@@ -474,7 +426,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistic UI update
     if (CACHE_CONFIG.enableOptimistic) {
-      setSkills(current => createSuccessState(
+      setSkills(current => AsyncStateHelpers.createSuccess(
         current.data.filter(s => s.id !== id),
         current.lastFetch
       ));
@@ -500,7 +452,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       // Rollback optimistic update on failure
       if (CACHE_CONFIG.enableOptimistic) {
-        setSkills(current => createSuccessState(
+        setSkills(current => AsyncStateHelpers.createSuccess(
           [...current.data, skillToDelete],
           current.lastFetch
         ));
@@ -620,7 +572,7 @@ export const SkillsProvider = ({ children }: { children: ReactNode }) => {
     if (tenantId && globalConfig) {
       refreshSkills();
     } else {
-      setSkills(createEmptyAsyncState([]));
+      setSkills(AsyncStateHelpers.createEmpty([]));
       skillCache.clear();
     }
   }, [tenantId, globalConfig, refreshSkills, skillCache]);
@@ -719,18 +671,18 @@ export const useSkills = () => {
  */
 export const useSkillDetails = (id: string) => {
   const { skills, getSkill } = useSkills();
-  const [skillState, setSkillState] = useState<AsyncState<Skill | null>>(createEmptyAsyncState(null));
+  const [skillState, setSkillState] = useState<AsyncState<Skill | null>>(AsyncStateHelpers.createEmpty(null));
 
   useEffect(() => {
     if (!id) {
-      setSkillState(createEmptyAsyncState(null));
+      setSkillState(AsyncStateHelpers.createEmpty(null));
       return;
     }
 
     // First try to find in current skills list
     const existingSkill = skills.data.find(s => s.id === id);
     if (existingSkill && !skills.loading) {
-      setSkillState(createSuccessState(existingSkill));
+      setSkillState(AsyncStateHelpers.createSuccess(existingSkill));
       return;
     }
 

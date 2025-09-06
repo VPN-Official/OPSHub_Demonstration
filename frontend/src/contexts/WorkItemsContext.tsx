@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -54,13 +55,7 @@ export interface WorkItem extends ExternalSystemFields {
   // External system fields for ITSM integration inherited from ExternalSystemFields
 }
 
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  isStale: boolean;
-}
+
 
 export interface WorkItemFilters {
   type?: WorkItemType;

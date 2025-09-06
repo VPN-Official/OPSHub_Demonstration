@@ -1,5 +1,6 @@
 // src/contexts/ValueStreamsContext.tsx (REFACTORED - Frontend UI State Management Only)
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -12,13 +13,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * AsyncState wrapper for UI state management
  */
-export interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  staleness: 'fresh' | 'stale' | 'expired';
-}
+
 
 /**
  * UI Filter state for client-side filtering

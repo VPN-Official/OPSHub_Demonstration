@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -36,13 +37,7 @@ export interface Metric {
 /**
  * Async state wrapper for UI operations
  */
-interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused filter interface for client-side operations

@@ -8,6 +8,7 @@ import React, {
   useRef,
   ReactNode,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -58,13 +59,7 @@ export interface WorkItem extends ExternalSystemFields {
 /**
  * Frontend-specific async state wrapper for UI state management
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 /**
  * Basic UI filters for client-side responsiveness

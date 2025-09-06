@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -27,13 +28,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
  * Generic async state wrapper for UI operations
  * Provides loading, error, and staleness information to consumers
  */
-export interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-specific filters for client-side responsiveness

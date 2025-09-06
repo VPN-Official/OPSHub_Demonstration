@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -142,13 +143,7 @@ export interface AutomationRule extends ExternalSystemFields {
 /**
  * Frontend-focused async state wrapper for managing UI concerns
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: Date | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused filter options for immediate client-side filtering

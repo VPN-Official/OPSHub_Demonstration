@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll, 
   getById, 
@@ -23,13 +24,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // ---------------------------------
 // 1. UI State Management Types
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 export interface CacheConfig {
   ttl: number; // milliseconds

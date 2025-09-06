@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -88,13 +89,7 @@ export interface User extends ExternalSystemFields {
 // ---------------------------------
 // 2. Frontend State Management Types
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 export interface UsersState extends AsyncState<User[]> {
   searchResults: User[];

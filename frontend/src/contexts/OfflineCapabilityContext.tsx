@@ -173,8 +173,8 @@ export interface OfflineCapabilityContextProps {
 
   // Sync management
   syncStatus: SyncStatus;
-  queuedActions: QueuedAction[];
-  syncConflicts: SyncConflict[];
+  queuedActions: AsyncState<QueuedAction[]>;
+  syncConflicts: AsyncState<SyncConflict[]>;
   lastSyncAt: string | null;
   nextSyncAt: string | null;
   syncProgress: number; // 0-100
@@ -194,8 +194,8 @@ export interface OfflineCapabilityContextProps {
   getConflictDetails: (conflictId: string) => SyncConflict | null;
 
   // Critical data caching
-  criticalDataSets: CriticalDataCache[];
-  offlineCapabilities: OfflineCapability[];
+  criticalDataSets: AsyncState<CriticalDataCache[]>;
+  offlineCapabilities: AsyncState<OfflineCapability[]>;
   refreshCriticalData: (dataTypes?: string[]) => Promise<void>;
   getCacheSize: () => Promise<number>;
   clearCache: (dataTypes?: string[]) => Promise<void>;
@@ -629,17 +629,61 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
   const [connectivityQuality, setConnectivityQuality] = useState<ConnectivityQuality>('high');
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
-  const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
+  const [syncConflicts, setSyncConflicts] = useState<AsyncState<SyncConflict[]>>(AsyncStateHelpers.createEmpty([]));
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [nextSyncAt, setNextSyncAt] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState(0);
-  const [criticalDataSets, setCriticalDataSets] = useState<CriticalDataCache[]>([]);
-  const [offlineCapabilities, setOfflineCapabilities] = useState<OfflineCapability[]>([]);
+  const [criticalDataSets, setCriticalDataSets] = useState<AsyncState<CriticalDataCache[]>>(AsyncStateHelpers.createEmpty([]));
+  const [offlineCapabilities, setOfflineCapabilities] = useState<AsyncState<OfflineCapability[]>>(AsyncStateHelpers.createEmpty([]));
+  
+  // Queued actions with AsyncState
+  const [queuedActions, setQueuedActions] = useState<AsyncState<QueuedAction[]>>(AsyncStateHelpers.createEmpty([]));
   const [serviceWorkerState, setServiceWorkerState] = useState<ServiceWorkerState>({
     registration: null,
     updateAvailable: false,
     isControlled: false,
   });
+  
+  // Initialize offline data
+  useEffect(() => {
+    if (!tenantId) return;
+    
+    const loadOfflineData = async () => {
+      try {
+        // Set loading states
+        setQueuedActions(AsyncStateHelpers.createLoading([]));
+        setSyncConflicts(AsyncStateHelpers.createLoading([]));
+        setCriticalDataSets(AsyncStateHelpers.createLoading([]));
+        setOfflineCapabilities(AsyncStateHelpers.createLoading([]));
+        
+        // Load offline data from IndexedDB
+        const [storedQueuedActions, storedConflicts, storedCriticalData, storedCapabilities] = await Promise.all([
+          getAll('queued_actions', tenantId),
+          getAll('sync_conflicts', tenantId),
+          getAll('critical_data_cache', tenantId),
+          getAll('offline_capabilities', tenantId),
+        ]);
+        
+        // Set success states
+        setQueuedActions(AsyncStateHelpers.createSuccess(storedQueuedActions || []));
+        setSyncConflicts(AsyncStateHelpers.createSuccess(storedConflicts || []));
+        setCriticalDataSets(AsyncStateHelpers.createSuccess(storedCriticalData || []));
+        setOfflineCapabilities(AsyncStateHelpers.createSuccess(storedCapabilities || []));
+        
+      } catch (error) {
+        console.error('[OfflineCapability] Failed to load offline data:', error);
+        const errorMessage = error.message || 'Failed to load offline data';
+        
+        // Set error states
+        setQueuedActions(AsyncStateHelpers.createError([], errorMessage));
+        setSyncConflicts(AsyncStateHelpers.createError([], errorMessage));
+        setCriticalDataSets(AsyncStateHelpers.createError([], errorMessage));
+        setOfflineCapabilities(AsyncStateHelpers.createError([], errorMessage));
+      }
+    };
+    
+    loadOfflineData();
+  }, [tenantId]);
   const [backgroundSyncTasks, setBackgroundSyncTasks] = useState<BackgroundSyncTask[]>([]);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -1311,7 +1355,7 @@ export const OfflineCapabilityProvider: React.FC<{ children: ReactNode }> = ({ c
 
     // Sync management
     syncStatus,
-    queuedActions: queueManager.current?.getQueue() || [],
+    queuedActions,
     syncConflicts,
     lastSyncAt,
     nextSyncAt,
@@ -1435,8 +1479,8 @@ export const useOfflineStatus = () => {
     isOnline,
     connectivityQuality,
     syncStatus,
-    hasPendingActions: queuedActions.length > 0,
-    queueSize: queuedActions.length,
+    hasPendingActions: queuedActions.data.length > 0,
+    queueSize: queuedActions.data.length,
   };
 };
 

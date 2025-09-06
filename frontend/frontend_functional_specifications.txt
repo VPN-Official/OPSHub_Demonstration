@@ -1,0 +1,337 @@
+Frontend Functional Specification — OpsHub (frontend-only, Phase 1, segregation of concerns)
+
+⸻
+
+1 — High-level grounding (source & scope)
+	•	Frontend implements the PWA, mobile & desktop UI surfaces for the core Phase-1 modules: Pulse, SmartQueue, WorkItem Detail, Intelligence Center, Schedule, Notifications.  ￼
+	•	Mobile-first PWA with 4-hour offline support, installable, push notifications; parity of core flows (triage, act, create incident, approve low-risk).  ￼
+	•	Frontend is an overlay — it reads from systems of record (ITSM, monitoring) and writes back actions via APIs; offline writes must be queued and WAL-style synced.  ￼
+
+⸻
+
+2 — Segregation of concerns (top level)
+
+I split frontend responsibilities into independent layers/components so teams can implement, test and ship concurrently.
+	1.	Presentation / UI Layer (Components & Pages)
+	•	React/Vue/Solid components (design system): layout, grids, widgets, forms, lists/cards, modals, toasts, badges, icons, skeleton loaders.
+	•	Pages / route surfaces:
+	•	Pulse (persona variant views)
+	•	SmartQueue (tabs: My Work / Team / Knowledge / Approvals)
+	•	WorkItem Detail (header + tab panels: Details, Activity, System Logs, Approvals, Communications, Attachments)
+	•	Intelligence Center (Automations, AI Adoption, Knowledge, Approvals analytics)
+	•	Schedule (day/week/month/timeline)
+	•	Notifications Inbox (All / Critical / Grouped / Suppressed / Nudges)
+	•	Sync & Conflict Center (pending offline actions + arbitration UI)
+	•	Mobile-specific screens (compact card view, mobile WorkItem, quick create incident)
+	•	UI responsibilities: accessibility (WCAG AA), internationalization, theming, responsive behavior, touch optimizations.
+	2.	State Management Layer (Client state / UI state)
+	•	Local UI state (component-level): ephemeral UI (modals, form drafts).
+	•	Shared client state store (e.g., Redux/Pinia/MobX etc.): user session, persona, selected filters, queue pages, cached WorkItem objects, offline action queue metadata, sync status.
+	•	Derived state: SmartScore sorting, SLA countdown transforms, filtered lists for drilldowns, explainability meta.
+	•	State invariants: SLA timers shown live (never pause in UI) and must match server timestamps (see sync rules).
+	3.	Network / Data Layer (API contracts, caching, adapters)
+	•	API adapter / repository pattern that exposes typed methods:
+	•	getPulseWidgets(filters), getSmartQueue(filters, cursor), getWorkItem(id), postWorkItemUpdate(id, patch), runAutomation(id, automationId), getNotifications(cursor), ackNotification(id) etc.
+	•	HTTP + WebSocket for real-time events & streaming (notifications, live SLA updates, automation progress).
+	•	Cache strategy:
+	•	Read-through cache for lists and WorkItems (local IndexedDB).
+	•	Background refresh: open WorkItem should load cached version instantly, then fetch diffs. Performance target: WorkItem open time ≤1.5s with cache.  ￼
+	4.	Offline / Sync Layer (critical and distinct)
+	•	Write-Ahead Log (WAL) persisted in IndexedDB: each user action (assign, comment, approve, run low-risk automation request, create incident) is an immutable action record (GUID, timestamp, device id, actor). Actions are queued and attempted in priority order.  ￼
+	•	Sync engine responsibilities:
+	•	Exponential backoff, partial success handling (per-action success/failure markers), priority uploads (critical approvals first), forced sync after 4h offline.  ￼
+	•	Conflict detection during sync: if remote changed same field, surface to Sync & Conflict Center with AI suggestion and require user arbitration. All arbitration choices are audit-logged with device id and reason.  ￼
+	•	Offline UX:
+	•	Visual indicators: offline badge, queued action counter, per-item sync state, optimistic UI for safe operations (but mark as “pending”).
+	•	Sync & Conflict Center: list of pending items, conflicts with “AI suggestion” and accept/override controls.
+	5.	Security & Auth Layer (client aspects)
+	•	SSO + token flow: SAML/OAuth handshake on first login, device registration step (store device fingerprint), MFA required for privileged actions (approvals, automation triggers). Device revocation support (app polls for revocation and forces logout/wipes cache).  ￼
+	•	Client must respect field-level masking and copy/paste restrictions for sensitive fields. Encryption of local storage and secure key handling per tenant.
+	6.	AI UX Layer (explainability & interactive flows)
+	•	All AI recommendations in UI include: confidence %, top 3 contributing factors, model version, and a compact “Why?” panel (consistent across SmartQueue, WorkItem sidebar, Approval advisor and Pulse widgets).  ￼
+	•	Controls: accept / reject / ask for more context. Rejection must open a mandatory reason field that gets recorded locally (and later sent in sync). The frontend enforces these UI flows and records metadata for training.  ￼
+	7.	Telemetry & Audit (client telemetry)
+	•	Send UI telemetry (events) to OpsHub telemetry pipeline: page views, action attempts, offline durations, sync success/failures, conflict rates, mobile battery impact signals for Intelligence Center metrics. Follow the spec targets for mobile telemetry.  ￼
+
+⸻
+
+3 — Component & feature mapping (concrete list)
+
+Below is a minimal component breakdown (re-usable, testable) mapped to spec modules.
+	•	Design System
+	•	Colors, typography, spacing, tokens, accessible components (Buttons, Inputs, Selects, Modal, Toast, Table, Card, Avatar, Avatar group, Badge, Tooltip).
+	•	Widgets
+	•	KPI Widget, SLA Streak, AI Helped Counter, Downtime Cost Widget, Automation ROI widget (used in Pulse).  ￼
+	•	SmartQueue Components
+	•	QueueList (table + card modes), SmartScore chip + explain popover, QuickActionBar (Assign, Approve, Run Automation), BulkAction controller.
+	•	WorkItem Detail
+	•	Header (SLA timer, SmartScore), Tabs (Details, Activity, Logs, Approvals, Comm), AI Sidebar (Recommendations + Why), ActionPanel (assign, run automation, approve).
+	•	Intelligence Center
+	•	Automations Catalog, Adoption charts, Nudges feed, Accept/Snooze/Reject controls.
+	•	Schedule
+	•	Calendar (day/week/month), Drag-and-drop shift editor, Conflict indicator & accept with reason modal.
+	•	Notifications
+	•	InboxList (grouped), Notification card (inline actions), Suppression Log viewer.
+	•	Sync & Conflict Center
+	•	Pending Actions list, Conflict resolution flow with AI suggestion and finalization.
+	•	Mobile Specific
+	•	CardView, Compact WorkItem, Camera attach flow (attach photos queued when offline).
+
+⸻
+
+4 — API surface & contracts (frontend expectations)
+
+Frontend must own contracts (documented JSON shapes) for the calls it depends on — backend teams commit to these.
+
+Minimal set (examples — exact schemas in API spec):
+	•	GET /api/v1/pulse?persona=engineer → widgets[] (id, type, value, explainability?)
+	•	GET /api/v1/smartqueue?tab=mywork&cursor=abc → {items[], cursor}
+	•	GET /api/v1/workitems/{id} → full WorkItem payload (fields, attachments, relatedIDs, slaDeadline, smartScore, aiRecommendations[])
+	•	POST /api/v1/workitems/{id}/actions → action record (type, payload) returns actionGUID
+	•	POST /api/v1/sync/batch → accepts WAL batch, returns per-action result
+	•	WS /events → push notifications (event, workItemId, severity, payload)
+	•	GET /api/v1/ai/explain/{recId} → {confidence, factors[], modelVersion}
+
+Frontend contract rules
+	•	All requests include tenant id & device id.
+	•	Server returns canonical timestamps (UTC). Frontend calculates SLA countdown client-side using server time origin to avoid clock drift.
+	•	Error responses include well-known error codes (CONFLICT_FIELD, AUTH_REVOKED, WAL_SCHEMA_MISMATCH) so the client can show specific remediation flows.
+
+(These contracts are implied by the spec’s integration and data flows).  ￼
+
+⸻
+
+5 — Offline & conflict UX details (flows)
+	•	Action Queueing: any mutating action done offline becomes an action entry with optimistic UI update and shown as “pending” until sync result. Critical approvals are prioritized for upload when reconnecting.  ￼
+	•	Conflict detection: server returns conflict metadata per field; frontend shows side-by-side “local vs remote” with AI suggestion and Accept Local / Accept Remote / Merge choices. All choices require optional reason (if acceptance of a conflict is a governance step — manager only). Immutably log the decision along with device id.  ￼
+	•	Partial success: for a WAL batch, show per-action success/fail. Requeue failed ones and surface persistent failures to Tenant Admin via UI alert and Intelligence Center telemetry.  ￼
+
+⸻
+
+6 — AI explainability & interaction UI (rules)
+	•	Compact trust panel on every AI card: shows confidence %, top 3 contributing factors, model version, and “Why this matters” condensed sentence. Clicking expands detailed explainability + historical examples.  ￼
+	•	Action controls:
+	•	Low-risk & confidence >85%: UI permits one-click run (but still logs).  ￼
+	•	60–85%: show “Recommend” with confirm dialog (human-in-loop).
+	•	<60%: read-only insight (no action).
+	•	Rejection UX: forcing a rejection reason modal with a structured dropdown + free text — collect data for the learning loop.  ￼
+
+⸻
+
+7 — Security & compliance UI responsibilities
+	•	Enforce MFA prompts on privileged UI actions. Provide device registration UX and a device list view (for Tenant Admins) that shows device fingerprint, last sync, status, and a remote revoke button.  ￼
+	•	Respect field-level masking flags sent by API (the UI must not render sensitive fields unless allowed by role).
+	•	Present suppression log viewer for notifications (immutable records, recovery action).
+
+⸻
+
+8 — Performance, accessibility & reliability targets
+	•	Mobile: initial load ≤3s on simulated 3G; list navigation ≤1s; WorkItem open ≤1.5s with cached data. Telemetry to measure offline session durations and sync success rates.  ￼
+	•	Accessibility: WCAG AA minimum; keyboard nav for all interactive elements; screen reader labels on AI explainability and SLA timers.
+	•	Reliability: sync retries/backoff, graceful degraded mode (read-only views when critical failures).
+
+⸻
+
+9 — Testing strategy (frontend)
+	•	Unit tests for components and state transitions (simulate offline queueing, conflict resolution).
+	•	Integration tests for data layer with mocked API & WAL scenarios (partial success, schema mismatch).
+	•	E2E tests (mobile & desktop) validating main time-critical flows: create incident (online/offline), run low-risk automation, approve change, conflict arbitration.
+	•	Accessibility tests (axe) and performance budgets (Lighthouse) in CI.
+	•	Contract tests: validate API response shapes against frontend assumptions (can be automated with Pact or similar).  ￼
+
+⸻
+
+10 — Deliverables & acceptance criteria (Phase 1)
+
+For each module (Pulse, SmartQueue, WorkItem, Intelligence, Schedule, Notifications) deliver:
+	1.	Component library + Storybook stories for all major components.
+	2.	Pages implemented responsive and accessible.
+	3.	Offline WAL implementation with IndexedDB persistence and sync engine (per spec: 4h offline guarantee).  ￼
+	4.	AI explainability UI consistent across surfaces (confidence + top 3 factors + model version).  ￼
+	5.	End-to-end tests covering offline→sync→conflict flows.
+	6.	Performance verification (meet mobile targets).  ￼
+
+Acceptance: demo of major persona journeys (engineer triage + offline update + sync arbitration; manager approvals; SRE automation ROI drilldown) with audit logs visible and sample telemetry in Intelligence Center.  ￼
+
+⸻
+
+11 — Implementation notes & recommended stack (suggested)
+	•	Framework: React + Typescript (strong typing for contract safety).
+	•	State: Redux Toolkit / Pinia with middleware for WAL queue persistence.
+	•	Offline store: IndexedDB via a tested library (idb) and background sync integration (Service Worker).
+	•	Real-time: WebSocket or server-sent events for notifications + live SLA.
+	•	Components: Design system using Storybook, CSS-in-JS or Tailwind (team preference).
+	•	Tests: Jest + Testing Library for unit, Playwright/Cypress for E2E.
+	•	API contracts validated via OpenAPI + contract tests (Pact).
+
+⸻
+
+12 — Key citations from the original functional spec (most load-bearing)
+	•	Core Phase-1 modules & persona-driven Pulse promise.  ￼
+	•	PWA mobile-first, installable, 4-hour offline guarantee and offline behaviors.  ￼
+	•	Data flows (which modules pull/push to which systems) and need for WAL + sync.  ￼
+	•	AI explainability rules (confidence % + top 3 factors; thresholds for autonomous runs).  ￼
+	•	Mobile performance & edge case sync/partial write behaviors.  ￼
+
+1) Pulse — Operational cockpit
+
+What it does (purpose)
+Pulse is the read-only, role-based dashboard that surfaces governed KPIs and AI/automation impact; it’s the executive & persona landing page and drill-down launchpad.  ￼
+
+Primary functions
+	•	Role-specific KPI widgets (engineer, manager, SRE, SME, exec).
+	•	AI/Automation attribution (e.g., “hours saved”, “$ downtime avoided”).
+	•	Drill-downs into SmartQueue or Intelligence Center while preserving filter context.
+	•	Lightweight gamification (SLA streaks, “AI helped me” counters) with guardrails (no leaderboards).  ￼
+
+Who cares / importance
+	•	Execs use Pulse to justify investment (ROI, downtime avoided). Managers & SREs use it to spot trends and escalate. It’s the single-pane “value” view that demonstrates OpsHub ROI.  ￼
+
+Data flows (frontend expectations)
+	•	Reads SLA, MTTR, downtime cost from monitoring/ITSM. Sends back AI attribution events to OpsHub storage (not authoritative systems).  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Provide persona-specific layouts, drilldown links (preserve filter state), enforce read-only nature for Phase-1, show confidence/“why” for AI-derived KPIs, accessible charts and exportable snapshots for exec sharing. Pulse widgets must be cached for offline viewing.  ￼
+
+⸻
+
+2) SmartQueue — Unified, AI-prioritized work hub
+
+What it does (purpose)
+SmartQueue consolidates tasks from ITSM and alerts into one prioritized queue so engineers and managers see the right work at the right time. It is the main place users act.  ￼
+
+Primary functions
+	•	Presents all supported WorkItem types (incidents, requests, changes, maintenance, KB tasks, approvals).
+	•	AI SmartScore (0–10) computed from SLA urgency, business impact, capacity, patterns; explains top 3 factors and confidence.
+	•	Quick actions (assign, approve, run low-risk automation), bulk actions, and create-from-alert flows.  ￼
+
+Who cares / importance
+	•	Frontline engineers and dispatchers: reduces context switching, increases MTTR speed and field productivity. Managers use it for workload balancing and approvals. SmartQueue is where OpsHub converts visibility into action (highest operational throughput).  ￼
+
+Data flows
+	•	Pulls incidents/requests from ITSM (authoritative for those objects). Writes back assignments, approvals, statuses. UI must include optimistic updates + WAL queuing for offline writes.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	List + card modes, SLA countdowns, explainable SmartScore popover, inline actions with pending state and per-item sync metadata. Offline: cached queue + create incident queued. Re-prioritization should animate/notify when SmartScore changes.  ￼
+
+⸻
+
+3) WorkItem Detail — The single source for incident/request context & act
+
+What it does (purpose)
+Shows full context for a single WorkItem: fields, activity stream, logs, AI recommendations, attachments, approvals — the place users read, decide and act.  ￼
+
+Primary functions
+	•	Canonical view of the WorkItem (metadata, SLA timer, activity, logs).
+	•	AI sidebar with triage, RCA, automation suggestions and explainability.
+	•	Action panel for assign, add comment, run automation, approve.
+	•	Attachment capture (mobile camera), streaming back automation output (e.g., humanoid confirmation).  ￼
+
+Who cares / importance
+	•	Engineers for troubleshooting and resolution, SREs for RCA, SMEs for knowledge capture. This page’s UX quality directly impacts MTTR and successful automation adoption.  ￼
+
+Data flows
+	•	Pulls logs from monitoring, related records from ITSM/HR/service DB. Writes comments, assignment updates, approval decisions back to ITSM via OpsHub sync. Must show real-time updates (WS) and reconcile conflicts at field level on sync.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Instant cached open (then background diff), live SLA timer from server time, clearly labeled AI recs with confidence + “why”, optimistic UI for actions marked pending, attachments queued when offline, and conflict resolution UI when sync finds remote edits.  ￼
+
+⸻
+
+4) Intelligence Center — Learn, measure, and improve
+
+What it does (purpose)
+Aggregates telemetry, automation execution logs, adoption metrics and creates operational insights, ROI dashboards and nudges for improvements. It’s the “learning loop” and governance analytics surface.  ￼
+
+Primary functions
+	•	Automation ROI dashboards (downtime avoided, rollback %).
+	•	AI adoption metrics, nudges list (automation candidates).
+	•	Knowledge effectiveness reports and KB lifecycle metrics.
+	•	Sends nudges back to SmartQueue to create automation tasks.  ￼
+
+Who cares / importance
+	•	SREs, managers, execs — shows business value of automations and AI; drives continuous improvement and adoption. Intelligence Center is the reporting backbone for demonstrating success to stakeholders.  ￼
+
+Data flows
+	•	Pulls execution logs from automation subsystems and OpsHub telemetry (SLA breaches, AI accepts/rejects). Writes nudges and actionable items into SmartQueue.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Interactive charts, filterable ROI tables, drilldown to underlying WorkItems, and UX to approve/snooze nudges. Show model versions and audit trails for governance. Must surface mobile health metrics (sync errors, battery impact).  ￼
+
+⸻
+
+5) Schedule — Resourcing & change visibility
+
+What it does (purpose)
+Shows shift schedules, planned changes, and resource conflicts; used for dispatching, capacity planning and preventing schedule-related SLA impacts.  ￼
+
+Primary functions
+	•	Calendar views (day/week/month), drag-and-drop shift editing, conflict detection and notes/comments on conflicts.
+	•	Correlates HR shift data with ITSM change windows.  ￼
+
+Who cares / importance
+	•	Managers/dispatchers for shift assignment and to avoid scheduling conflicts that can impact SLAs. Important for planning and ensuring coverage for critical services.  ￼
+
+Data flows
+	•	Pulls shifts from HR systems, changes from ITSM; writes conflict notes back. Frontend must reconcile local edits and show conflicts in Sync & Conflict Center for arbitration.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Drag/drop scheduling UI with inline validation, conflict highlight, and mandatory reason capture for overrides. Support offline edits queued for sync and server-side conflict merges.  ￼
+
+⸻
+
+6) Notifications — Event funnel & action surface
+
+What it does (purpose)
+Aggregates events from sources (monitoring, ITSM, email) into a grouped/suppressed actionable inbox with inline actions (approve, acknowledge, run automation). It ensures critical items prompt rapid action.  ￼
+
+Primary functions
+	•	Subscribed event streams, grouped/suppressed feed, exec email integration (for critical approvals), inline actions in cards, and suppression log for audit.  ￼
+
+Who cares / importance
+	•	On-call engineers and execs (via email) — notifications trigger the triage-to-action loop and prevent missed approvals / SLA breaches. High-impact for response time.  ￼
+
+Data flows
+	•	Subscribes to events; pushes grouped/suppressed state and action outcomes back to OpsHub/ITSM. Must integrate with push and email deep links.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Grouped inbox UI with inline action buttons, clear suppression indicators, deep-linking into WorkItem Detail, offline queueing for actions taken offline, and a suppression log viewer.  ￼
+
+⸻
+
+7) Cross-cutting: Sync & Conflict Center (offline governance)
+
+What it does (purpose)
+Central place to view pending offline actions, resolve conflicts (AI-assisted field-level merges), and see sync health. This is the safety valve when devices have been offline.  ￼
+
+Primary functions
+	•	WAL (Write-Ahead Log) view, per-action status, conflict resolution UI (local vs remote vs AI suggestion), and audit logging of decisions. Forced sync after 4 hours offline.  ￼
+
+Who cares / importance
+	•	Field engineers (who go offline), tenant admins (who monitor sync health), and compliance teams (need auditability). Critical to guarantee data integrity and governance.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Clear pending counters, per-action retry controls, conflict resolution flow with AI explainability and required reason capture for overrides. Show device & tenant-level sync telemetry.  ￼
+
+⸻
+
+8) Cross-cutting: AI & Automation Framework (UX & governance)
+
+What it does (purpose)
+Provides assistive AI agents (triager, approval advisor, RCA, automation advisor, knowledge curator) that operate within risk thresholds and always explain recommendations.  ￼
+
+Primary functions
+	•	Suggest category/prioritization, propose assignments (auto-assign if >85% confidence), recommend approve/reject with rationale, detect automation candidates and draft KB content. Collect feedback for model training.  ￼
+
+Who cares / importance
+	•	Drives adoption and ROI: helps engineers and SREs work faster, provides managers with risk context, and gives execs measurable automation outcomes. It’s the differentiator between OpsHub and classic overlays.  ￼
+
+Frontend UX responsibilities / acceptance
+	•	Every AI suggestion must show confidence %, top 3 contributing factors, model version and a “Why?” panel. UI must enforce governance thresholds (one-click for high confidence/low-risk, confirm dialog for medium risk, read-only for low confidence), and capture accept/reject reasons. All interactions logged for training & audit.  ￼
+
+⸻
+
+9) Non-functional & governance implications (frontend cues)
+	•	Offline-first UX: 4-hour offline guarantee, visible offline badges, WAL pending counters, forced sync on reconnect.  ￼
+	•	Audit & compliance: immutable logs for approvals, suppression, conflict resolutions — surfacing audit-friendly views in UI.  ￼
+	•	Performance & accessibility: mobile targets (≤3s initial load on 3G, workitem open ≤1.5s cached), WCAG AA.  ￼    

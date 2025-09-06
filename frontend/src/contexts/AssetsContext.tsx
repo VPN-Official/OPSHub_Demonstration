@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -26,13 +27,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * Async state pattern for all data operations
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * Asset entity - matches backend contract

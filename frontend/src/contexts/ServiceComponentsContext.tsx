@@ -1,5 +1,6 @@
 // src/contexts/ServiceComponentsContext.tsx - ENTERPRISE FRONTEND PATTERNS
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -13,14 +14,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * Generic async state container for frontend UI state management
  */
-export interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-  optimisticUpdates: Record<string, T>; // Track optimistic UI updates
-}
+
 
 /**
  * Service Component entity (matches backend API contract)

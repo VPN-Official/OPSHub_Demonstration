@@ -20,6 +20,7 @@ import { useSync } from "../providers/SyncProvider";
 import { useRealtimeStream } from "./RealtimeStreamContext";
 import { useOfflineCapability } from "./OfflineCapabilityContext";
 import { ExternalSystemFields } from "../types/externalSystem";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 
 // ---------------------------------
 // 1. AI Score and Model Types
@@ -335,12 +336,12 @@ export interface AITrustMetric {
 export interface AIInsightsContextProps {
   // AI-generated insights
   aiScores: Record<string, AIScore>;
-  explanations: Record<string, AIExplanation>;
-  recommendations: AIRecommendation[];
-  predictions: AIPrediction[];
+  explanations: AsyncState<Record<string, AIExplanation>>;
+  recommendations: AsyncState<AIRecommendation[]>;
+  predictions: AsyncState<AIPrediction[]>;
   
   // Model information
-  modelVersions: ModelVersion[];
+  modelVersions: AsyncState<ModelVersion[]>;
   confidenceMetrics: ConfidenceMetric[];
   
   // Request AI insights
@@ -1003,10 +1004,10 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
   
   // State management
   const [aiScores, setAiScores] = useState<Record<string, AIScore>>({});
-  const [explanations, setExplanations] = useState<Record<string, AIExplanation>>({});
-  const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
-  const [predictions, setPredictions] = useState<AIPrediction[]>([]);
-  const [modelVersions, setModelVersions] = useState<ModelVersion[]>([]);
+  const [explanations, setExplanations] = useState<AsyncState<Record<string, AIExplanation>>>(AsyncStateHelpers.createEmpty({}));
+  const [recommendations, setRecommendations] = useState<AsyncState<AIRecommendation[]>>(AsyncStateHelpers.createEmpty([]));
+  const [predictions, setPredictions] = useState<AsyncState<AIPrediction[]>>(AsyncStateHelpers.createEmpty([]));
+  const [modelVersions, setModelVersions] = useState<AsyncState<ModelVersion[]>>(AsyncStateHelpers.createEmpty([]));
   const [confidenceMetrics, setConfidenceMetrics] = useState<ConfidenceMetric[]>([]);
   
   // AI Engine
@@ -1017,9 +1018,15 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     const loadModels = async () => {
       try {
+        // Set loading states
+        setModelVersions(AsyncStateHelpers.createLoading([]));
+        setExplanations(AsyncStateHelpers.createLoading({}));
+        setRecommendations(AsyncStateHelpers.createLoading([]));
+        setPredictions(AsyncStateHelpers.createLoading([]));
+        
         // Load model configurations from backend or database
         const models = await getAll('ai_models', tenantId);
-        setModelVersions(models);
+        setModelVersions(AsyncStateHelpers.createSuccess(models));
         
         // Load cached insights
         const [scores, exps, recs, preds] = await Promise.all([
@@ -1041,12 +1048,16 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
         exps.forEach((exp: AIExplanation) => {
           expMap[`${exp.entityType}:${exp.entityId}`] = exp;
         });
-        setExplanations(expMap);
+        setExplanations(AsyncStateHelpers.createSuccess(expMap));
         
-        setRecommendations(recs);
-        setPredictions(preds);
+        setRecommendations(AsyncStateHelpers.createSuccess(recs));
+        setPredictions(AsyncStateHelpers.createSuccess(preds));
       } catch (error) {
         console.error('[AIInsights] Failed to load models:', error);
+        setModelVersions(AsyncStateHelpers.createError([], error.message || 'Failed to load models'));
+        setExplanations(AsyncStateHelpers.createError({}, error.message || 'Failed to load explanations'));
+        setRecommendations(AsyncStateHelpers.createError([], error.message || 'Failed to load recommendations'));
+        setPredictions(AsyncStateHelpers.createError([], error.message || 'Failed to load predictions'));
       }
     };
     
@@ -1058,7 +1069,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
   // Update confidence metrics periodically
   useEffect(() => {
     const updateConfidence = () => {
-      const metrics: ConfidenceMetric[] = modelVersions.map(model => ({
+      const metrics: ConfidenceMetric[] = modelVersions.data.map(model => ({
         modelType: model.modelType,
         overallConfidence: model.performance.accuracy * 100,
         factors: [
@@ -1074,10 +1085,12 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
       setConfidenceMetrics(metrics);
     };
     
-    updateConfidence();
-    const interval = setInterval(updateConfidence, 300000); // Every 5 minutes
-    
-    return () => clearInterval(interval);
+    if (!modelVersions.loading && !modelVersions.error) {
+      updateConfidence();
+      const interval = setInterval(updateConfidence, 300000); // Every 5 minutes
+      
+      return () => clearInterval(interval);
+    }
   }, [modelVersions]);
   
   // Request AI insights
@@ -1100,7 +1113,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
           
           // Cache the explanation
           const key = `${entityType}:${entityId}`;
-          setExplanations(prev => ({ ...prev, [key]: explanation }));
+          setExplanations(prev => AsyncStateHelpers.createSuccess({ ...prev.data, [key]: explanation }));
           await putWithAudit('ai_explanations', explanation.id, explanation, 'ai');
           
           return explanation;
@@ -1112,7 +1125,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
       
       // Cache locally
       const key = `${entityType}:${entityId}`;
-      setExplanations(prev => ({ ...prev, [key]: explanation }));
+      setExplanations(prev => AsyncStateHelpers.createSuccess({ ...prev.data, [key]: explanation }));
       
       return explanation;
     } catch (error) {
@@ -1138,7 +1151,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
           const recs = await response.json();
           
           // Update state
-          setRecommendations(prev => [...prev, ...recs]);
+          setRecommendations(prev => AsyncStateHelpers.createSuccess([...prev.data, ...recs]));
           
           // Cache recommendations
           for (const rec of recs) {
@@ -1151,7 +1164,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
       
       // Fall back to local generation
       const recs = await aiEngine.current.generateRecommendations(context, options);
-      setRecommendations(prev => [...prev, ...recs]);
+      setRecommendations(prev => AsyncStateHelpers.createSuccess([...prev.data, ...recs]));
       
       return recs;
     } catch (error) {
@@ -1177,7 +1190,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
           const prediction = await response.json();
           
           // Update state
-          setPredictions(prev => [...prev, prediction]);
+          setPredictions(prev => AsyncStateHelpers.createSuccess([...prev.data, prediction]));
           
           // Cache prediction
           await putWithAudit('ai_predictions', prediction.id, prediction, 'ai');
@@ -1188,7 +1201,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
       
       // Fall back to local generation
       const prediction = await aiEngine.current.generatePrediction(predictionType, context);
-      setPredictions(prev => [...prev, prediction]);
+      setPredictions(prev => AsyncStateHelpers.createSuccess([...prev.data, prediction]));
       
       return prediction;
     } catch (error) {
@@ -1243,7 +1256,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
     recommendationId: string,
     actionId?: string
   ): Promise<ApplyResult> => {
-    const recommendation = recommendations.find(r => r.id === recommendationId);
+    const recommendation = recommendations.data.find(r => r.id === recommendationId);
     if (!recommendation) {
       throw new Error('Recommendation not found');
     }
@@ -1272,10 +1285,12 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
           const result = await response.json();
           
           // Update recommendation status
-          setRecommendations(prev => prev.map(r => 
-            r.id === recommendationId 
-              ? { ...r, status: 'accepted' }
-              : r
+          setRecommendations(prev => AsyncStateHelpers.createSuccess(
+            prev.data.map(r => 
+              r.id === recommendationId 
+                ? { ...r, status: 'accepted' }
+                : r
+            )
           ));
           
           return result;
@@ -1310,17 +1325,19 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
       rollbackAvailable: true,
       rollbackId: `rollback_${Date.now()}`,
     };
-  }, [recommendations, isOnline, enqueueAction]);
+  }, [recommendations.data, isOnline, enqueueAction]);
   
   const dismissRecommendation = useCallback(async (
     recommendationId: string,
     reason: string
   ): Promise<void> => {
     // Update recommendation status
-    setRecommendations(prev => prev.map(r => 
-      r.id === recommendationId 
-        ? { ...r, status: 'rejected' }
-        : r
+    setRecommendations(prev => AsyncStateHelpers.createSuccess(
+      prev.data.map(r => 
+        r.id === recommendationId 
+          ? { ...r, status: 'rejected' }
+          : r
+      )
     ));
     
     // Send dismissal to backend
@@ -1505,7 +1522,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
     predictionId: string,
     actualValue: any
   ): Promise<ValidationResult> => {
-    const prediction = predictions.find(p => p.id === predictionId);
+    const prediction = predictions.data.find(p => p.id === predictionId);
     if (!prediction) {
       throw new Error('Prediction not found');
     }
@@ -1536,7 +1553,7 @@ export const AIInsightsProvider: React.FC<{ children: ReactNode }> = ({ children
     }
     
     return result;
-  }, [predictions, isOnline]);
+  }, [predictions.data, isOnline]);
   
   // Batch operations
   const batchAnalyze = useCallback(async (
@@ -1753,10 +1770,13 @@ export const useAIRecommendations = (entityType?: string, entityId?: string) => 
   
   const filteredRecommendations = useMemo(() => {
     if (!entityType && !entityId) return recommendations;
-    return recommendations.filter(r => 
-      (!entityType || r.entityType === entityType) &&
-      (!entityId || r.entityId === entityId)
-    );
+    return {
+      ...recommendations,
+      data: recommendations.data.filter(r => 
+        (!entityType || r.entityType === entityType) &&
+        (!entityId || r.entityId === entityId)
+      )
+    };
   }, [recommendations, entityType, entityId]);
   
   const loadRecommendations = useCallback(async (context?: AIContext) => {
@@ -1827,7 +1847,10 @@ export const useAIPredictions = (predictionType?: string) => {
   
   const filteredPredictions = useMemo(() => {
     if (!predictionType) return predictions;
-    return predictions.filter(p => p.predictionType === predictionType);
+    return {
+      ...predictions,
+      data: predictions.data.filter(p => p.predictionType === predictionType)
+    };
   }, [predictions, predictionType]);
   
   const predict = useCallback(async (context: PredictionContext) => {

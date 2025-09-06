@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -21,13 +22,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * Async state wrapper for UI state management
  */
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused Contract interface (mirrors backend but for frontend display)

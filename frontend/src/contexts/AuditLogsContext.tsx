@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -23,13 +24,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * Generic async state interface for UI state management
  */
-interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: number | null;
-  stale: boolean;
-}
+
 
 /**
  * Cache configuration for UI performance

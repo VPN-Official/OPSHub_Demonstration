@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -21,13 +22,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 /**
  * AsyncState wrapper for robust UI state management
  */
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * Core MaintenanceWork entity (backend-driven structure)

@@ -1,5 +1,6 @@
 // src/contexts/BusinessServicesContext.tsx (FRONTEND-FOCUSED REFACTOR)
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -11,13 +12,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // ---------------------------------
 
 // AsyncState interface for UI state management
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch?: string;
-  isStale?: boolean;
-}
+
 
 // UI-focused custom KPI interface
 export interface CustomKpi {

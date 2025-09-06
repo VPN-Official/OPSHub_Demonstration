@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -74,13 +75,7 @@ export interface EndUser extends ExternalSystemFields {
 // ---------------------------------
 // 2. UI State Management Types
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  isStale: boolean;
-}
+
 
 export interface OptimisticOperation {
   id: string;

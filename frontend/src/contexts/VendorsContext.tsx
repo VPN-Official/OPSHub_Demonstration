@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -17,13 +18,7 @@ import { useConfig } from "../providers/ConfigProvider";
 // ---------------------------------
 // 1. Frontend AsyncState Interface
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T | null;
-  isLoading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  isStale: boolean;
-}
+
 
 // ---------------------------------
 // 2. Vendor Entity Type (UI-Focused)

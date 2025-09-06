@@ -9,6 +9,7 @@ import React, {
   useRef,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -67,13 +68,7 @@ export interface Log {
 /**
  * UI-focused async state wrapper for loading states
  */
-interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: Date | null;
-  isStale: boolean;
-}
+
 
 /**
  * Client-side UI filters (NOT business logic filters)

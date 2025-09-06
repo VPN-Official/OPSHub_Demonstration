@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll, 
   getById, 
@@ -24,16 +25,6 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // 1. Frontend State Types
 // ---------------------------------
 
-/**
- * Generic async state wrapper for UI operations
- */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
 
 /**
  * UI-optimized change request interface (display-focused)
@@ -214,13 +205,9 @@ export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) =>
   const { config: globalConfig, isLoading: configLoading } = useConfig();
 
   // Core async state
-  const [changeRequests, setChangeRequests] = useState<AsyncState<ChangeRequest[]>>({
-    data: [],
-    loading: true,
-    error: null,
-    lastFetch: null,
-    stale: true,
-  });
+  const [changeRequests, setChangeRequests] = useState<AsyncState<ChangeRequest[]>>(
+    AsyncStateHelpers.createLoading([])
+  );
 
   // Optimistic updates tracking
   const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
@@ -353,7 +340,7 @@ export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) =>
   const refreshChangeRequests = useCallback(async () => {
     if (!tenantId) return;
 
-    setChangeRequests(prev => ({ ...prev, loading: true, error: null }));
+    setChangeRequests(prev => AsyncStateHelpers.createLoading(prev.data));
 
     try {
       const all = await getAll<ChangeRequest>(tenantId, "change_requests");
@@ -372,29 +359,19 @@ export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) =>
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       
-      setChangeRequests({
-        data: all,
-        loading: false,
-        error: null,
-        lastFetch: new Date().toISOString(),
-        stale: false,
-      });
+      setChangeRequests(AsyncStateHelpers.createSuccess(all));
 
       // Set cache expiry
       if (cacheTimeoutRef.current) {
         clearTimeout(cacheTimeoutRef.current);
       }
       cacheTimeoutRef.current = setTimeout(() => {
-        setChangeRequests(prev => ({ ...prev, stale: true }));
+        setChangeRequests(prev => AsyncStateHelpers.markStale(prev));
       }, CACHE_TTL);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to refresh change requests';
-      setChangeRequests(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-      }));
+      setChangeRequests(prev => AsyncStateHelpers.createError(prev.data, errorMessage));
     }
   }, [tenantId]);
 
@@ -726,7 +703,7 @@ export const ChangeRequestsProvider = ({ children }: { children: ReactNode }) =>
   }, []);
 
   const invalidateCache = useCallback(() => {
-    setChangeRequests(prev => ({ ...prev, stale: true }));
+    setChangeRequests(prev => AsyncStateHelpers.markStale(prev));
     if (cacheTimeoutRef.current) {
       clearTimeout(cacheTimeoutRef.current);
     }

@@ -555,10 +555,17 @@ export const CollaborationProvider: React.FC<{ children: ReactNode }> = ({ child
           getAll('approval_chains', tenantId),
         ]);
         
-        setChatSessions(sessions);
-        setNotifications(notifs.filter((n: any) => n.to === user.id));
-        setHandoffQueue(handoffs);
-        setApprovalChains(approvals);
+        setChatSessions(AsyncStateHelpers.createSuccess(sessions));
+        setNotifications(AsyncStateHelpers.createSuccess(notifs.filter((n: any) => n.to === user.id)));
+        setHandoffQueue(AsyncStateHelpers.createSuccess(handoffs));
+        setApprovalChains(AsyncStateHelpers.createSuccess(approvals));
+        setActiveUsers(AsyncStateHelpers.createSuccess([])); // Will be populated by real-time updates
+        setMentions(AsyncStateHelpers.createSuccess([]));
+        setAnnouncements(AsyncStateHelpers.createSuccess([]));
+        setAssignmentHistory(AsyncStateHelpers.createSuccess([]));
+        setEscalationStatus(AsyncStateHelpers.createSuccess([]));
+        setAssistanceRequests(AsyncStateHelpers.createSuccess([]));
+        setPendingApprovals(AsyncStateHelpers.createSuccess([]));
         
         // Filter pending approvals for current user
         const pending = approvals

@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -18,13 +19,7 @@ import { teamsApi } from "../api/teamsApi";
 // ---------------------------------
 // 1. Frontend State Types
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: Date | null;
-  stale: boolean;
-}
+
 
 export interface OptimisticOperation {
   id: string;

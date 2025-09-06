@@ -903,9 +903,14 @@ export const MetricsAnalyticsProvider: React.FC<{ children: ReactNode }> = ({ ch
           lastUpdated: new Date().toISOString(),
         }));
         
-        setKpiMetrics(initializedKPIs);
-        setDashboardConfigs(dashboards);
-        setBenchmarkData(benchmarks);
+        setKpiMetrics(AsyncStateHelpers.createSuccess(initializedKPIs));
+        setDashboardConfigs(AsyncStateHelpers.createSuccess(dashboards));
+        setBenchmarkData(AsyncStateHelpers.createSuccess(benchmarks));
+        setTrendAnalysis(AsyncStateHelpers.createSuccess([]));
+        setPerformanceMetrics(AsyncStateHelpers.createSuccess([]));
+        setWidgetData(AsyncStateHelpers.createSuccess([]));
+        setForecastData(AsyncStateHelpers.createSuccess([]));
+        setAnomalyDetection(AsyncStateHelpers.createSuccess([]));
         
         // Set default dashboard
         const defaultDash = dashboards.find((d: DashboardConfig) => d.isDefault);

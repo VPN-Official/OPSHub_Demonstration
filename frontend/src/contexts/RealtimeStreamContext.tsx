@@ -151,7 +151,7 @@ export interface EventHandlers {
 export interface RealtimeStreamContextProps {
   // Connection state
   connectionStatus: ConnectionStatus;
-  activeStreams: EventStream[];
+  activeStreams: AsyncState<EventStream[]>;
   isConnected: boolean;
   reconnectAttempts: number;
   lastConnectedAt: string | undefined;
@@ -159,9 +159,9 @@ export interface RealtimeStreamContextProps {
   connectionLatency: number | undefined;
   
   // Real-time data
-  liveMetrics: LiveMetric[];
-  statusUpdates: StatusUpdate[];
-  entityUpdates: EntityUpdate[];
+  liveMetrics: AsyncState<LiveMetric[]>;
+  statusUpdates: AsyncState<StatusUpdate[]>;
+  entityUpdates: AsyncState<EntityUpdate[]>;
   recentEvents: WebSocketMessage[];
   
   // Subscription management
@@ -520,10 +520,10 @@ export const RealtimeStreamProvider: React.FC<{ children: ReactNode }> = ({ chil
   
   // State management
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('initializing');
-  const [activeStreams, setActiveStreams] = useState<EventStream[]>([]);
-  const [liveMetrics, setLiveMetrics] = useState<LiveMetric[]>([]);
-  const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([]);
-  const [entityUpdates, setEntityUpdates] = useState<EntityUpdate[]>([]);
+  const [activeStreams, setActiveStreams] = useState<AsyncState<EventStream[]>>(AsyncStateHelpers.createEmpty([]));
+  const [liveMetrics, setLiveMetrics] = useState<AsyncState<LiveMetric[]>>(AsyncStateHelpers.createEmpty([]));
+  const [statusUpdates, setStatusUpdates] = useState<AsyncState<StatusUpdate[]>>(AsyncStateHelpers.createEmpty([]));
+  const [entityUpdates, setEntityUpdates] = useState<AsyncState<EntityUpdate[]>>(AsyncStateHelpers.createEmpty([]));
   const [recentEvents, setRecentEvents] = useState<WebSocketMessage[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const [updateThrottling, setUpdateThrottlingState] = useState({ enabled: false, interval: 100 });

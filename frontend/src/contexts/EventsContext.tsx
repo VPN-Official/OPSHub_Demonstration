@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -18,13 +19,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // ---------------------------------
 
 // Core async state pattern for UI state management
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 // Minimal Event interface - UI display focused
 export interface Event extends ExternalSystemFields {

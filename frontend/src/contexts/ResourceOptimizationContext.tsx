@@ -131,18 +131,18 @@ export interface CostOptimization {
 
 export interface ResourceOptimizationContextProps {
   // Resource Pools
-  resourcePools: ResourcePool[];
+  resourcePools: AsyncState<ResourcePool[]>;
   getResourcePool: (id: string) => ResourcePool | undefined;
   updateResourcePool: (id: string, updates: Partial<ResourcePool>) => Promise<void>;
   
   // Allocations
-  allocations: ResourceAllocation[];
+  allocations: AsyncState<ResourceAllocation[]>;
   allocateResource: (allocation: Omit<ResourceAllocation, 'id'>) => Promise<ResourceAllocation>;
   deallocateResource: (allocationId: string) => Promise<void>;
   reallocateResource: (allocationId: string, newTarget: string) => Promise<void>;
   
   // Optimization
-  recommendations: OptimizationRecommendation[];
+  recommendations: AsyncState<OptimizationRecommendation[]>;
   applyRecommendation: (recommendationId: string) => Promise<void>;
   dismissRecommendation: (recommendationId: string, reason?: string) => Promise<void>;
   scheduleOptimization: (recommendationId: string, scheduledTime: Date) => Promise<void>;
@@ -160,7 +160,7 @@ export interface ResourceOptimizationContextProps {
   evaluateScalingPolicies: () => Promise<void>;
   
   // Cost Optimization
-  costOptimizations: CostOptimization[];
+  costOptimizations: AsyncState<CostOptimization[]>;
   analyzeCostOptimizations: () => Promise<CostOptimization[]>;
   implementCostOptimization: (optimizationId: string) => Promise<void>;
   getCostTrends: (period: 'day' | 'week' | 'month' | 'quarter') => any[];
@@ -696,12 +696,12 @@ export const ResourceOptimizationProvider: React.FC<{ children: React.ReactNode 
   const metricsAnalytics = useMetricsAnalytics();
   
   // State
-  const [resourcePools, setResourcePools] = useState<ResourcePool[]>([]);
-  const [allocations, setAllocations] = useState<ResourceAllocation[]>([]);
-  const [recommendations, setRecommendations] = useState<OptimizationRecommendation[]>([]);
+  const [resourcePools, setResourcePools] = useState<AsyncState<ResourcePool[]>>(AsyncStateHelpers.createEmpty([]));
+  const [allocations, setAllocations] = useState<AsyncState<ResourceAllocation[]>>(AsyncStateHelpers.createEmpty([]));
+  const [recommendations, setRecommendations] = useState<AsyncState<OptimizationRecommendation[]>>(AsyncStateHelpers.createEmpty([]));
   const [forecasts] = useState<Map<string, CapacityForecast>>(new Map());
   const [scalingPolicies, setScalingPolicies] = useState<AutoScalingPolicy[]>([]);
-  const [costOptimizations, setCostOptimizations] = useState<CostOptimization[]>([]);
+  const [costOptimizations, setCostOptimizations] = useState<AsyncState<CostOptimization[]>>(AsyncStateHelpers.createEmpty([]));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastOptimizationRun, setLastOptimizationRun] = useState<Date | null>(null);

@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo 
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById } from "../db/dbClient";
 import { putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
@@ -76,13 +77,7 @@ export interface Risk extends ExternalSystemFields {
 }
 
 // Frontend-specific types for UI state management
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 export interface RiskFilters {
   category?: RiskCategory;

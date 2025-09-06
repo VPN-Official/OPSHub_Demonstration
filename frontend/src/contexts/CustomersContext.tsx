@@ -1,5 +1,6 @@
 // src/contexts/CustomersContext.tsx (ENTERPRISE FRONTEND ONLY)
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { getAll, getById, putWithAudit, removeWithAudit } from "../db/dbClient";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
@@ -14,13 +15,7 @@ import { ExternalSystemFields } from "../types/externalSystem";
  * Async state wrapper for UI state management
  * Provides loading states, error states, and data staleness for optimal UX
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * UI-focused filters for client-side responsiveness

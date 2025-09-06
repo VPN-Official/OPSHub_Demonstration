@@ -83,6 +83,37 @@ export interface NavigationBreadcrumb {
   context?: Record<string, any>;
 }
 
+// Additional types for navigation tracking
+export interface NavigationTrace {
+  id: string;
+  userId: string;
+  sessionId: string;
+  entityPath: EntityReference[];
+  timestamp: string;
+  duration: number;
+  actionType: string;
+}
+
+export interface NavigationSession {
+  id: string;
+  userId: string;
+  startTime: string;
+  endTime?: string;
+  entityVisits: EntityReference[];
+  actions: UserInteraction[];
+}
+
+export interface UserInteraction {
+  id: string;
+  userId: string;
+  sessionId: string;
+  entityType: string;
+  entityId: string;
+  actionType: 'view' | 'edit' | 'create' | 'delete' | 'search' | 'navigate';
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
 export interface NavigationContext {
   currentEntity: EntityReference | null;
   previousEntity: EntityReference | null;
@@ -220,10 +251,15 @@ export interface NavigationTraceContextProps {
   loadingRelationships: boolean;
   
   // Navigation state
-  navigationHistory: NavigationBreadcrumb[];
+  navigationHistory: AsyncState<NavigationBreadcrumb[]>;
   currentContext: NavigationContext;
   canGoBack: boolean;
   canGoForward: boolean;
+  
+  // User navigation tracking (main data to wrap with AsyncState)
+  traces: AsyncState<NavigationTrace[]>;
+  sessions: AsyncState<NavigationSession[]>;
+  interactions: AsyncState<UserInteraction[]>;
   
   // Traceability navigation
   getRelatedEntities: (entityType: string, entityId: string, options?: RelationshipOptions) => Promise<RelatedEntity[]>;
@@ -616,7 +652,7 @@ export const NavigationTraceProvider: React.FC<{ children: ReactNode }> = ({ chi
   const [entityRelationships, setEntityRelationships] = useState<Record<string, EntityRelationship[]>>({});
   const [relationshipGraph, setRelationshipGraph] = useState<EntityGraph | null>(null);
   const [loadingRelationships, setLoadingRelationships] = useState(false);
-  const [navigationHistory, setNavigationHistory] = useState<NavigationBreadcrumb[]>([]);
+  const [navigationHistory, setNavigationHistory] = useState<AsyncState<NavigationBreadcrumb[]>>(AsyncStateHelpers.createEmpty([]));
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [currentContext, setCurrentContext] = useState<NavigationContext>({
     currentEntity: null,
@@ -624,6 +660,11 @@ export const NavigationTraceProvider: React.FC<{ children: ReactNode }> = ({ chi
     navigationStack: [],
     activeView: 'default',
   });
+  
+  // User tracking data with AsyncState
+  const [traces, setTraces] = useState<AsyncState<NavigationTrace[]>>(AsyncStateHelpers.createEmpty([]));
+  const [sessions, setSessions] = useState<AsyncState<NavigationSession[]>>(AsyncStateHelpers.createEmpty([]));
+  const [interactions, setInteractions] = useState<AsyncState<UserInteraction[]>>(AsyncStateHelpers.createEmpty([]));
   
   // Engines and handlers
   const relationshipEngine = useRef(new RelationshipEngine());
@@ -636,9 +677,20 @@ export const NavigationTraceProvider: React.FC<{ children: ReactNode }> = ({ chi
     
     const loadRelationships = async () => {
       setLoadingRelationships(true);
+      
+      // Set loading states for AsyncState data
+      setTraces(AsyncStateHelpers.createLoading([]));
+      setSessions(AsyncStateHelpers.createLoading([]));
+      setInteractions(AsyncStateHelpers.createLoading([]));
+      
       try {
         // Load from IndexedDB
-        const relationships = await getAll('entity_relationships', tenantId);
+        const [relationships, navigationTraces, userSessions, userInteractions] = await Promise.all([
+          getAll('entity_relationships', tenantId),
+          getAll('navigation_traces', tenantId),
+          getAll('navigation_sessions', tenantId),
+          getAll('user_interactions', tenantId),
+        ]);
         
         // Build relationship map
         const relMap: Record<string, EntityRelationship[]> = {};
@@ -654,8 +706,21 @@ export const NavigationTraceProvider: React.FC<{ children: ReactNode }> = ({ chi
         });
         
         setEntityRelationships(relMap);
+        
+        // Set success states for AsyncState data
+        setTraces(AsyncStateHelpers.createSuccess(navigationTraces || []));
+        setSessions(AsyncStateHelpers.createSuccess(userSessions || []));
+        setInteractions(AsyncStateHelpers.createSuccess(userInteractions || []));
+        
       } catch (error) {
         console.error('[NavigationTrace] Failed to load relationships:', error);
+        
+        // Set error states for AsyncState data
+        const errorMessage = error.message || 'Failed to load navigation data';
+        setTraces(AsyncStateHelpers.createError([], errorMessage));
+        setSessions(AsyncStateHelpers.createError([], errorMessage));
+        setInteractions(AsyncStateHelpers.createError([], errorMessage));
+        
       } finally {
         setLoadingRelationships(false);
       }
@@ -1285,7 +1350,12 @@ export const NavigationTraceProvider: React.FC<{ children: ReactNode }> = ({ chi
     navigationHistory,
     currentContext,
     canGoBack: historyIndex > 0,
-    canGoForward: historyIndex < navigationHistory.length - 1,
+    canGoForward: historyIndex < navigationHistory.data.length - 1,
+    
+    // User tracking data
+    traces,
+    sessions,
+    interactions,
     
     // Traceability navigation
     getRelatedEntities,
@@ -1410,7 +1480,7 @@ export const useEntityNavigation = (entityType?: string, entityId?: string) => {
     currentEntity: currentContext.currentEntity,
     previousEntity: currentContext.previousEntity,
     isCurrentEntity,
-    history: navigationHistory,
+    history: navigationHistory.data,
     goBack,
     goForward,
     canGoBack,

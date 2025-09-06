@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -140,13 +141,7 @@ export interface StakeholderComm extends ExternalSystemFields {
 // ---------------------------------
 // 2. AsyncState Interface for UI State Management
 // ---------------------------------
-export interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 interface CacheConfig {
   ttl: number; // Time to live in milliseconds

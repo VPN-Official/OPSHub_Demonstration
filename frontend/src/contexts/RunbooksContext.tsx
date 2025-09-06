@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo 
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll, 
   getById,
@@ -92,13 +93,7 @@ export interface RunbookUIFilters {
 /**
  * AsyncState interface for robust UI state management
  */
-export interface AsyncState<T> {
-  data: T;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
+
 
 /**
  * Optimistic update tracking

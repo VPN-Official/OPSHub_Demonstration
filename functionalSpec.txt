@@ -1,905 +1,2523 @@
-# OpsHub - Enterprise Operations Platform
-## Functional Specification v1.0
-
----
-
-## 1. Executive Summary
-
-### 1.1 Business Problem
-Enterprise operations teams are fragmented across 8-12 different tools, leading to:
-- Constant context switching reducing productivity by 40%
-- Scattered data causing delayed incident resolution
-- Lack of unified visibility into operational health
-- Inefficient mobile operations for field engineers
-- Missed automation and improvement opportunities
-
-### 1.2 Solution Overview
-**OpsHub** is a mobile-first, AI-powered aggregation platform that unifies all operational work into a single intelligent hub. It connects existing enterprise systems while providing autonomous AI agents, real-time insights, and seamless offline capabilities.
-
-**Core Value Proposition**:
-- **Unify Operations**: Single interface for incidents, requests, changes, maintenance, and knowledge
-- **AI-First Design**: Intelligent prioritization, recommendations, and autonomous decision-making
-- **Mobile Enterprise**: Full functionality on any device with offline-first architecture
-- **Data Unification**: Deep traceability connecting scattered enterprise data
-- **Continuous Improvement**: AI-powered insights driving operational excellence
-
-### 1.3 Success Metrics
-- 50% reduction in context switching between tools
-- 30% improvement in Mean Time to Resolution (MTTR)
-- 40% increase in field engineer productivity
-- 80% user adoption rate within 6 months
-- 85% accuracy in AI prioritization recommendations
-
----
-
-## 2. System Overview
-
-### 2.1 Architectural Vision
-OpsHub operates as an **aggregation layer** that sits above existing enterprise tools, unifying their data and workflows without replacing them. It serves as the single pane of glass while maintaining integration with ServiceNow, Jira, PagerDuty, monitoring systems, and custom solutions.
-
-### 2.2 Design Principles
-1. **Mobile-First PWA**: Equal functionality on mobile and desktop with offline support
-2. **Component-Based**: Modular, reusable interface components
-3. **Consistent Experience**: Uniform layouts, themes, and navigation across all modules
-4. **Config-Driven**: All business logic (statuses, SLAs, priorities, KPIs) driven by JSON configuration
-5. **AI-First Integration**: Every module incorporates AI for scoring, recommendations, and automation
-6. **Deep Traceability**: Navigate from any entity to related items (incidents ↔ knowledge ↔ automations)
-7. **Semantic Colors**: Colors convey meaning (red=error, green=success, yellow=warning), no decorative use
-8. **Enterprise Professional**: No emojis, clean business interface
-9. **Offline-First Sync**: Local data persistence with intelligent synchronization when online
-
-### 2.3 The "5 Hubs" Architecture
-OpsHub consolidates operations into five interconnected hubs:
-
-1. **Pulse** → Operational health and KPI visibility
-2. **SmartQueue** → AI-prioritized work management
-3. **WorkItem Detail** → Deep incident investigation and resolution
-4. **Schedule** → Planning and resource coordination
-5. **Intelligence Center** → Continuous improvement and automation
-6. **Notifications** → Centralized awareness and sync management
-
----
-
-## 3. User Personas and Use Cases
-
-### 3.1 Primary Personas
-
-**Support Engineers (NOC, Service Desk, Field)**
-- **Primary Need**: Prioritized work queue with mobile access and offline capability
-- **Key Workflows**: Respond to incidents, update work items, access knowledge, perform field operations
-- **Success Criteria**: Reduced task switching, faster issue resolution, seamless mobile experience
-
-**Operations Managers and Dispatchers**
-- **Primary Need**: Team performance visibility and resource planning
-- **Key Workflows**: Monitor team capacity, coordinate cross-team incidents, plan schedules
-- **Success Criteria**: Improved team efficiency, better resource utilization, SLA compliance
-
-**SREs and Reliability Engineers**
-- **Primary Need**: Automation management and root cause analysis
-- **Key Workflows**: Build automations, analyze patterns, implement preventive measures
-- **Success Criteria**: Reduced operational toil, improved system reliability, proactive problem prevention
-
-**Subject Matter Experts (SMEs)**
-- **Primary Need**: Knowledge management and validation
-- **Key Workflows**: Create and update knowledge articles, validate AI recommendations
-- **Success Criteria**: Knowledge accuracy, reduced knowledge gaps, effective knowledge transfer
-
-**Automation Engineers and AI Designers**
-- **Primary Need**: Automation and agent development
-- **Key Workflows**: Design workflows, train AI models, optimize automation performance
-- **Success Criteria**: Increased automation adoption, improved AI accuracy, reduced manual intervention
-
-### 3.2 Cross-Persona Scenarios
-
-**Major Incident Response**
-1. Alert detected → Auto-created in SmartQueue with AI priority score
-2. AI agent auto-assigns based on expertise and availability
-3. Engineer receives mobile notification, accesses full context offline if needed
-4. Manager monitors progress on Pulse dashboard, coordinates resources
-5. SRE reviews patterns in Intelligence Center, implements preventive automation
-6. SME updates knowledge based on resolution, validated by AI
-
-**Planned Change Management**
-1. Change request created in Schedule view with impact analysis
-2. AI identifies conflicts and dependencies across teams
-3. Approval workflow routes to appropriate stakeholders
-4. Implementation tracked with real-time status updates
-5. Post-change analysis feeds into continuous improvement recommendations
-
----
-
-## 4. Functional Modules
-
-### 4.1 Pulse Dashboard
-
-**Purpose**: Operational command center providing real-time visibility into organizational health
-
-#### 4.1.1 Core Functionality
-**Primary KPIs (Always Visible)**:
-- Active Incidents with P0/P1 breakdown
-- SLA Breaches (current count and trending)
-- Mean Time to Resolution (MTTR) with period comparison
-- Open Service Requests by priority and aging
-- Team Capacity Utilization percentage
-
-**Secondary Metrics**:
-- Business Service Health status matrix
-- Work Item Trends and velocity indicators
-- Cost Impact of active incidents
-- Automation Success Rates
-- Knowledge Base Utilization
-
-**Interactive Features**:
-- Click-through navigation to detailed views in other modules
-- Drill-down capability preserving filter context
-- Real-time updates via server-sent events
-- Export capabilities for executive reporting
-
-#### 4.1.2 Role-Based Views
-**Engineers**: Personal KPIs, assigned work summary, knowledge contributions
-**Managers**: Team performance, resource utilization, SLA compliance tracking
-**Executives**: Cross-department metrics, business impact analysis, cost optimization
-
-**Customization**: Users can personalize widget selection, layout preferences, and refresh intervals within role boundaries
-
-### 4.2 SmartQueue
-
-**Purpose**: Central work hub providing AI-prioritized view of all operational tasks
-
-#### 4.2.1 Unified Work Management
-**Work Item Types**:
-- Incidents (P0-P4 priority levels)
-- Service Requests (standard and expedited)
-- Change Requests (normal, standard, emergency)
-- Maintenance Tasks (planned and reactive)
-
-**AI Prioritization Engine**:
-- **Smart Score** (0-10 scale) calculated from multiple factors:
-  - SLA Urgency (35% weight): Time remaining vs. total SLA commitment
-  - Business Impact (25% weight): Service criticality, affected users, financial impact
-  - Team Capacity (20% weight): Available expertise, current workload, shift coverage
-  - Historical Patterns (15% weight): Similar incident resolution success rates
-  - Customer Tier (5% weight): Customer priority level
-
-- **Explainable AI**: "Why this priority?" explanation for every score
-- **Dynamic Re-prioritization**: Automatic updates as conditions change
-- **Confidence Scoring**: AI confidence level displayed with each recommendation
-
-#### 4.2.2 Intelligent Filtering and Views
-**Filter Categories**:
-- **Assignment**: Assigned to me, my team, all items, unassigned
-- **Work Item Type**: Single or multiple type selection
-- **Status**: Configurable status values with grouping
-- **Priority**: P1-P4 with visual priority indicators
-- **Business Service**: Hierarchical service selection from catalog
-- **AI Insights**: Items with automation suggestions, similar incidents, high confidence resolutions
-
-**View Options**:
-- **Table View** (desktop): Comprehensive column-based display
-- **Card View** (mobile): Touch-optimized card layout
-- **Compact View**: Dense information display for power users
-
-**Search Capabilities**:
-- Full-text search across title, description, and comments
-- Semantic AI-powered search understanding natural language queries
-- Saved searches and shareable filter combinations
-
-#### 4.2.3 Inline Actions and Workflow
-**Quick Actions Available Directly from Queue**:
-- **Assign to Me**: Immediate assignment with status notification
-- **Assign to Teammate**: Team member selection with workload consideration
-- **Assign to Another Team**: Cross-team assignment with approval workflow if required
-- **Trigger Automation**: Launch applicable automations with safety checks
-- **Open Collaboration**: Create or join team collaboration space
-- **Change Priority**: Manual priority override with reasoning requirement
-- **Update Status**: Status progression with workflow validation
-- **Add Quick Comment**: Fast comment addition without full detail view
-
-**Bulk Operations**:
-- Multi-select with checkbox, shift-click, and ctrl-click support
-- Bulk assignment (max 20 items) with confirmation
-- Bulk status updates (max 30 items) with audit trail
-- Bulk export in multiple formats (CSV, Excel, PDF)
-
-#### 4.2.4 Customization and Personalization
-**User Preferences**:
-- Default view selection (table/cards/compact)
-- Items per page (10/25/50/100)
-- Default filter combinations
-- Column visibility and ordering
-- AI scoring factor weight preferences
-- Auto-refresh settings (30s/1m/2m/5m/off)
-
-**Notification Settings**:
-- New items alert preferences
-- Priority change notifications
-- Assignment notifications
-- SLA breach warnings
-
-### 4.3 WorkItem Detail
-
-**Purpose**: Comprehensive investigation and resolution interface providing full context for any work item
-
-#### 4.3.1 Information Architecture
-**Header Section (Always Visible)**:
-- Work item identification (ID, external system reference)
-- Current status with workflow progression indicator
-- Priority level with AI score and explanation
-- SLA countdown timer with breach indicators
-- Business impact assessment
-- Assignment information (user and team)
-
-**AI Insights Panel (Right Sidebar)**:
-- **Smart Recommendations**: AI-suggested next actions with confidence scores
-- **Related Knowledge**: Relevant articles ranked by effectiveness
-- **Similar Incidents**: Historical items with resolution approaches
-- **Suggested Automations**: Applicable workflows with risk assessment
-- **Pattern Analysis**: Recurring issue identification and prevention suggestions
-
-#### 4.3.2 Tabbed Content Areas
-**Details Tab**:
-- Complete work item information including description, categorization, and custom fields
-- Business service mapping with dependency visualization
-- Affected users and systems with impact scope
-- Cost tracking (estimated and actual)
-- File attachments with version control
-- Related items and dependency chains
-
-**Activity Log Tab**:
-- Chronological record of all human actions
-- Field change tracking with before/after values
-- User attribution and timestamp for all modifications
-- Comment threads with mention support
-- Status progression history
-- Assignment change tracking
-
-**System Logs Tab** (when available):
-- Automated integration with monitoring systems
-- Error log correlation and analysis
-- Performance metrics during incident timeframe
-- System event timeline correlation
-- Automated root cause suggestions
-
-**Communications Tab**:
-- Integrated chat for real-time collaboration
-- Email thread integration
-- Stakeholder notification tracking
-- External communication log
-- Conference bridge and screen sharing integration
-
-#### 4.3.3 Action Capabilities
-**Assignment Management**:
-- Self-assignment with automatic status progression
-- Team member assignment with skill matching
-- Cross-team escalation with approval workflows
-- Assignment history and reasoning tracking
-
-**Automation Integration**:
-- Available automation display with applicability scoring
-- Risk-based execution (auto-execute low risk, approval for high risk)
-- Execution monitoring with real-time progress
-- Rollback capabilities for reversible automations
-
-**Collaboration Tools**:
-- Create war rooms for major incidents
-- Invite subject matter experts with expertise matching
-- Schedule follow-up meetings with calendar integration
-- Document sharing with version control
-
-#### 4.3.4 Traceability and Relationships
-**Entity Relationships**:
-- Navigate to related incidents, changes, and knowledge articles
-- Business service impact visualization
-- Configuration item dependencies
-- Cost center and budget impact tracking
-- Vendor and supplier relationship mapping
-
-**Deep Linking**:
-- Direct links to related automations and their execution history
-- Knowledge article connections with bidirectional navigation
-- Alert correlation with monitoring system integration
-- Change request relationships for related modifications
-
-### 4.4 Intelligence Center
-
-**Purpose**: AI-powered hub for continuous improvement, automation management, and organizational learning
-
-#### 4.4.1 Automations Tab
-**Automation Library Management**:
-- Comprehensive catalog of available automations organized by category
-- Usage statistics including execution count, success rate, and average duration
-- Risk level classification with governance controls
-- Performance trending and optimization recommendations
-
-**Automation Types**:
-- **Incident Response**: Automated diagnostic and remediation workflows
-- **Maintenance**: Scheduled system maintenance with safety checks
-- **Monitoring**: Automated alert processing and escalation
-- **Communication**: Stakeholder notification and status updates
-- **Integration**: Cross-system data synchronization and updates
-
-**Execution Management**:
-- Real-time execution monitoring with progress indicators
-- Approval workflows for high-risk automations
-- Rollback and recovery procedures
-- Audit trail with complete execution history
-- Performance analytics and optimization insights
-
-**Workflow Designer**:
-- Visual drag-and-drop interface for automation creation
-- Template library for common automation patterns
-- Testing and validation framework
-- Version control and change management
-- Collaboration features for team development
-
-#### 4.4.2 AI Agents Tab
-**Autonomous Agent Management**:
-- **Incident Triager**: Automatically categorizes and assigns incidents based on content analysis
-- **Knowledge Curator**: Identifies knowledge gaps and suggests article creation
-- **Automation Advisor**: Recommends automation opportunities based on repetitive patterns
-- **Performance Monitor**: Tracks KPIs and suggests optimization actions
-
-**Agent Capabilities and Governance**:
-- **Auto-assign incidents** when confidence > 85%, otherwise suggest with reasoning
-- **Update ticket status** automatically for routine progressions
-- **Create knowledge articles** from resolved incidents (human validation required)
-- **Trigger automations** based on risk level (low=auto, medium=suggest, high=approve)
-
-**Safety and Risk Management**:
-- **Critical Asset Protection**: No resolution actions on critical systems without human approval
-- **Confidence Thresholds**: Configurable thresholds for autonomous action vs. human assistance
-- **Learning Validation**: AI asks human permission before incorporating new behavioral patterns
-- **Escalation Rules**: Automatic escalation when agent confidence falls below thresholds
-
-**Performance Monitoring**:
-- Decision accuracy tracking with user feedback integration
-- False positive/negative rate monitoring
-- Response time and throughput metrics
-- User satisfaction scoring for agent recommendations
-
-#### 4.4.3 Knowledge Tab
-**Knowledge Management System**:
-- Comprehensive article library with advanced search and filtering
-- AI-enhanced content recommendations based on current context
-- Usage analytics showing most effective articles and knowledge gaps
-- Collaborative authoring with review and approval workflows
-
-**AI-Enhanced Features**:
-- **Automatic Article Generation**: Create draft articles from successful incident resolutions
-- **Content Gap Identification**: AI analysis of resolution patterns to identify missing knowledge
-- **Effectiveness Scoring**: Track which articles lead to successful resolutions
-- **Smart Recommendations**: Context-aware article suggestions during incident resolution
-
-**Content Lifecycle Management**:
-- **Creation**: Template-based authoring with collaborative editing
-- **Review**: Expert validation with approval chains
-- **Publication**: Multi-channel distribution with access controls
-- **Maintenance**: Automated review scheduling with accuracy monitoring
-- **Retirement**: Lifecycle management with successor article linking
-
-**Quality Assurance**:
-- Effectiveness correlation with incident resolution success
-- User feedback integration (helpful/not helpful ratings)
-- Expert review cycles with scheduled updates
-- Version control with change tracking
-
-#### 4.4.4 Nudges Tab
-**Process Improvement Intelligence**:
-- **Automation Opportunities**: AI identification of repetitive manual tasks suitable for automation
-- **Process Optimizations**: Workflow bottleneck analysis with improvement suggestions
-- **Resource Balancing**: Team workload optimization recommendations
-- **Knowledge Sharing**: Cross-team learning opportunities and best practice propagation
-
-**Recommendation Categories**:
-- **Efficiency Improvements**: Streamline processes, eliminate redundant steps
-- **Quality Enhancements**: Reduce errors, improve consistency
-- **Cost Optimizations**: Resource allocation improvements, vendor optimization
-- **Risk Mitigation**: Proactive issue prevention, security enhancements
-
-**Implementation Tracking**:
-- Recommendation acceptance rates with outcome measurement
-- ROI calculation for implemented improvements
-- Success story documentation and sharing
-- Continuous feedback loop for recommendation refinement
-
-### 4.5 Schedule View
-
-**Purpose**: Unified calendar for operational planning, resource coordination, and change management
-
-#### 4.5.1 Calendar Integration
-**Event Types**:
-- **Team Shifts**: Engineer schedules, on-call rotations, coverage planning
-- **Planned Changes**: System modifications with impact windows and dependencies
-- **Maintenance Windows**: Service unavailability periods with stakeholder coordination
-- **Work Item Deadlines**: SLA targets and commitment tracking
-- **Training and Meetings**: Team development and coordination activities
-
-**View Options**:
-- **Daily View**: Detailed hour-by-hour scheduling
-- **Weekly View**: Team coordination and resource planning
-- **Monthly View**: Long-term planning and trend analysis
-- **Timeline View**: Project and change sequence visualization
-
-#### 4.5.2 Role-Based Functionality
-**Field Engineers**:
-- Personal shift schedules with mobile synchronization
-- Work item deadlines and SLA tracking
-- Leave request integration
-- Shift swap coordination with peer approval
-
-**Operations Managers**:
-- Team coverage visualization and gap identification
-- Resource allocation optimization
-- Change impact coordination across teams
-- Capacity planning and forecasting
-
-**SREs and Reliability Engineers**:
-- Maintenance window coordination with business impact analysis
-- Change dependency mapping and conflict detection
-- Performance baseline establishment for maintenance periods
-- Automation scheduling with execution monitoring
-
-#### 4.5.3 Advanced Features
-**Conflict Detection and Prevention**:
-- Overlapping maintenance window identification
-- Resource double-booking prevention
-- Change dependency violation warnings
-- Business impact conflict analysis
-
-**Integration Capabilities**:
-- HR system integration for leave and availability
-- Change management system synchronization
-- Monitoring system maintenance mode coordination
-- External calendar integration (Outlook, Google Calendar)
-
-### 4.6 Notifications
-
-**Purpose**: Centralized communication hub ensuring awareness while managing information overload
-
-#### 4.6.1 Notification Categories
-**System Alerts**:
-- Critical incidents (P0/P1) with immediate escalation
-- SLA breach warnings (15 minutes before, 5 minutes before, at breach)
-- Service outages affecting business operations
-- System health and performance degradation alerts
-
-**AI Insights**:
-- New automation recommendations with confidence scoring
-- Pattern detection alerts for recurring issues
-- Knowledge gap identification with suggested actions
-- Process improvement opportunities with ROI estimates
-
-**Sync and Integration Status**:
-- Offline operation queue status with pending action counts
-- Data conflict resolution requirements with context
-- Integration failure alerts with retry status
-- Sync completion confirmations with change summaries
-
-**Collaboration and Workflow**:
-- Work item assignments and status changes
-- Approval requests with urgency indicators
-- Team communication and mention notifications
-- Meeting and event reminders with context
-
-#### 4.6.2 Intelligent Notification Management
-**Priority-Based Delivery**:
-- Critical notifications bypass quiet hours and device settings
-- Important notifications respect user preferences and schedules
-- Informational notifications batch and summarize to reduce noise
-- Context-aware timing based on user availability and workload
-
-**Channel Selection**:
-- In-app notifications with badge counters and real-time updates
-- Email digests with configurable frequency (real-time, hourly, daily)
-- SMS for critical alerts with rate limiting
-- Push notifications for mobile users with offline capability
-
-**Noise Reduction**:
-- Smart grouping of similar notifications to prevent spam
-- User learning algorithm adapting to individual preferences
-- Automatic dismissal of resolved issues
-- Escalation prevention through intelligent routing
-
-#### 4.6.3 User Control and Preferences
-**Notification Preferences**:
-- Granular control by notification type and source
-- Quiet hours configuration with emergency override
-- Vacation mode with delegation to teammates
-- Device-specific settings for mobile vs. desktop
-
-**Management Features**:
-- Bulk dismiss operations with undo capability
-- Mark all read functionality with selective options
-- Search and filter historical notifications
-- Export notification logs for audit and analysis
-
----
-
-## 5. AI and Automation Framework
-
-### 5.1 AI-First Design Philosophy
-
-**Every Module AI Integration**:
-- **Pulse**: Predictive analytics for KPI trending and anomaly detection
-- **SmartQueue**: Intelligent prioritization with explainable reasoning
-- **WorkItem Detail**: Context-aware recommendations and knowledge suggestions
-- **Intelligence Center**: Continuous learning and improvement identification
-- **Schedule**: Conflict prediction and resource optimization
-- **Notifications**: Smart filtering and priority-based delivery
-
-### 5.2 AI Decision Framework
-
-**Human-in-the-Loop Governance**:
-- **Fill in Gaps**: AI makes recommendations when human decision is preferred
-- **Confidence-Based Autonomy**: High confidence (>85%) enables autonomous action
-- **Learning Validation**: AI requests permission before learning new patterns
-- **Critical Asset Protection**: Human approval required for any action affecting critical systems
-
-**Risk-Based Execution**:
-- **Low Risk**: Automatic execution with audit logging
-- **Medium Risk**: Suggested actions requiring user confirmation
-- **High Risk**: Approval workflow with risk assessment documentation
-- **Critical Risk**: Multi-level approval with rollback planning
-
-### 5.3 Continuous Learning Architecture
-
-**Learning Sources**:
-- User feedback on AI recommendations (thumbs up/down, explicit corrections)
-- Resolution outcome tracking (success rates, time to resolution)
-- Pattern recognition from successful interventions
-- Expert validation and training data curation
-
-**Model Management**:
-- **Gradual Rollout**: A/B testing for AI model updates
-- **Performance Monitoring**: Accuracy tracking with automated rollback
-- **Explanation Storage**: All AI decisions stored permanently for audit and compliance
-- **Bias Detection**: Regular analysis for fairness and accuracy across different scenarios
-
-### 5.4 Automation Engine Capabilities
-
-**Automation Scope**:
-- **Workflow Automations**: Multi-step business processes with conditional logic
-- **System Automations**: Infrastructure management and maintenance tasks
-- **Integration Automations**: Data synchronization and cross-system operations
-- **Communication Automations**: Stakeholder notifications and status updates
-
-**Risk Management and Safety**:
-- **Risk Scoring**: 1-10 scale considering system criticality, financial impact, compliance requirements
-- **Safety Controls**: Automatic rollback for reversible operations, human confirmation for irreversible actions
-- **Audit Requirements**: Complete execution logging with reasoning and decision factors
-- **Approval Workflows**: Configurable approval chains based on risk level and organizational policy
-
----
-
-## 6. Integration and Data Architecture
-
-### 6.1 Integration Strategy
-
-**Aggregation Layer Approach**:
-OpsHub serves as an intelligent aggregation layer connecting existing enterprise systems without replacing them. It maintains bidirectional synchronization while providing unified interfaces and enhanced capabilities.
-
-**Supported Integration Patterns**:
-- **REST APIs**: Standard HTTP-based integration for most modern systems
-- **Message Queues**: Asynchronous event processing for high-volume data
-- **Webhooks**: Real-time event notifications for immediate response
-- **File-Based**: Batch import/export for legacy systems and bulk operations
-
-**Target System Categories**:
-- **ITSM Tools**: ServiceNow, Remedy, Cherwell, Jira Service Management
-- **Monitoring Systems**: Datadog, Splunk, New Relic, Prometheus, custom solutions
-- **Communication Platforms**: Slack, Microsoft Teams, email systems
-- **Custom Applications**: LOB applications, legacy systems, specialized tools
-
-### 6.2 Data Synchronization and Conflict Resolution
-
-**Bidirectional Sync Strategy**:
-- **Real-time Sync**: Critical data (incident status, assignments) synchronized within 30 seconds
-- **Near Real-time**: Important updates (work item changes) synchronized within 2 minutes
-- **Batch Sync**: Reference data (users, configurations) synchronized hourly or daily
-
-**Conflict Resolution Framework**:
-- **User Arbitration**: End users are ultimate arbitrators of data conflicts
-- **Context Visibility**: Full comparison showing both versions with change attribution
-- **Field-Level Resolution**: Users can merge changes field by field
-- **Reasoning Capture**: Comments explaining resolution choices for audit trail
-- **Learning Integration**: Conflict patterns inform future AI recommendations
-
-**Data Authority Configuration**:
-- **Configurable Authority**: Systems can be designated as authoritative for specific data types
-- **Hierarchical Precedence**: Fallback rules when primary authority is unavailable
-- **Override Capability**: Users can override system authority with proper justification
-
-### 6.3 Service Catalog Integration
-
-**External Service Catalog Connection**:
-- Integration with existing custom service catalog solution
-- Real-time synchronization without local caching to ensure data accuracy
-- Deep relationship mapping for service dependencies and impact analysis
-
-**Relationship Visualization**:
-- **Graph View**: Interactive network diagram showing service interconnections
-- **Hierarchical Tree**: Structured view of service parent-child relationships
-- **Contextual Panels**: Inline relationship information within work item context
-
-**Impact Analysis**:
-- Automated business impact calculation based on service criticality
-- Dependency chain analysis for change impact assessment
-- Cost correlation with service availability and performance
-
----
-
-## 7. Mobile and Offline Architecture
-
-### 7.1 Progressive Web App (PWA) Requirements
-
-**Native App Experience**:
-- Installable on mobile devices with app icon and splash screen
-- Full-screen experience without browser UI
-- App switcher integration with proper app identity
-- Platform-specific optimizations (iOS and Android)
-
-**Performance Requirements**:
-- Initial load under 3 seconds on 3G networks
-- Subsequent navigation under 1 second
-- Smooth 60fps animations and interactions
-- Efficient memory usage for extended mobile sessions
-
-### 7.2 Offline-First Functionality
-
-**Offline Capabilities**:
-- **SmartQueue**: View and update work items with local prioritization
-- **Pulse Dashboard**: Cached KPIs with freshness indicators
-- **Intelligence Center**: Access knowledge articles and automation documentation
-- **WorkItem Detail**: Complete investigation capabilities with attachment viewing
-- **Schedule View**: Personal schedule and deadlines
-
-**Offline Limitations** (Queued for Online Execution):
-- Real-time collaboration (chat, live updates)
-- Cross-system automation triggers
-- AI model training and feedback submission
-- Approval workflow submissions (queued with notification)
-
-**Intelligent Sync Management**:
-- **4-Hour Maximum**: Forced synchronization after 4 hours offline
-- **Priority Queuing**: Critical actions (P1 incidents) sync first when connection restored
-- **Conflict Detection**: Automatic identification of changes made by others during offline period
-- **Smart Merging**: AI-assisted conflict resolution with user override capability
-
-### 7.3 Mobile-Specific User Experience
-
-**Touch-Optimized Interface**:
-- Minimum 44px touch targets for all interactive elements
-- Swipe gestures for navigation and quick actions
-- Long-press context menus for advanced operations
-- Pull-to-refresh for data updates
-
-**Mobile Workflow Optimizations**:
-- **Quick Actions**: One-tap assignment, status updates, and priority changes
-- **Voice Input**: Speech-to-text for comments and descriptions
-- **Camera Integration**: Photo attachments for field documentation
-- **GPS Integration**: Location context for field operations
-
-**Responsive Design Adaptation**:
-- **Collapsible Navigation**: Space-efficient sidebar for mobile
-- **Progressive Disclosure**: Show essential information first, details on demand
-- **Context Switching**: Seamless movement between modules with state preservation
-- **Notification Integration**: Native mobile notification support
-
----
-
-## 8. Security and Compliance Framework
-
-### 8.1 Security Architecture
-
-**Authentication and Authorization**:
-- **Hybrid Authentication**: Support for SAML SSO, OAuth2, and service account fallbacks
-- **Multi-Factor Authentication**: Required for privileged operations and high-risk actions
-- **Role-Based Access Control**: Granular permissions with team-based isolation
-- **Session Management**: Secure token handling with appropriate expiration and refresh
-
-**Data Protection**:
-- **Encryption Standards**: AES-256 for data at rest, TLS 1.3 for data in transit
-- **Field-Level Encryption**: Sensitive data encrypted with separate keys
-- **Key Management**: Secure key rotation with automated lifecycle management
-- **Data Masking**: Sensitive information protection in non-production environments
-
-**Zero Trust Principles**:
-- **Continuous Verification**: Every request authenticated and authorized
-- **Least Privilege Access**: Minimal permissions required for task completion
-- **Network Segmentation**: Isolated network zones for different security levels
-- **Device Trust**: Device registration and compliance verification
-
-### 8.2 Compliance Framework
-
-**GDPR Compliance**:
-- **Data Subject Rights**: Complete implementation of access, rectification, erasure, and portability
-- **Consent Management**: Granular consent tracking with withdrawal capabilities
-- **Privacy by Design**: Data protection integrated into every system component
-- **Breach Notification**: Automated detection and reporting within regulatory timeframes
-- **Data Minimization**: Collection and processing limited to operational necessity
-
-**ITIL Process Compliance**:
-- **Process Framework**: Alignment with ITIL service management practices
-- **Workflow Validation**: Automated checking of process compliance
-- **Audit Trail**: Complete documentation of all process executions
-- **Continuous Improvement**: Regular process review and optimization
-
-**Audit and Logging Requirements**:
-- **Comprehensive Logging**: Every user action, system event, and AI decision logged
-- **Immutable Audit Trail**: Tamper-evident logging with cryptographic integrity
-- **Retention Management**: Configurable retention periods with automated archiving
-- **Compliance Reporting**: Automated generation of regulatory compliance reports
-
-### 8.3 Enterprise Security Features
-
-**Advanced Threat Protection**:
-- **Anomaly Detection**: ML-based identification of unusual user behavior
-- **Insider Threat Monitoring**: Pattern analysis for potential security risks
-- **API Security**: Rate limiting, request validation, and threat detection
-- **Vulnerability Management**: Regular security scanning and automated patching
-
-**Data Loss Prevention**:
-- **Content Classification**: Automatic identification of sensitive information
-- **Access Controls**: Dynamic permissions based on data sensitivity
-- **Export Restrictions**: Controlled data export with approval workflows
-- **Watermarking**: Document tracking for sensitive information
-
----
-
-## 9. Performance and Scalability Requirements
-
-### 9.1 Performance Targets
-
-**Response Time Requirements**:
-- Page load times under 3 seconds on 3G networks
-- API responses under 500ms for 95th percentile
-- Search results returned within 2 seconds
-- Real-time updates delivered within 500ms of event occurrence
-
-**Throughput Requirements**:
-- Support 500+ concurrent users during peak hours
-- Handle 100-10,000 incidents per month based on organization size
-- Process 1M+ API requests per hour during high activity periods
-- Maintain performance during major incident "all hands" scenarios
-
-**Availability Requirements**:
-- 99.9% uptime SLA (8.76 hours downtime per year maximum)
-- Graceful degradation when external systems are unavailable
-- Automatic failover to secondary systems within 30 seconds
-- Regional failover capability for global deployments
-
-### 9.2 Scalability Architecture
-
-**Horizontal Scaling Capability**:
-- Auto-scaling from 3 to 50+ application instances based on load
-- Database read replica scaling for query performance
-- Cache layer scaling with intelligent data distribution
-- CDN integration for global performance optimization
-
-**Multi-Region Support**:
-- **Single Global Deployment**: Centralized with edge caching
-- **Multiple Regional Instances**: Isolated deployments with central coordination
-- **Data Locality**: Compliance with regional data residency requirements
-- **Disaster Recovery**: Cross-region backup and recovery capabilities
-
-**Performance Optimization Features**:
-- **Intelligent Caching**: Multi-layer cache strategy with automatic invalidation
-- **Database Optimization**: Query optimization with proper indexing strategy
-- **API Optimization**: Response compression, pagination, and efficient serialization
-- **Background Processing**: Non-critical operations moved to background queues
-
----
-
-## 10. Implementation Strategy
-
-### 10.1 Phased Delivery Approach
-
-**Phase 1: Foundation (16 weeks)**
-- **Scope**: Core platform, basic authentication, fundamental UI, database design, basic API endpoints, initial PWA setup
-- **Success Criteria**: Users can log in, view basic dashboard, perform CRUD operations on work items
-- **Key Deliverables**: Working authentication, basic SmartQueue, simple Pulse dashboard, mobile-responsive design
-
-**Phase 2: Core Features (20 weeks)**
-- **Scope**: SmartQueue with basic AI, WorkItem detail module, notifications system, offline functionality, integration framework
-- **Success Criteria**: Complete workflow from incident creation to resolution, basic offline capability, 2+ external integrations
-- **Key Deliverables**: AI prioritization, collaboration features, sync mechanism, integration with ServiceNow/Jira
-
-**Phase 3: Intelligence and Automation (24 weeks)**
-- **Scope**: Advanced AI engine, complete Intelligence Center, automation workflows, knowledge management, analytics
-- **Success Criteria**: 85% accuracy in AI prioritization, successful automation execution, AI-enhanced knowledge recommendations
-- **Key Deliverables**: Autonomous agents, workflow automation, continuous learning, comprehensive analytics
-
-**Phase 4: Enterprise Features (16 weeks)**
-- **Scope**: Advanced security, compliance framework, multi-tenant architecture, schedule management, advanced monitoring
-- **Success Criteria**: Full GDPR compliance, 500+ concurrent user support, ITIL process compliance
-- **Key Deliverables**: Enterprise security, audit framework, scalability features, schedule integration
-
-**Phase 5: Optimization and Enhancement (12 weeks)**
-- **Scope**: Performance optimization, advanced AI features, global deployment, user experience enhancements
-- **Success Criteria**: Sub-1-second API responses, 99.9% uptime, multi-region deployment capability
-- **Key Deliverables**: Performance tuning, advanced AI capabilities, global infrastructure, UX refinements
-
-### 10.2 Success Metrics and Validation
-
-**Functional Validation**:
-- Complete end-to-end workflows from alert to resolution
-- AI prioritization accuracy reaching 85% within 3 months of deployment
-- Successful offline operation for minimum 4 hours with seamless sync
-- Integration with minimum 3 external systems with bidirectional sync
-
-**Performance Validation**:
-- Load testing demonstrating support for 500+ concurrent users
-- Page load times consistently under 3 seconds across different network conditions
-- API response times under 500ms for 95% of requests
-- Successful disaster recovery testing with RTO under 1 hour
-
-**Business Impact Validation**:
-- 50% reduction in context switching measured through user activity tracking
-- 30% improvement in MTTR demonstrated through before/after analysis
-- 80% user adoption rate within 6 months of full deployment
-- Positive ROI demonstration within 12 months of implementation
-
-### 10.3 Risk Mitigation Strategy
-
-**Technical Risks**:
-- **AI Accuracy Below Targets**: Extensive training data collection, continuous model refinement, expert validation
-- **Integration Complexity**: Phased integration approach, comprehensive testing, fallback procedures
-- **Performance Under Load**: Thorough load testing, auto-scaling implementation, performance monitoring
-
-**Operational Risks**:
-- **User Adoption Resistance**: Comprehensive change management, extensive training, gradual rollout
-- **Data Migration Challenges**: Parallel operation during transition, data validation, rollback procedures
-- **Security Vulnerabilities**: Regular security assessments, penetration testing, automated vulnerability scanning
-
-**Business Risks**:
-- **Vendor Lock-in**: Open standards adoption, API-first architecture, data portability planning
-- **Scalability Limitations**: Cloud-native design, horizontal scaling architecture, performance monitoring
-- **Compliance Failures**: Regular compliance audits, automated compliance checking, legal review processes
-
----
-
-## 11. Organizational Impact and Change Management
-
-### 11.1 User Adoption Strategy
-
-**Training and Enablement**:
-- Role-specific training programs tailored to each persona's needs
-- Hands-on workshops with realistic scenarios and data
-- Quick reference guides and in-app help for immediate assistance
-- Champions program with power users driving adoption in their teams
-
-**Change Management**:
-- Executive sponsorship and clear communication of business benefits
-- Gradual rollout starting with pilot groups and expanding based on success
-- Regular feedback collection and rapid iteration based on user input
-- Success story sharing and recognition of early adopters
-
-**Support Framework**:
-- Dedicated support team during initial rollout period
-- Comprehensive documentation and knowledge base
-- User community forums for peer-to-peer assistance
-- Regular office hours and Q&A sessions with product team
-
-### 11.2 Operational Transformation
-
-**Process Standardization**:
-- Unified workflows across previously disparate tools
-- Consistent data definitions and business rules
-- Standardized reporting and metrics across teams
-- Common automation patterns and best practices
-
-**Skill Development**:
-- AI literacy training for understanding and working with intelligent systems
-- Automation design capabilities for power users
-- Data analysis skills for interpreting analytics and trends
-- Mobile-first operational practices for field teams
-
-**Performance Improvement**:
-- Reduced context switching through unified interface
-- Faster incident resolution through AI prioritization and knowledge access
-- Improved team coordination through shared visibility and collaboration tools
-- Enhanced decision-making through real-time analytics and insights
-
----
-
-This functional specification provides a comprehensive foundation for OpsHub development while maintaining focus on business requirements and user needs rather than technical implementation details. The specification balances completeness with clarity, ensuring all stakeholders understand what the system will do and how it will benefit the organization.
+OpsHub – Enterprise Operations Platform
+
+Functional Specification v4.0 (Bible Copy – Section 0 & 1)
+
+⸻
+
+0. Vision & Principles
+
+0.1 Vision
+
+OpsHub exists to solve one of the biggest pain points in enterprise IT and operations:
+fragmentation across 8–12 tools, leading to lost productivity, delayed resolutions, and lack of unified visibility.
+
+Whereas traditional ITSM platforms like ServiceNow or Jira act as systems of record, OpsHub is the system of engagement and intelligence overlay.
+	•	It consolidates data and workflows into one AI-native cockpit.
+	•	It empowers engineers, managers, and executives to act faster, with more confidence.
+	•	It introduces autonomous AI assistance (low-risk first, growing to higher-risk with guardrails).
+	•	It is mobile-first and offline-capable, built for the real-world workflows of field engineers, cloud ops, app support, and command centers.
+
+The promise: “OpsHub unifies operations, augments humans with AI, and drives measurable ROI by reducing toil, improving MTTR, and providing visibility from the engineer’s desk to the CIO’s dashboard.”
+
+⸻
+
+0.2 Design Principles
+	1.	Overlay, Not Replacement
+	•	OpsHub connects to ITSM, monitoring, and collaboration tools — it does not replace them.
+	•	Example: Creating an incident in OpsHub → writes into ServiceNow (system of record), but managed through OpsHub thereafter.
+	2.	AI-Native from Day 1
+	•	Every module includes AI augmentation (recommendations, automation suggestions, explainability).
+	•	Example: In SmartQueue, AI explains why a P2 item is scored higher than a P1 (due to SLA breach proximity).
+	3.	Mobile-First, Offline-Ready
+	•	Full PWA support with 4h offline capability.
+	•	Example: A field engineer logs updates offline; OpsHub syncs with conflict arbitration when online.
+	4.	Persona-First UX
+	•	Each role gets tailored defaults (Engineer, Manager, SME, SRE, Exec).
+	•	Example: Engineers see SLA streaks, while CIOs see downtime cost avoided.
+	5.	Governance by Default
+	•	SLA timers never pause.
+	•	Approvals always logged with reasons.
+	•	Suppressed notifications always recoverable via Suppression Log.
+	6.	Explainability & Trust
+	•	AI suggestions show confidence + top 3 factors.
+	•	Example: “Restart Service X (92% confidence, based on 14 similar incidents resolved in <30 min).”
+	7.	Continuous Improvement
+	•	OpsHub doesn’t just show what happened; it shows how AI, automation, and teams can improve next.
+	•	Example: Intelligence Center nudges → “Recurring task detected → suggest automation.”
+
+⸻
+
+0.3 Scope of Phase 1 (MVP)
+
+In-Scope
+	•	Multi-tenant architecture (single tenant view only).
+	•	Core modules: Pulse, SmartQueue, WorkItem Detail, Intelligence Center, Schedule, Notifications.
+	•	Incident creation (manual + from alerts).
+	•	Low-risk automation execution (with rollback).
+	•	AI explainability (confidence + top 3 factors).
+	•	SLA governance, suppression log, conflict acceptance.
+	•	Offline-first (4h max offline, arbitration at sync).
+	•	ISO27001 + SOC2 readiness.
+
+Out of Scope (Phase 2+)
+	•	Cross-tenant / MSP views.
+	•	Predictive “what-if” ROI analytics.
+	•	Slack/MS Teams integration.
+	•	Complex CAB workflows.
+	•	Advanced automation designer.
+	•	Custom Pulse widgets.
+
+⸻
+
+0.4 Success Anchors (End-State Vision)
+	•	Engineer: “AI helped me fix 3 tickets today, I spent less time clicking, more time solving.”
+	•	Manager: “My team’s SLA compliance is up 15%, escalations are down.”
+	•	SRE: “We automated a recurring issue and eliminated 40h/month of toil.”
+	•	SME: “AI flagged an outdated article; I updated it before it caused confusion.”
+	•	CIO: “We avoided $200k in downtime last quarter, adoption is growing, and the team trusts AI.”
+
+⸻
+
+1. Executive Summary
+
+1.1 Business Problem
+
+Enterprise IT operations face systemic inefficiencies:
+	•	Fragmented tools: Engineers toggle across ITSM, monitoring, comms, and KB tools → 40% productivity loss.
+	•	Slow resolutions: Scattered context → delayed MTTR, repeated escalations.
+	•	Lack of visibility: Managers and executives can’t see unified operational health or ROI from automation/AI.
+	•	Field engineer pain: Poor mobile/offline support → critical delay in incident updates.
+	•	Underutilized automation: Automations exist but adoption is low, ROI invisible.
+	•	AI gap: Traditional tools bolt on AI as afterthought → not explainable, not trusted, not pervasive.
+
+⸻
+
+1.2 Solution Overview
+
+OpsHub is the AI-native, mobile-first operational cockpit.
+
+It aggregates all operational work (incidents, requests, changes, maintenance, approvals, knowledge) into a single intelligent hub.
+
+Core Value Proposition
+	•	Unify Operations → One interface across ITSM, monitoring, collaboration, knowledge.
+	•	AI-First Design → Prioritization, recommendations, low-risk autonomy, all explainable.
+	•	Mobile & Offline → True PWA, 4h offline-first operations for field engineers.
+	•	Data Unification → Cross-tool traceability (incident ↔ change ↔ knowledge ↔ automation).
+	•	Continuous Improvement → Intelligence Center tracks ROI, adoption, and nudges improvement.
+	•	Governance & Compliance → Immutable SLA clocks, audit logs, suppression log, approval analytics.
+
+⸻
+
+1.3 Success Metrics (Phase 1 Targets)
+	•	Operational Efficiency:
+	•	30% faster MTTR.
+	•	50% reduction in context switching.
+	•	40% increase in field engineer productivity.
+	•	AI & Automation Adoption:
+	•	85% accuracy in AI prioritization recommendations.
+	•	70% AI recommendation acceptance rate.
+	•	20% of incidents resolved via low-risk automations.
+	•	Business & Governance:
+	•	80% user adoption within 6 months.
+	•	Downtime cost avoided reported in Pulse/Intelligence dashboards.
+	•	SLA compliance improvement ≥15%.
+	•	ISO27001 + SOC2 audit readiness.
+    
+⸻
+
+2. Personas & Day-in-the-Life Journeys (explicit)
+
+Each persona includes profile, primary needs, and detailed day-in-life step flows across modules.
+
+2.1 Engineers (Field, NOC, App, Cloud Support)
+
+Profile
+	•	Frontline responders who resolve incidents, fulfill requests, apply changes, and log maintenance.
+	•	Often mobile (field engineers, AV/NOC on the floor, app/cloud engineers on call).
+	•	Pain points: context switching across 5+ tools, poor mobile UX, delayed SLA awareness.
+
+Primary Needs
+	•	Clear prioritization of tasks.
+	•	Mobile/offline access to work.
+	•	AI recommendations (root cause, similar incidents, related KB).
+	•	SLA countdowns + gamification (streaks, “AI helped me” counters).
+
+OpsHub Workflow (“Day in the Life”)
+	1.	Starts day → opens Pulse, sees personal SLA streak + “AI helped me” counter.
+	2.	Switches to SmartQueue → My Work tab → prioritized list with SLA countdowns.
+	3.	Opens WorkItem (incident):
+	•	AI sidebar suggests next step + knowledge article.
+	•	Runs low-risk automation inline.
+	•	Logs status update.
+	4.	Gets Notification: new P1 assigned. Approves low-risk automation directly from notification.
+	5.	Goes offline for 2h (field task). Updates WorkItem offline. Syncs on return; OpsHub arbitrates conflicts.
+	6.	Ends day → Pulse updates “3 incidents resolved, AI helped me on 2, 100% SLA met streak intact.”
+
+Phase 1 Value to Engineer
+	•	Less context switching → more time solving.
+	•	SLA breaches visible at a glance.
+	•	AI helps, but never blocks.
+	•	Mobile-first workflow, offline-capable.
+
+⸻
+
+2.2 Managers / Dispatchers
+
+Profile
+	•	Manage teams of engineers, assign/reassign work, handle escalations, ensure SLA compliance.
+	•	Often mid-level operations leaders (Service Desk Leads, Shift Managers, Ops Coordinators).
+
+Primary Needs
+	•	Team capacity visibility.
+	•	Approval discipline (change, knowledge, escalations).
+	•	Escalation monitoring & conflict resolution.
+	•	Nudges for workload balancing.
+
+OpsHub Workflow (“Day in the Life”)
+	1.	Opens Pulse → Team View → sees SLA compliance %, backlog load, pending approvals.
+	2.	Gets Notification: 2 SLA breaches escalated. Clicks to SmartQueue (Team tab), reassigns incident.
+	3.	Approvals tab → reviews 3 pending changes. AI shows risk context; approves 2, rejects 1 with reason.
+	4.	Schedule View → sees two overlapping maintenance windows. AI suggests shift swap. Accepts.
+	5.	Nudges in Intelligence Center: “Team A overbooked, Team B underutilized → rebalance.” Takes action → creates reassign task in SmartQueue.
+	6.	End of week: Pulse shows improvement (SLA compliance up 12%, escalations down).
+
+Phase 1 Value to Manager
+	•	Centralized view of team health.
+	•	Easy approvals with AI-assist.
+	•	SLA + escalation tracking always live.
+	•	Conflict acceptance = governed, auditable.
+
+⸻
+
+2.3 Site Reliability Engineers (SREs) / Reliability Engineers
+
+Profile
+	•	Specialists focused on reliability, toil reduction, root cause analysis, and automations.
+	•	Often closest to dev teams; care about system patterns, logs, automation ROI.
+
+Primary Needs
+	•	Access to incident/system logs.
+	•	Visibility into recurring issues.
+	•	Automation performance analytics.
+	•	AI nudges for new automation candidates.
+
+OpsHub Workflow (“Day in the Life”)
+	1.	Pulse → Automation ROI widget: “40h toil saved this week.”
+	2.	SmartQueue → filters to “Incidents + Automations.” Spots recurring P2 flagged by AI.
+	3.	Opens WorkItem → System Logs tab shows correlated error events. AI suggests root cause (DB connection leaks).
+	4.	Runs existing automation with rollback available.
+	5.	Intelligence Center → Automations tab: reviews rollback % and identifies optimization. Flags automation for improvement.
+	6.	Receives Nudge: “Recurring manual escalation detected → candidate for automation.” Accepts → adds to backlog in SmartQueue.
+
+Phase 1 Value to SRE
+	•	Faster RCA with AI insights.
+	•	Clear automation ROI attribution.
+	•	Nudges → helps identify new automations.
+	•	Prevent recurrence, not just react.
+
+⸻
+
+2.4 Subject Matter Experts (SMEs)
+
+Profile
+	•	Knowledge owners responsible for keeping KB accurate and up to date.
+	•	Validate AI-suggested knowledge, retire outdated content, approve lifecycle transitions.
+
+Primary Needs
+	•	See knowledge tasks (review, retirement, validation).
+	•	AI-assisted drafting of knowledge from incidents.
+	•	Approval workflows with SLA timers.
+	•	Usage analytics: “Which articles solve incidents?”
+
+OpsHub Workflow (“Day in the Life”)
+	1.	Pulse → Knowledge compliance widget: “2 retirements overdue.”
+	2.	SmartQueue → Knowledge tab shows review/retirement tasks.
+	3.	Opens WorkItem: AI-suggested retirement flagged. Reviews → accepts retirement with reason.
+	4.	AI Sidebar → auto-drafted KB from resolved incident. Validates content, publishes with edits.
+	5.	Intelligence Center → Knowledge tab: reviews usage metrics, finds article with <10% helpful rating → flags for rewrite.
+
+Phase 1 Value to SME
+	•	Single cockpit for KB lifecycle tasks.
+	•	AI saves effort in drafting.
+	•	Knowledge effectiveness always visible.
+	•	Governance via SLA + approvals ensures KB stays fresh.
+
+⸻
+
+2.5 Executives (VP, CIO)
+
+Profile
+	•	Senior leaders responsible for business outcomes: uptime, cost avoidance, adoption.
+	•	Don’t live in the system, but need high-level ROI & risk visibility.
+
+Primary Needs
+	•	Downtime cost avoided.
+	•	SLA compliance trends.
+	•	AI/automation adoption rates.
+	•	Approval accountability (on-time %, rejections).
+
+OpsHub Workflow (“Day in the Life”)
+	1.	Opens Pulse (Exec view):
+	•	Downtime cost avoided ($).
+	•	SLA % trendline vs last quarter.
+	•	AI adoption trendline.
+	•	Automation ROI summary.
+	2.	Receives Notification (Email): critical P0 approval pending.
+	•	Approves from email → deep link to WorkItem if needed.
+	3.	Intelligence Center → ROI dashboard shows “$200k downtime avoided this quarter, automation rollback <5%.”
+	4.	Shares Pulse screenshot with Board → demonstrates value.
+
+Phase 1 Value to Exec
+	•	Clarity on ROI & risk without noise.
+	•	Exec-only notification path (email).
+	•	AI/automation adoption directly tied to $$ saved.
+	•	Trust in governance (approvals, SLA, audit all visible).
+
+⸻
+
+2.6 Cross-Persona Scenario (Major Incident)
+
+Flow:
+	1.	Alert arrives → SmartQueue auto-prioritizes P1, SLA clock starts.
+	2.	Engineer → gets Notification, opens WorkItem, runs AI-suggested automation.
+	3.	Manager → monitors Pulse, reassigns team via SmartQueue.
+	4.	SRE → checks WorkItem logs, finds recurring pattern, escalates automation candidate.
+	5.	SME → after resolution, validates AI-drafted knowledge article.
+	6.	Exec → sees downtime avoided + SLA compliance maintained in Pulse.
+
+⸻
+
+3. Core Modules — Full Detailed Functional Specs
+
+Each module is described with Purpose, Primary Functions, AI integration, Persona journeys, Governance rules, Offline handling, Phase 1 vs Phase 2.
+
+⸻
+
+3.1 Pulse – Operational Cockpit
+
+Purpose
+
+Pulse is the real-time command center of OpsHub.
+It provides role-based visibility into operational health, KPIs, and AI/automation impact.
+Unlike traditional dashboards, Pulse:
+	•	Surfaces governed KPIs (immutable, ITIL/ISO aligned).
+	•	Shows “AI & Automation Impact” for each persona.
+	•	Acts as a launchpad (drill-down into SmartQueue or Intelligence Center).
+
+⸻
+
+Primary Functions
+
+1. Role-Based KPI Widgets
+	•	Widgets tailored to persona, but configurable within guardrails.
+	•	Engineers: SLA streaks, personal backlog, “AI helped me” counter.
+	•	Managers: Team SLA compliance, backlog aging, approvals pending.
+	•	SREs: Automation ROI, recurring incident patterns.
+	•	SMEs: Knowledge compliance (review/retirement %, AI drafts validated).
+	•	Execs: Downtime cost avoided, AI/automation adoption trendline, SLA compliance org-wide.
+
+2. AI & Automation Attribution
+	•	Each persona sees direct benefits of AI/automation:
+	•	Engineers → “4h toil saved this week.”
+	•	Managers → “15% SLA compliance improvement.”
+	•	SREs → “40h toil automated this month.”
+	•	Execs → “$200k downtime cost avoided.”
+
+3. Drill-Down Navigation (Two-Target Model)
+	•	Operational KPIs → SmartQueue (to act).
+	•	AI/Automation ROI → Intelligence Center (to learn/improve).
+	•	Drill-down preserves filter context (e.g., SLA breaches filter → SmartQueue pre-filtered).
+
+4. Gamification Widgets
+	•	SLA streaks (personal/team).
+	•	“AI Helped Me” counters (per week).
+	•	On-time approvals % (for managers).
+	•	Guardrails: no leaderboards, no competitive scoring.
+
+5. Personalization
+	•	Within guardrails, users can:
+	•	Hide/show optional widgets.
+	•	Choose refresh intervals (30s–5m).
+	•	Save preferred layout (grid, list).
+	•	Mandatory widgets cannot be removed (e.g., SLA compliance).
+
+⸻
+
+AI Integration
+	•	Predictive SLA Risks: Pulse highlights “3 incidents likely to breach in next 2h” (AI forecast).
+	•	Adoption Attribution: Pulse quantifies “AI recs accepted 82%.”
+	•	Explainability: each AI-derived widget (e.g., SLA prediction) includes “Why?” reasoning (top 3 drivers).
+	•	Personalized Nudges: “You’ve ignored AI recs 3 times → review in Intelligence Center.”
+
+⸻
+
+Persona Journeys
+
+Engineer
+	•	Morning: Pulse shows backlog (5 items), SLA streak (7 days), AI helped me counter (2h saved).
+	•	Afternoon: SLA breach warning widget flags 1 P2 → clicks → SmartQueue pre-filtered.
+	•	End of day: sees improvement “All SLAs met, streak intact.”
+
+Manager
+	•	Pulse shows team SLA compliance 88%, backlog aging >48h.
+	•	Notices approvals pending (3). Clicks drill-down → SmartQueue Approvals tab.
+	•	Pulse nudges: “Team escalations down 10% this week.”
+
+SRE
+	•	Pulse shows Automation ROI: “40h toil saved this week, rollback 2%.”
+	•	Clicks drill-down → Intelligence Center Automations tab.
+	•	AI prediction widget: “Recurring issue likely to reappear in 3 days.”
+
+SME
+	•	Pulse widget: Knowledge compliance 92% (1 retirement overdue).
+	•	Clicks → SmartQueue Knowledge tab.
+	•	AI draft flagged: “3 new articles auto-drafted.”
+
+Executive
+	•	Pulse (Exec view): downtime cost avoided $200k, AI adoption 75%, SLA compliance trendline.
+	•	Sees “Critical approval pending” banner → clicks to WorkItem detail.
+	•	Weekly email digest → Pulse snapshot auto-sent.
+
+⸻
+
+Actions & Rules
+	•	Pulse is read-only in Phase 1 (no inline editing).
+	•	All interactions are drill-downs to SmartQueue or Intelligence.
+	•	Mandatory widgets cannot be removed.
+	•	Gamification resets weekly (e.g., SLA streaks reset if breach occurs).
+	•	Predictions labeled “AI Forecast” with confidence score.
+
+⸻
+
+Governance
+	•	Immutable KPIs: SLA compliance, MTTR, adoption metrics stored with versioning.
+	•	Audit Trail: Drill-downs logged (for compliance tracking).
+	•	Suppression: No KPI can be hidden at org level; users may collapse widgets but not remove.
+	•	Baseline: Pulse comparisons always relative to Day 0 baseline.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Persona-specific Pulse dashboards.
+	•	Mandatory widgets + configurable layout.
+	•	Drill-downs to SmartQueue/Intelligence.
+	•	SLA forecasts, adoption attribution, gamification counters.
+	•	Read-only (no inline edits).
+
+Phase 2+
+	•	Custom widget builder.
+	•	Cross-tenant/global Pulse.
+	•	Predictive ROI forecasting (“If adoption improves by 20%, downtime savings = $X”).
+	•	Benchmarking vs industry peers.
+
+⸻
+
+3.2 SmartQueue — Unified Work Hub
+
+Purpose
+
+SmartQueue is the centralized work hub in OpsHub.
+It replaces fragmented task lists across ITSM, monitoring, approvals, and knowledge tools with a single AI-prioritized queue.
+SmartQueue ensures:
+	•	Engineers see the right work at the right time.
+	•	Managers can oversee team workload + approvals.
+	•	Approvals don’t get buried → SLA clocks visible.
+	•	AI/automation opportunities are surfaced inline, not hidden in reports.
+
+⸻
+
+Primary Functions
+
+1. Unified Work Management
+	•	WorkItem Types Supported in Phase 1:
+	•	Incidents (P0–P4).
+	•	Service Requests.
+	•	Change Requests (normal/standard/emergency).
+	•	Maintenance Tasks.
+	•	Knowledge Tasks (review, retirement, AI draft validation).
+	•	Approvals (incidents, changes, knowledge).
+	•	Incident Creation:
+	•	From Alerts: Alerts in queue → “Create Incident” (pre-filled by alert payload). AI suggests categorization/priority.
+	•	Manual: “+ New Incident” → config-driven form (mandatory: Title, Service, Priority, Description). Writes directly into ITSM.
+	•	SLA clock starts on submission; audit logs action.
+
+⸻
+
+2. AI Prioritization Engine
+	•	Smart Score (0–10) calculated from:
+	•	SLA Urgency (35%) → time remaining vs SLA.
+	•	Business Impact (25%) → criticality, users affected, cost impact.
+	•	Team Capacity (20%) → workload, expertise availability.
+	•	Historical Patterns (15%) → past resolution success.
+	•	Customer Tier (5%).
+	•	Explainable AI: every Smart Score comes with “Why?” → top 3 weighted factors.
+	•	Dynamic Re-prioritization: Score recalculates in real-time (e.g., SLA window shrinks).
+	•	Confidence Score: AI shows confidence % for prioritization.
+
+⸻
+
+3. Intelligent Views & Filters
+	•	Pre-Selected Tabs by Persona:
+	•	Engineers → “My Work.”
+	•	Managers → “Team Work.”
+	•	SREs → “Incidents + Automations.”
+	•	SMEs → “Knowledge Tasks.”
+	•	Execs → “Approvals Only.”
+	•	Filters:
+	•	Assignment (me, team, unassigned).
+	•	Type (incidents, requests, changes, approvals, knowledge).
+	•	SLA (due today, overdue, breaching).
+	•	Business Service.
+	•	AI Insights (automation suggestions, high-confidence resolutions).
+	•	Views:
+	•	Table (desktop, detailed).
+	•	Card (mobile, touch-optimized).
+	•	Compact (power users).
+
+⸻
+
+4. Inline Actions
+	•	Available directly from SmartQueue without opening WorkItem Detail:
+	•	Assign to self/teammate.
+	•	Approve/reject (with reason).
+	•	Trigger automation (low-risk inline).
+	•	Update status.
+	•	Quick comment/mention.
+	•	Bulk Actions:
+	•	Assign (max 20).
+	•	Status update (max 30).
+	•	Export list (CSV, Excel, PDF).
+
+⸻
+
+5. Approvals Management
+	•	Approvals (change, incident, knowledge) appear inline.
+	•	SLA clock displayed on approval item.
+	•	AI rationale: shows risk context + recommendation.
+	•	Rejection requires reason.
+	•	SLA continues post-rejection (no pause).
+	•	Phase 1 limit: 1 resubmission only.
+
+⸻
+
+6. Offline Support
+	•	Users can act offline (assign, status update, approve, comment).
+	•	Conflict handling on sync:
+	•	AI suggests merge (field-level).
+	•	User arbitration required.
+	•	Offline approvals → advisory until confirmed post-sync.
+
+⸻
+
+AI Integration
+	•	Prioritization Engine → Smart Score, explainable.
+	•	Approval Advisor → suggests approve/reject with reasoning.
+	•	Duplicate Detection → flags if new incident matches existing one.
+	•	Automation Suggestions → highlights WorkItems with safe automation.
+	•	Routing Assistance → AI suggests best team/engineer for assignment.
+
+⸻
+
+Persona Journeys
+
+Engineer
+	1.	Opens SmartQueue → My Work.
+	2.	Sees prioritized list with SLA countdowns.
+	3.	Approves 1 low-risk automation inline.
+	4.	Creates new incident from alert.
+	5.	Goes offline, updates status; syncs later, conflict arbitrated.
+
+Manager
+	1.	Opens Team Work tab.
+	2.	Notices 2 SLA breaches escalated → reassigns inline.
+	3.	Approves 3 changes (AI flagged 1 high-risk → rejects with reason).
+	4.	Filters queue by “Backlog >48h” → rebalances team load.
+
+SRE
+	1.	Filters to “Incidents + Automations.”
+	2.	Spots recurring P2 flagged by AI.
+	3.	Runs automation inline for one item.
+	4.	Marks WorkItem for automation candidate → routed to Intelligence Center.
+
+SME
+	1.	Knowledge tab shows 2 retirements pending.
+	2.	Approves one, rejects one (adds reason).
+	3.	Validates AI draft article → publishes after edits.
+
+Executive
+	1.	Only sees Approvals (critical).
+	2.	Approves 1 P0 directly inline.
+	3.	Pulse auto-updates adoption trendline → reflected in Intelligence Center.
+
+⸻
+
+Actions & Rules
+	•	Assignment: requires reason for cross-team escalation.
+	•	Approvals: rejection reason mandatory; SLA never pauses.
+	•	Automation: low-risk auto-run; medium/high require approval.
+	•	Conflict Acceptance: logged with reason; tagged as “Acknowledged.”
+	•	Gamification: engineers see “streak intact” if no SLA breaches assigned.
+
+⸻
+
+Governance
+	•	Audit Trail: every action logged (assignment, approval, automation).
+	•	SLA Enforcement: countdown always visible; breaches logged.
+	•	Suppression: queue never hides items; suppressed notifications flagged but visible.
+	•	Immutable Logs: all AI recs, approvals, and overrides stored.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Unified queue (all work types).
+	•	Incident creation (manual + from alerts).
+	•	AI prioritization + explainability.
+	•	Inline approvals + low-risk automation execution.
+	•	Persona-based default tabs.
+	•	Offline support with arbitration.
+
+Phase 2+
+	•	Predictive prioritization (pre-breach detection).
+	•	MSP/global SmartQueue (cross-tenant).
+	•	Custom prioritization weights per tenant.
+	•	Multi-WorkItem batch investigation view.
+
+⸻
+
+✅ SmartQueue is now Bible-ready:
+	•	Covers all work types + incident creation.
+	•	AI roles explicit (prioritization, approvals, duplicates, automation).
+	•	Persona flows show daily reality.
+	•	Governance + SLA rules unambiguous.
+	•	Phase scope crystal clear.
+
+
+⸻
+
+3.3 WorkItem Detail — Investigation & Resolution
+
+Purpose
+
+The WorkItem Detail page is the core workspace for resolving any operational task.
+It consolidates context, AI recommendations, history, communications, and actions into one screen, so engineers don’t need to toggle between tools.
+
+OpsHub ensures:
+	•	Engineers can resolve incidents faster with AI guidance + related knowledge.
+	•	Managers and SMEs can perform approvals, reviews, and retirements without leaving the item.
+	•	SREs can analyze system logs and patterns directly in context.
+	•	All actions are auditable, SLA-driven, and compliant with ITIL.
+
+⸻
+
+Primary Functions
+
+1. Header (Always Visible)
+	•	WorkItem ID + external system reference (e.g., SNOW12345).
+	•	Status + workflow progression indicator.
+	•	Priority + AI Smart Score (with explainability).
+	•	SLA countdown timer (live, color-coded).
+	•	Business impact score (users/services affected, cost impact).
+	•	Assignment info (owner + team).
+
+⸻
+
+2. AI Sidebar (Right Panel)
+	•	Recommendations: Top 1–3 next actions with confidence %.
+	•	Knowledge: Top 3 related KB articles ranked by effectiveness (helpfulness %, review date).
+	•	Similar Incidents: 3 historical resolved incidents with summaries + engineer attribution.
+	•	Automations: Suggested workflows/scripts with risk tier + rollback availability.
+	•	Patterns: Recurrence detection (“This is the 5th Service Y alert this week”).
+	•	Explainability: Every AI suggestion includes “Why?” (3 main factors).
+
+⸻
+
+3. Tabs (Context Panels)
+
+Details Tab
+	•	Full description + categorization (config-driven).
+	•	Affected business services + dependency visualization.
+	•	Affected users/systems list.
+	•	Estimated vs actual cost impact.
+	•	Attachments (with version control).
+	•	Related items (incidents ↔ changes ↔ knowledge ↔ automations).
+
+Activity Log Tab
+	•	Chronological log of all human/system actions.
+	•	Before/after field changes.
+	•	User attribution + timestamps.
+	•	Status history + assignment changes.
+	•	Comment threads (with mentions).
+
+System Logs Tab (if available)
+	•	Integrated monitoring logs during incident timeframe.
+	•	Error correlation analysis.
+	•	Performance metrics.
+	•	Event timeline overlays.
+	•	Automated RCA suggestions.
+
+Approvals Tab
+	•	Pending approvals with SLA timers.
+	•	AI approval advisor: approve/reject recs with risk context.
+	•	Rejection reason mandatory.
+	•	SLA continues post-rejection (no pause).
+
+Communications Tab
+	•	Integrated chat (per WorkItem).
+	•	Email thread sync (via integration).
+	•	External comms log (stakeholders, vendors).
+	•	Conference bridge + screen share integration (for major incidents).
+
+Attachments Tab
+	•	File uploads with version control.
+	•	Linked to Knowledge base (if promoted).
+
+⸻
+
+4. Action Panel
+	•	Assignment: self-assign, assign teammate, cross-team escalation (requires reason).
+	•	Automation:
+	•	Low-risk = one-click run.
+	•	Medium/high-risk = requires approval inline.
+	•	Rollback available for reversible scripts.
+	•	Approvals: approve/reject inline (with SLA clock + AI reasoning).
+	•	Updates: change status, add comments, upload attachments.
+	•	Collaboration: create/join War Room (auto-linked to WorkItem).
+
+⸻
+
+5. Incident Creation (From Alerts)
+	•	Alerts opened as WorkItems show banner: “This is an alert, not an incident.”
+	•	“Create Incident from Alert” button:
+	•	Pre-fills fields from alert (timestamp, logs, affected service).
+	•	AI suggests categorization + priority.
+	•	On submit → creates incident in ITSM + links alert WorkItem for traceability.
+
+⸻
+
+AI Integration
+	•	Root Cause Advisor: suggests likely cause from logs + historical data.
+	•	Knowledge Ranker: orders KB articles by effectiveness (not just keyword match).
+	•	Automation Advisor: suggests automation with risk tier + rollback note.
+	•	Duplicate Detection: warns if incident already exists.
+	•	Pattern Detection: highlights recurrence.
+	•	Explainability: each AI insight tagged with top 3 drivers.
+
+⸻
+
+Persona Journeys
+
+Engineer
+	1.	Opens WorkItem → SLA clock shows 1h remaining.
+	2.	AI sidebar: suggests “Restart Service X (92% confidence).”
+	3.	Runs low-risk automation inline; SLA clock stops on resolution.
+	4.	Adds status update + comment.
+	5.	Attaches log file offline → syncs when online.
+
+Manager
+	1.	Opens WorkItem for escalation.
+	2.	Approvals tab shows 2 pending.
+	3.	Reviews AI approval advisor recs; approves one, rejects one with reason.
+	4.	Adds comment tagging engineer for follow-up.
+
+SRE
+	1.	Opens WorkItem → System Logs tab.
+	2.	Sees correlated DB errors; AI root cause: “Connection pool exhaustion.”
+	3.	Runs automation to reset pool; marks WorkItem as RCA confirmed.
+
+SME
+	1.	Opens resolved WorkItem.
+	2.	AI sidebar → draft KB article.
+	3.	Reviews, edits, publishes.
+	4.	Approves knowledge retirement flagged in Approvals tab.
+
+Executive
+	1.	Receives notification: critical P0 approval pending.
+	2.	Clicks link → Approvals tab in WorkItem Detail.
+	3.	Approves inline; SLA continues.
+
+⸻
+
+Actions & Rules
+	•	Assignment: cross-team escalation requires justification.
+	•	Approvals: rejection requires reason, SLA never pauses.
+	•	Automation:
+	•	Low-risk → auto-execute allowed.
+	•	Medium/high → approval required.
+	•	War Rooms: auto-log participants + duration.
+	•	Offline: all updates queued → arbitration if conflicts at sync.
+
+⸻
+
+Governance
+	•	Audit Trail: every action logged immutably.
+	•	Approvals: on-time %, rejection reasons logged for analytics.
+	•	Automations: execution + rollback results logged.
+	•	Knowledge: article draft + retirement approvals audited.
+	•	Conflicts: offline arbitration logged with chosen resolution.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Core tabs (Details, Activity, Approvals, Communications, Attachments).
+	•	AI sidebar (recommendations, knowledge, similar incidents, automations, patterns).
+	•	Inline approvals + automation runs.
+	•	Create Incident from Alert.
+	•	War Rooms (basic).
+	•	Offline updates with arbitration.
+
+Phase 2+
+	•	Predictive RCA with multi-factor analysis.
+	•	Parallel WorkItem view (side-by-side).
+	•	Advanced collaboration (integrated Teams/Slack).
+	•	Vendor integration for external approvals.
+	•	Automated RCA validation (AI feedback loop).
+⸻
+
+3.4 Intelligence Center — Continuous Improvement
+
+Purpose
+
+The Intelligence Center is OpsHub’s analytics + improvement cockpit.
+Where Pulse shows operational health now, Intelligence Center shows:
+	•	How AI and automation are performing.
+	•	What knowledge is effective (or stale).
+	•	Where approvals are bottlenecked.
+	•	What improvements are possible next.
+
+It enables:
+	•	Engineers to see how AI/automation is helping them.
+	•	Managers to spot adoption gaps + process bottlenecks.
+	•	SREs to analyze automation ROI + rollback trends.
+	•	SMEs to manage knowledge lifecycle.
+	•	Executives to track cost avoidance + ROI.
+
+⸻
+
+Primary Functions
+
+1. Automations Tab
+	•	Catalog of Automations:
+	•	Scripts, workflows, integrations visible in one place.
+	•	Organized by category (Incident, Change, Maintenance, Monitoring, Comms).
+	•	Usage Statistics:
+	•	Run count (per week, per month).
+	•	Success % and rollback %.
+	•	Avg runtime per automation.
+	•	Risk & ROI:
+	•	Risk tier: Low / Medium / High.
+	•	ROI = toil hours saved (estimated via historical effort × run count).
+	•	Rollback cost factored into ROI.
+	•	Governance Features:
+	•	Execution logs (who triggered, when, outcome).
+	•	Rollback availability status.
+	•	Audit trail for every run.
+
+⸻
+
+2. AI Adoption Tab
+	•	Metrics Tracked:
+	•	Recommendation acceptance % (per persona).
+	•	Rejection % + structured reasons (missing rollback, irrelevant, risky).
+	•	Override % (when humans reprioritize AI recs).
+	•	Adoption by Persona:
+	•	Engineers → % of AI recs used in daily work.
+	•	Managers → % of AI approvals followed.
+	•	SREs → % of RCA/automation recs accepted.
+	•	Trendlines:
+	•	Weekly adoption curves.
+	•	Correlation with SLA compliance.
+	•	Top Rejections:
+	•	Surface most common rejection reasons.
+	•	AI explains patterns: “80% of rejected recs lacked rollback → candidate for improvement.”
+
+⸻
+
+3. Knowledge Tab
+	•	Knowledge Lifecycle:
+	•	Articles pending review/retirement approvals.
+	•	AI-drafted knowledge from closed WorkItems.
+	•	Effectiveness Scoring:
+	•	“Helpful” % (based on incident resolution).
+	•	Last review date (traffic light colors).
+	•	Article usage count.
+	•	Gap Detection:
+	•	AI flags: “Recurring incident has no associated KB.”
+	•	Governance:
+	•	Retirement requires approval.
+	•	New AI drafts require SME validation.
+	•	All approvals logged with SLA compliance.
+
+⸻
+
+4. Approvals Analytics Tab
+	•	Approval SLA Compliance:
+	•	On-time %, overdue %, resubmissions.
+	•	Persona breakdown (Manager, SME, Exec).
+	•	Rejection Analysis:
+	•	Common reasons logged and aggregated.
+	•	AI shows correlation: “High rejection rate linked to unclear rollback steps.”
+	•	Gamification Element:
+	•	Approvers see their own SLA compliance % (not leaderboard).
+	•	Export Capability:
+	•	SLA compliance reports for audit (ISO/SOC2).
+
+⸻
+
+5. Nudges & Recommendations
+	•	AI-generated “improvement opportunities” surfaced in Intelligence Center:
+	•	Automation Nudges: “Recurring task takes 10h/week → automation candidate.”
+	•	Process Nudges: “Team A overloaded, Team B underutilized → rebalance.”
+	•	Knowledge Nudges: “Article X <10% helpful → update/retire.”
+	•	Approval Nudges: “Approval SLA <80% → review governance.”
+	•	Actions on Nudges:
+	•	Accept → creates WorkItem in SmartQueue.
+	•	Snooze → hide for 7 days.
+	•	Reject → requires reason (AI learns).
+
+⸻
+
+AI Integration
+	•	Automation Advisor: identifies candidates for new automations.
+	•	Adoption Coach: explains why recs were ignored/rejected.
+	•	Knowledge Curator: drafts KB from resolved WorkItems, flags gaps.
+	•	Approval Analyzer: correlates rejection patterns with SLA impact.
+	•	Explainability Everywhere:
+	•	Each insight includes “Why?” with top 3 contributing factors.
+	•	Example: “Rollback rate high (20%) → automation flagged for review.”
+
+⸻
+
+Persona Journeys
+
+Engineer
+	•	Opens Intelligence → sees “AI helped me: 10h saved this week.”
+	•	Nudges: recurring manual task flagged → accepts → WorkItem created in SmartQueue.
+
+Manager
+	•	Reviews Adoption tab → Team adoption 65% (below target).
+	•	Finds top rejection reason: “AI recs lacked rollback.”
+	•	Creates improvement task for SRE.
+
+SRE
+	•	Automations tab → sees rollback % at 8%.
+	•	Clicks into logs, finds root cause.
+	•	Flags automation for redesign.
+
+SME
+	•	Knowledge tab → 2 retirements overdue.
+	•	Validates AI draft KB from incident → publishes.
+	•	Updates low helpfulness article flagged by AI.
+
+Executive
+	•	ROI dashboard → downtime avoided $300k this quarter.
+	•	Approvals SLA: 92% on-time.
+	•	Adoption trendline: up 15% vs last quarter.
+
+⸻
+
+Actions & Rules
+	•	Nudges: Accept → WorkItem created; Reject → reason logged.
+	•	Approvals Analytics: rejection reasons always mandatory.
+	•	Knowledge Drafts: cannot be published without SME validation.
+	•	Automations: rollback % >10% auto-flagged for review.
+	•	Offline: read-only in offline mode; no approvals/nudges can be acted on.
+
+⸻
+
+Governance
+	•	Immutable Logs: every AI recommendation, adoption/rejection decision logged.
+	•	Baseline ROI: Day 0 baseline immutable → all ROI comparisons locked.
+	•	Suppression: Nudges never deleted; suppressed nudges visible in Suppression Log.
+	•	Compliance: Approval analytics exportable for ISO/SOC2 audits.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Automations tab (catalog, stats, rollback %).
+	•	AI Adoption tab (accept/reject %, reasons).
+	•	Knowledge tab (review/retirement tasks, AI drafts).
+	•	Approvals Analytics tab (on-time %, rejection reasons).
+	•	Nudges framework (accept/snooze/reject).
+
+Phase 2+
+	•	Predictive ROI (“If adoption ↑ 20%, downtime savings = $X”).
+	•	Cross-tenant/global benchmarking.
+	•	Advanced automation designer (drag-drop).
+	•	Continuous AI tuning based on rejection feedback.
+	•	MSP/global intelligence dashboards.
+
+⸻
+
+3.5 Schedule View — Operational Calendar
+
+Purpose
+
+The Schedule View is OpsHub’s unified calendar for operations.
+It consolidates:
+	•	Engineer shifts and on-call rotations.
+	•	Planned changes and maintenance windows.
+	•	SLA deadlines and knowledge review/retirement tasks.
+	•	Training and team meetings.
+
+Unlike fragmented ITSM calendars, Schedule View is:
+	•	AI-augmented (detects conflicts, workload imbalance).
+	•	Governed (conflict acceptance requires reason, logged).
+	•	Persona-aware (engineer, manager, SRE, SME, exec each see what matters to them).
+
+⸻
+
+Primary Functions
+
+1. Unified Calendar of Events
+	•	Event Types Supported in Phase 1:
+	•	Team shifts (coverage planning, on-call duty).
+	•	Planned changes (system modifications, deployments).
+	•	Maintenance windows (downtime slots).
+	•	SLA deadlines (e.g., incident due, approval SLA).
+	•	Knowledge lifecycle deadlines (review/retirement).
+	•	Meetings/training sessions.
+	•	Views Available:
+	•	Daily (hourly slots).
+	•	Weekly (shift coverage + changes).
+	•	Monthly (longer-term planning).
+	•	Timeline/Gantt (dependencies across changes).
+
+2. Conflict Detection
+	•	AI + rules detect:
+	•	Overlapping maintenance windows.
+	•	Double-booked engineers (two shifts at once).
+	•	Change dependencies violated.
+	•	Coverage gaps (no engineer on-call).
+	•	SLA deadline overlapping with leave/shift swap.
+	•	Alerts surfaced in Notifications + flagged in calendar.
+
+3. Conflict Acceptance (Governance Layer)
+	•	Users/managers can accept conflict with reason (e.g., “Intentional overlap for redundancy testing”).
+	•	Accepted conflicts tagged as Acknowledged → stop nagging.
+	•	Still visible in analytics for audit.
+
+4. Resource Planning & Reassignment
+	•	Drag-and-drop reassignment of shifts/maintenance windows.
+	•	Manager view → rebalance workload (AI suggests reassignment).
+	•	Peer-to-peer shift swaps (with manager approval).
+	•	Training/leave integration (read-only from HR in Phase 1).
+
+5. Approvals Context Integration
+	•	Change requests linked to calendar slots.
+	•	Approvers see conflicts directly in schedule before approving.
+	•	Approval SLA timers visible inline in calendar view.
+
+⸻
+
+AI Integration
+	•	Conflict Detection AI: not just rules, but probability scoring (“80% chance of conflict causing SLA breach”).
+	•	Workload Balancer: recommends reassignments to avoid overload.
+	•	Change Impact Predictor: highlights services likely affected if overlapping changes proceed.
+	•	Explainability: every AI nudge → shows top 3 reasons (e.g., “Engineer X already has 2 P1s during this shift”).
+
+⸻
+
+Persona Journeys
+
+Engineer
+	•	Opens Schedule → sees personal shifts + SLA deadlines.
+	•	Requests shift swap with teammate → routed for manager approval.
+	•	Sees knowledge review deadline flagged → clicks → SmartQueue Knowledge tab.
+
+Manager
+	•	Opens Schedule → sees team coverage chart.
+	•	Detects overlap: two engineers double-booked. AI suggests swap → accepts.
+	•	Approves pending leave request integrated from HR.
+	•	Uses drag-drop to reassign a maintenance window.
+
+SRE
+	•	Opens Schedule → checks upcoming maintenance windows.
+	•	Notices conflict between DB patch + network upgrade. AI predicts high outage risk.
+	•	Rejects one change → sends back to change owner.
+
+SME
+	•	Opens Schedule → sees 3 knowledge retirement deadlines this week.
+	•	Uses calendar to plan workload → moves one review to teammate.
+	•	Accepts AI nudge: “Article overdue by 30 days → escalate.”
+
+Executive
+	•	Rarely interacts, but can switch to Change Calendar View.
+	•	Sees high-risk changes scheduled this week.
+	•	Approves one critical change inline after reviewing conflicts.
+
+⸻
+
+Actions & Rules
+	•	Create Events: Users can create new shifts/changes in OpsHub, but final source-of-truth remains ITSM/HR.
+	•	Reschedule: Drag-drop → writes back to source system.
+	•	Shift Swaps: Requires peer acceptance + manager approval.
+	•	Conflict Handling:
+	•	Resolve: Accept AI-suggested resolution.
+	•	Acknowledge: Accept conflict with reason.
+	•	Both logged immutably.
+	•	Offline Mode: Calendar is read-only offline. Changes queued until online sync.
+
+⸻
+
+Governance
+	•	Audit Trail: who created/modified/accepted conflict, with reason.
+	•	Compliance Hooks: all planned changes linked to a visible maintenance window.
+	•	Suppression Rules: accepted conflicts → logged but muted in UI.
+	•	Immutable Logs: shift swaps, conflict resolutions preserved for ISO/SOC2 audits.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Unified calendar (shifts, changes, maintenance, deadlines, reviews).
+	•	Conflict detection + acceptance governance.
+	•	Drag-drop reassignment.
+	•	Peer shift swaps (with manager approval).
+	•	Approvals integrated with calendar context.
+	•	Offline = read-only.
+
+Phase 2+
+	•	Predictive scheduling (AI forecasts resource demand).
+	•	Auto-rebalance (AI reassigns workload).
+	•	Cross-tenant/MSP calendar.
+	•	HR/payroll integration (leave, overtime pay).
+	•	Industry benchmarking (“% changes overlapping vs peers”).
+
+⸻
+
+3.6 Notifications — Awareness Backbone
+
+Purpose
+
+The Notifications module is the central awareness hub in OpsHub.
+It ensures:
+	•	No critical event (SLA breach, P0 incident, exec approval) is ever missed.
+	•	Users get only relevant, role-based notifications.
+	•	AI prevents noise via grouping/suppression — but with full transparency (Suppression Log).
+	•	Approvals, nudges, and escalations can be acted on directly from the notification.
+
+OpsHub Notifications = “the right signal, at the right time, to the right persona, with governance.”
+
+⸻
+
+Primary Functions
+
+1. Centralized Inbox
+	•	Categories (Phase 1):
+	•	All → full feed of notifications.
+	•	Critical → SLA breaches, P0/P1s, exec approvals.
+	•	Grouped → related items bundled (e.g., “12 similar P3 alerts grouped”).
+	•	Suppressed → auto-muted by AI (still visible here).
+	•	Nudges → AI suggestions for automation, knowledge, or workload balancing.
+	•	Sort & Filter: by severity, SLA time, work type, or persona relevance.
+	•	Searchable: full-text search across notification log.
+
+⸻
+
+2. Delivery Channels
+	•	In-App Feed (default): real-time updates with badge counters.
+	•	Push Notifications (mobile PWA): bypass app for urgent alerts.
+	•	Email (exec-only): critical incidents/approvals sent as digest or immediate alert.
+	•	Explicitly Out of Scope Phase 1: SMS, Slack/Teams (reserved for Phase 2).
+
+⸻
+
+3. Grouping & Suppression
+	•	Grouping: AI clusters notifications within a rolling 10-minute window.
+	•	Example: “10 P3 incidents for Service A” → 1 grouped notification.
+	•	Suppression: repetitive or low-value alerts muted automatically.
+	•	Example: “50 identical CPU warnings suppressed → 1 summary created.”
+	•	Suppression Log:
+	•	Every suppressed item recorded immutably.
+	•	Each entry includes original content, AI reasoning, suppression timestamp.
+	•	Users can recover suppressed items manually.
+	•	Tenant Admin sets retention (30–365 days).
+
+⸻
+
+4. Escalation Rules
+	•	SLA-based checkpoints trigger escalation notifications:
+	•	15 min before SLA breach.
+	•	5 min before breach.
+	•	At breach moment.
+	•	Escalation Flow:
+	•	Engineer → Manager → Exec (only for P0/P1 or critical approvals).
+	•	All escalations logged in audit trail.
+	•	Escalations cannot be silenced.
+
+⸻
+
+5. Inline Actions
+	•	Users can act directly from notification cards:
+	•	Approve/reject (with reason required on reject).
+	•	Assign/reassign task.
+	•	Trigger low-risk automation.
+	•	Quick comment or mention.
+	•	Dismiss (with undo option).
+	•	“View in SmartQueue/WorkItem” deep link.
+	•	Bulk dismiss supported.
+
+⸻
+
+AI Integration
+	•	Smart Grouping: identifies related items by service, severity, and timeframe.
+	•	Noise Suppression: auto-mutes repetitive or redundant notifications.
+	•	Nudges Delivery: AI nudges surfaced as special notification cards (accept/snooze/reject).
+	•	Explainability: all AI grouping/suppression actions include a “Why?” explanation in the Suppression Log.
+	•	Learning Loop: user recovery or rejection feedback improves suppression models.
+
+⸻
+
+Persona Journeys
+
+Engineer
+	•	Gets push notification: P1 incident assigned.
+	•	Approves low-risk automation directly from notification.
+	•	Sees nudge: “Recurring manual step → suggest automation.” Accepts → creates WorkItem in SmartQueue.
+
+Manager
+	•	Notifications show SLA breaches escalated.
+	•	Approves 2 changes inline, rejects 1 (reason: rollback unclear).
+	•	Grouped notification: “Team A has 8 overdue approvals” → clicks → filtered SmartQueue.
+
+SRE
+	•	Gets grouped alert: “5 recurring DB errors suppressed.”
+	•	Clicks into Suppression Log → sees root cause correlation.
+	•	Receives nudge: “Recurring task flagged → automation candidate.” Accepts.
+
+SME
+	•	Notification: “Knowledge retirement overdue (7 days).”
+	•	Clicks → WorkItem Detail Approvals tab.
+	•	Rejects retirement, logs reason.
+
+Executive
+	•	Email notification: “Critical approval required.”
+	•	Approves directly from email (writes back to WorkItem).
+	•	Weekly digest: downtime cost avoided, adoption trendline.
+
+⸻
+
+Actions & Rules
+	•	Approvals: SLA clocks visible; rejection reason mandatory.
+	•	Dismissal: all dismissed items logged with timestamp + user.
+	•	Suppression: auto-suppressed items always recoverable.
+	•	Escalations: mandatory delivery, cannot be dismissed.
+	•	Offline Mode:
+	•	In-app queue visible offline.
+	•	Actions queued → sync on reconnect.
+	•	Escalations buffered and sent immediately when online.
+
+⸻
+
+Governance
+	•	Audit Trail: every notification (delivered, grouped, suppressed, dismissed) logged immutably.
+	•	Suppression Transparency: no deletion, only suppression with reasoning.
+	•	Escalation Compliance: escalation pathways logged for audit (ISO/SOC2).
+	•	User Control:
+	•	Quiet hours.
+	•	Delegation mode (manager re-routes notifications).
+	•	Device-level preferences (desktop vs mobile).
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	In-app feed + push notifications + exec-only email.
+	•	Categories: All, Critical, Grouped, Suppressed, Nudges.
+	•	Inline actions (approve, reassign, dismiss, automation trigger).
+	•	Suppression Log with recovery + “Why?” explanations.
+	•	SLA-based escalation flows.
+
+Phase 2+
+	•	Custom rules per persona/tenant.
+	•	Slack/Teams channel delivery.
+	•	Predictive notifications (“P1 likely to breach in 20 min → alert now”).
+	•	Notification prioritization tuning (user-set weights).
+	•	Cross-tenant/global notification dashboards.
+
+⸻
+
+4. Governance Framework
+
+OpsHub’s Governance Framework ensures that all operational actions (approvals, conflict handling, escalations, AI recs, automations) are:
+	•	Compliant with ITIL, ISO27001, SOC2.
+	•	Transparent (no black boxes).
+	•	Auditable (immutable logs, SLA enforcement).
+	•	Safe (risk-tiering + rollback).
+	•	Persona-aware (governance rules tailored to role).
+
+Governance is not an overlay — it’s baked into every module.
+
+⸻
+
+Primary Governance Mechanisms
+
+4.1 SLA Enforcement
+	•	Immutable SLA Clocks
+	•	SLA timers start when WorkItem created (incident, request, approval).
+	•	SLA clocks never pause, even if item is rejected or reassigned.
+	•	SLA breach = logged immutably with timestamp + responsible persona/team.
+	•	Escalation Triggers
+	•	Pre-breach warnings at T-15m and T-5m.
+	•	Escalations flow upward: Engineer → Manager → Exec.
+	•	Escalations cannot be suppressed.
+	•	SLA Analytics
+	•	On-time %, overdue %, escalations logged.
+	•	Persona accountability tracked (e.g., Manager approval SLA = 88%).
+
+⸻
+
+4.2 Approvals Governance
+	•	Unified Approvals in SmartQueue
+	•	All approvals (changes, incidents, knowledge, automations) appear in one place.
+	•	SLA clock shown on each approval.
+	•	Decision Discipline
+	•	Rejection requires reason (mandatory text field).
+	•	Resubmission limited: Phase 1 = one resubmission allowed only.
+	•	Approvals logged with user, timestamp, reason, SLA state.
+	•	AI Approval Advisor
+	•	AI provides recommendation with reasoning.
+	•	If user rejects AI’s suggestion, rejection reason is captured and fed back into learning loop.
+	•	Executive Approvals
+	•	Delivered via email + deep link to WorkItem.
+	•	Same governance rules apply (reason mandatory on rejection, SLA tracked).
+
+⸻
+
+4.3 Conflict Arbitration
+	•	Applies to:
+	•	Offline Sync Conflicts (two users edit same field offline).
+	•	Schedule Conflicts (overlapping changes, shifts, maintenance windows).
+	•	Assignment Conflicts (cross-team escalations).
+	•	Arbitration Flow
+	•	AI suggests resolution (e.g., “merge field A, keep field B”).
+	•	User/manager makes final call.
+	•	Resolution logged with reason.
+	•	Conflict Acceptance
+	•	Users/managers can accept unresolved conflict with explicit reason.
+	•	Accepted conflicts tagged as “Acknowledged” → stop nagging, but remain in audit logs.
+
+⸻
+
+4.4 Automation Governance
+	•	Risk-Tiering
+	•	Automations categorized as Low / Medium / High.
+	•	Low-risk → auto-executable inline by engineer.
+	•	Medium-risk → requires manager approval.
+	•	High-risk → requires multi-level approval.
+	•	Rollback Policy
+	•	Rollback availability explicitly flagged before execution.
+	•	Automations without rollback → medium/high risk by default.
+	•	Execution Logging
+	•	Every automation run logged: who, when, risk level, outcome, rollback status.
+	•	Rollback runs logged separately.
+	•	ROI Tracking
+	•	Toil hours saved calculated at execution.
+	•	Rollback % tracked → auto-flags automation for review if >10%.
+
+⸻
+
+4.5 AI Governance
+	•	Explainability by Default
+	•	Every AI suggestion shows confidence % + top 3 contributing factors.
+	•	Example: “Restart Service X (92% confidence, based on 14 similar incidents resolved in <30m).”
+	•	Human-in-the-Loop
+	•	Low-risk recs → auto-executed if confidence >85%.
+	•	Medium/high-risk recs → human confirmation required.
+	•	All rejections logged with reason.
+	•	Learning Validation
+	•	AI never updates its decision logic silently.
+	•	New patterns flagged → require human confirmation before adoption.
+	•	Bias & Fairness Checks
+	•	Adoption/rejection rates monitored across personas/teams.
+	•	Outliers flagged (e.g., “Team A rejects 90% of AI recs → investigate bias or model gap”).
+
+⸻
+
+4.6 Notifications & Suppression Governance
+	•	Transparency Principle
+	•	No notification is ever deleted.
+	•	Suppressed items visible in Suppression Log.
+	•	Suppression Log Contents
+	•	Original notification.
+	•	AI reasoning for suppression.
+	•	Suppression timestamp.
+	•	Recovery option.
+	•	Escalation Rule
+	•	Critical escalations (P0/P1, SLA breaches) cannot be suppressed or dismissed.
+
+⸻
+
+4.7 War Room Governance
+	•	War rooms created for major incidents.
+	•	Participation logged (who joined, duration).
+	•	All chat + actions linked to WorkItem Activity Log.
+	•	War room closed only when incident resolved.
+
+⸻
+
+Governance by Persona
+	•	Engineer: cannot bypass SLA; automation runs logged.
+	•	Manager: must give reason for conflict acceptance; SLA approval compliance tracked.
+	•	SRE: automation rollback >10% auto-flags review.
+	•	SME: knowledge retirement requires explicit approval/reason.
+	•	Executive: approvals logged like others; SLA applies equally.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	SLA clocks (immutable, no pause).
+	•	Escalations (Engineer → Manager → Exec).
+	•	Approval governance (reason mandatory, resubmission once).
+	•	Conflict arbitration (offline/schedule).
+	•	Automation risk-tiering + rollback rules.
+	•	AI explainability + rejection reasons logged.
+	•	Suppression log (immutable, recoverable).
+	•	War room logging.
+
+Phase 2+
+	•	Predictive SLA enforcement (“likely to breach → escalate early”).
+	•	Multi-tenant/global governance views.
+	•	Policy-as-code for automation governance.
+	•	AI fairness dashboards.
+	•	Legal/compliance sign-off workflows.
+
+⸻
+
+5. AI & Automation Framework
+
+Purpose
+
+The AI & Automation Framework makes OpsHub an AI-native overlay platform instead of a traditional ITSM dashboard.
+It ensures:
+	•	AI is pervasive but safe — present in every module, with explainability.
+	•	Automations are governed and ROI-tracked — not black-box scripts.
+	•	AI agents augment humans (triage, routing, RCA, approvals), but stay within risk boundaries.
+	•	Continuous learning → OpsHub improves as adoption grows.
+
+⸻
+
+5.1 AI Design Principles
+	1.	Assistive First, Agentic Where Safe
+	•	Phase 1 AI = assistive with low-risk autonomy (routing, triage, diagnostics, low-risk automation).
+	•	Always explainable → “Why this?” visible everywhere.
+	2.	Human-in-the-Loop
+	•	Medium/high-risk actions always require human approval.
+	•	Humans remain ultimate decision-makers.
+	3.	Explainability Everywhere
+	•	Every AI suggestion includes:
+	•	Confidence %.
+	•	Top 3 factors.
+	•	Historical precedent (e.g., “14 similar incidents resolved in <30m”).
+	4.	Feedback-Driven Learning
+	•	All acceptance/rejection of AI recs logged with reasons.
+	•	Feedback loops feed into model retraining.
+	5.	Governed Autonomy
+	•	Thresholds (confidence %, risk level) define what AI can execute vs recommend.
+	•	Governance rules (Section 4) enforce compliance.
+
+⸻
+
+5.2 AI Agent Types (Phase 1)
+	•	Incident Triager
+	•	Reads alert payloads, suggests incident categorization + priority.
+	•	Auto-assigns to best-fit engineer if confidence >85%.
+	•	Else → suggests top 3 options.
+	•	Approval Advisor
+	•	Provides recommendation (approve/reject) with risk context.
+	•	Example: “Change overlaps with maintenance window → recommend reject.”
+	•	Decision rationale logged.
+	•	Root Cause Assistant
+	•	Analyzes logs in WorkItem.
+	•	Suggests likely RCA with confidence score.
+	•	Links to similar past incidents + KB.
+	•	Automation Advisor
+	•	Detects recurring manual actions.
+	•	Suggests existing automation or flags new candidate.
+	•	Pushes candidate nudges into Intelligence Center.
+	•	Knowledge Curator
+	•	Drafts KB articles from resolved incidents.
+	•	Flags outdated/ineffective articles.
+	•	Requires SME validation before publish/retire.
+
+⸻
+
+5.3 AI Governance (Phase 1)
+	•	Confidence Thresholds
+	•	85% confidence + Low risk → AI executes autonomously.
+	•	60–85% confidence → AI suggests, requires human approval.
+	•	<60% confidence → AI only provides insights, not recommendations.
+	•	Rejections
+	•	Rejection always requires reason → logged for learning loop.
+	•	Bias Detection
+	•	Adoption/rejection tracked by persona/team.
+	•	Outliers flagged (e.g., “Team A rejects 90% → investigate bias/model gap”).
+	•	Auditability
+	•	Every AI decision stored with:
+	•	Model version.
+	•	Input factors.
+	•	Confidence %.
+	•	Final human decision.
+
+⸻
+
+5.4 Automation Framework
+	•	Automation Types Supported
+	•	Scripts (e.g., clear cache).
+	•	Workflows (multi-step tasks).
+	•	Integration tasks (data sync).
+	•	Communication tasks (notify stakeholders).
+	•	Risk-Tiering
+	•	Low: reversible, low business impact → auto-run allowed.
+	•	Medium: some risk, requires manager approval.
+	•	High: critical impact, requires multi-level approval.
+	•	Rollback Governance
+	•	Automations tagged as Rollback Available: Yes/No.
+	•	No rollback → automatically medium/high risk.
+	•	Rollback runs logged as separate events.
+	•	Execution Visibility
+	•	Real-time progress indicators.
+	•	Logs stored in WorkItem Activity Log.
+	•	Failures + rollbacks auto-flagged in Intelligence Center.
+	•	ROI Tracking
+	•	Each run tagged with “toil hours saved” estimate.
+	•	Aggregated into Pulse + Intelligence Center.
+	•	Example: “Cache clear script saved 20h toil this week.”
+
+⸻
+
+5.5 Continuous Learning Framework
+	•	Learning Sources
+	•	User feedback (thumbs up/down, explicit rejection reasons).
+	•	SLA outcomes (AI rec accepted → SLA met faster?).
+	•	Automation success/failure + rollback %.
+	•	Knowledge helpfulness ratings.
+	•	Retraining Cadence
+	•	Feedback aggregated weekly.
+	•	Model retraining → tested in shadow mode before rollout.
+	•	Gradual rollout with rollback option.
+	•	Explainability Storage
+	•	Each AI decision explanation stored in immutable audit log.
+	•	Accessible during audits.
+
+⸻
+
+5.6 Humanoid Interaction (Controlled Environment, Phase 1 Scope)
+	•	Scope
+	•	Low-risk scripted automations can be integrated with humanoids (robotic field assistants).
+	•	Example: AV engineer incident → OpsHub triggers humanoid to reset hardware.
+	•	Governance
+	•	Only low-risk + rollback-available tasks allowed.
+	•	Always requires human supervisor sign-off for first run.
+	•	Humanoid logs captured like any automation run.
+	•	Future (Phase 2+)
+	•	Semi-autonomous humanoid execution for routine maintenance.
+	•	Multi-humanoid orchestration across teams.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Core AI agents: triager, approval advisor, root cause assistant, automation advisor, knowledge curator.
+	•	Low-risk autonomy allowed (>85% confidence).
+	•	Automation ROI + rollback tracking.
+	•	Learning loop + rejection reasons.
+	•	Humanoid support limited to low-risk scripted automations with human approval.
+
+Phase 2+
+	•	Predictive AI (“next 5 incidents likely to breach in 2h”).
+	•	Fully autonomous incident routing/triage.
+	•	Advanced automation designer with AI-generated workflows.
+	•	Humanoid semi-autonomy in field operations.
+	•	AI fairness dashboards + model explainability for execs.
+
+⸻
+
+6. Metrics, Baseline & Gamification
+
+Purpose
+
+OpsHub metrics provide quantifiable proof of value.
+Unlike traditional ITSM reports, OpsHub metrics are:
+	•	Persona-specific (engineers, managers, SMEs, SREs, execs).
+	•	AI- & automation-aware (every metric tracks adoption or ROI).
+	•	Immutable (Day 0 baseline locked, comparisons always vs baseline).
+	•	Governed (SLA clocks never pause, rejection reasons mandatory, rollback % tracked).
+
+⸻
+
+6.1 Principles
+	1.	Persona-Relevant Metrics — dashboards tuned per role.
+	2.	Two-Target Model — Pulse = read-only operational metrics; Intelligence = drill-down analytics.
+	3.	Immutable Baseline — Day 0 capture, locked forever.
+	4.	Governance by Metrics — SLA, approvals, automation rollback %, AI rejection all tracked.
+
+⸻
+
+6.2 Core Metrics by Category
+
+A. SLA & Operational Health
+	•	SLA Compliance % (Pulse + Intelligence, real-time).
+	•	SLA Breaches Count.
+	•	MTTR.
+	•	Escalation Rate %.
+	•	Approval SLA Compliance %.
+
+B. AI Adoption & Effectiveness
+	•	AI Recommendation Acceptance %.
+	•	Rejection Reasons distribution.
+	•	Confidence Accuracy % (target = 85%).
+	•	“AI Helped Me” counter (reset weekly).
+
+C. Automation ROI
+	•	Automations Run count.
+	•	Automation Success %.
+	•	Rollback %.
+	•	Toil Hours Saved.
+	•	Automation ROI ($ downtime avoided).
+
+D. Knowledge Lifecycle
+	•	Knowledge Effectiveness %.
+	•	Article Review Compliance %.
+	•	Retirement SLA Compliance %.
+	•	AI Drafts Validated %.
+
+E. Business & Executive
+	•	Downtime Cost Avoided ($).
+	•	Adoption Rate %.
+	•	Productivity Gain %.
+	•	Governance Exceptions % (unjustified SLA breaches, rejections without reasons).
+
+⸻
+
+6.3 Metric Presentation Rules
+	•	Pulse = high-level, persona-specific view (read-only).
+	•	Intelligence Center = drill-down (reasons, ROI, trendlines).
+	•	Governance Enforcement =
+	•	SLA never pauses.
+	•	Approvals rejected → reason mandatory.
+	•	Automation rollback >10% → flagged for review.
+	•	Collection Frequency = real-time for operational, daily/weekly for adoption & ROI.
+
+⸻
+
+6.4 Baseline Handling
+	•	Day 0 Onboarding Metrics captured: MTTR, SLA %, escalation %, adoption = 0%, ROI = $0, knowledge effectiveness %.
+	•	Immutable Storage: baseline locked, not editable.
+	•	Comparisons: always vs Day 0 baseline (not rolling average).
+	•	Phase 1 ROI Targets:
+	•	MTTR ↓ 30%.
+	•	SLA compliance ↑ 15%.
+	•	AI rec acceptance 70%.
+	•	Automation rollback <10%.
+	•	Knowledge review compliance 90%.
+
+⸻
+
+6.5 Gamification Layer
+
+Gamification is integrated into metrics → positive reinforcement only.
+It keeps engineers/managers engaged, without turning work into a game.
+	•	Engineer Metrics Gamified:
+	•	SLA streak counter (reset if breach).
+	•	“AI Helped Me” counter (hours/tasks saved).
+	•	Manager Metrics Gamified:
+	•	Team SLA compliance streak.
+	•	On-time approval % with streaks.
+	•	SRE Metrics Gamified:
+	•	Toil hours saved counter.
+	•	Automation success streak (X days without rollback).
+	•	SME Metrics Gamified:
+	•	Article review compliance streak.
+	•	“Knowledge freshness” % meter.
+	•	Executive Metrics Gamified (lightweight):
+	•	Adoption trendline arrow (↑, →, ↓).
+	•	Downtime cost avoided milestone badges ($100k, $500k, $1M).
+
+Guardrails:
+	•	No leaderboards, no peer-to-peer competition.
+	•	All streaks reset transparently if broken.
+	•	Persona can hide gamification widgets if distracting.
+
+⸻
+
+6.6 Governance of Metrics
+	•	Immutable Logs: metrics + reasoning stored.
+	•	Attribution: metrics tied to team/persona.
+	•	Suppression: KPIs cannot be deleted, only suppressed with audit trail.
+	•	Audit Ready: SLA, approvals, rollback %, adoption logs exportable for ISO/SOC2.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Full metric set across SLA, AI adoption, automation ROI, knowledge, business.
+	•	Persona dashboards in Pulse (read-only).
+	•	Drill-down in Intelligence.
+	•	Immutable baseline.
+	•	Gamification via streaks, counters, freshness % only.
+
+Phase 2+
+	•	Predictive metrics (forecast MTTR, downtime avoided).
+	•	Cross-tenant benchmarking.
+	•	Industry peer benchmarking.
+	•	Expanded gamification (milestone unlocks, manager coaching nudges).
+
+
+⸻
+
+7. Security, Privacy & Compliance
+
+Purpose
+
+OpsHub is designed as an enterprise-grade overlay platform.
+Security and compliance are foundational — not bolted on.
+Every module (Pulse → Notifications) operates under a zero-trust, audit-first model aligned to:
+	•	ISO 27001
+	•	SOC 2 Type II
+	•	GDPR (global data privacy)
+	•	ITIL (process alignment)
+
+⸻
+
+7.1 Security Principles
+	1.	Zero Trust by Default
+	•	Every request authenticated & authorized.
+	•	No implicit trust between components.
+	2.	Least Privilege Access
+	•	Role-based controls limit visibility & actions.
+	•	Tenant data isolation enforced at DB + API layer.
+	3.	Audit-First Design
+	•	Every action (AI rec, approval, automation run) logged immutably.
+	•	Audit exports available for compliance frameworks.
+	4.	Data Protection by Design
+	•	Encryption everywhere (data at rest + in transit).
+	•	Field-level masking for sensitive fields.
+	5.	No Shadow IT
+	•	OpsHub never duplicates source-of-truth data unnecessarily.
+	•	Integrates with authoritative systems (ITSM, HR, monitoring).
+
+⸻
+
+7.2 Authentication & Authorization
+	•	Hybrid Authentication Options
+	•	SAML SSO (enterprise standard).
+	•	OAuth2 (for modern cloud platforms).
+	•	Service accounts for integrations (scoped tokens only).
+	•	Multi-Factor Authentication (MFA)
+	•	Required for privileged actions (approvals, automation runs, tenant admin).
+	•	Role-Based Access Control (RBAC)
+	•	Personas mapped to roles:
+	•	Engineer → My Work only.
+	•	Manager → Team Work + approvals.
+	•	SRE → Automations + logs.
+	•	SME → Knowledge lifecycle.
+	•	Exec → KPI dashboards + approvals.
+	•	Fine-grained controls at WorkItem/action level.
+	•	Session Management
+	•	Secure token lifecycle with refresh.
+	•	Auto-expiry after inactivity (configurable, default 15m).
+
+⸻
+
+7.3 Data Protection
+	•	Encryption
+	•	AES-256 for data at rest.
+	•	TLS 1.3 for all data in transit.
+	•	Field-Level Protection
+	•	Sensitive fields (PII, credentials, financials) masked in UI & logs.
+	•	Separate encryption keys per tenant.
+	•	Key Management
+	•	Secure key rotation every 90 days.
+	•	Keys stored in enterprise-grade vault (e.g., HSM).
+	•	Data Minimization
+	•	OpsHub only stores minimum necessary metadata.
+	•	No full replication of ITSM data → reduces risk surface.
+
+⸻
+
+7.4 Tenant Isolation
+	•	Multi-Tenant Architecture (Phase 1)
+	•	Logical isolation enforced per tenant at DB + API level.
+	•	No cross-tenant access possible.
+	•	Future MSP Support (Phase 2)
+	•	Parent-child tenant structure.
+	•	Global view for MSP admins with strict boundaries.
+
+⸻
+
+7.5 Compliance Framework
+	•	ISO 27001 Alignment
+	•	Information security management system controls integrated.
+	•	Regular internal reviews + readiness audits.
+	•	SOC 2 Type II Alignment
+	•	Trust principles: Security, Availability, Confidentiality, Processing Integrity, Privacy.
+	•	Immutable audit logs + SLA reports support compliance.
+	•	GDPR
+	•	Right to access, rectify, erase supported.
+	•	Consent management where applicable.
+	•	Breach notifications within required timeframes.
+	•	ITIL Alignment
+	•	Workflows for incident, change, knowledge, approval tied to ITIL processes.
+	•	SLA compliance + escalation rules baked in.
+
+⸻
+
+7.6 Logging & Audit
+	•	Immutable Audit Trail
+	•	Every action (human or AI) logged with:
+	•	Actor.
+	•	Timestamp.
+	•	Action.
+	•	Outcome.
+	•	Reason (if rejection/override).
+	•	Tamper-Evident Logs
+	•	Cryptographic hashing of log batches.
+	•	Detects unauthorized edits.
+	•	Retention Policy
+	•	Configurable by tenant (default 1 year, up to 7 years).
+	•	Archival with retrieval on-demand.
+	•	Compliance Exports
+	•	Export SLA compliance %, approvals, rollback %, AI adoption for audits.
+	•	Available in CSV, JSON, PDF.
+
+⸻
+
+7.7 Threat Protection
+	•	Anomaly Detection
+	•	ML flags unusual behavior (e.g., exec approves 50 changes in 2 minutes).
+	•	Insider Threat Monitoring
+	•	Pattern analysis → sudden role misuse flagged.
+	•	API Security
+	•	Rate limiting, schema validation, threat detection at gateway.
+	•	Vulnerability Management
+	•	Continuous scanning + monthly patch cycles.
+	•	Emergency patch SLA: 48h.
+
+⸻
+
+7.8 Data Loss Prevention
+	•	Content Classification
+	•	Auto-tag sensitive content (PII, financials, credentials).
+	•	Export Restrictions
+	•	Bulk exports require approval.
+	•	Optional watermarking on exports.
+	•	Delegation Mode
+	•	Out-of-office delegation logged, scoped, time-bound.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	ISO 27001 + SOC 2 readiness baked in.
+	•	GDPR + ITIL compliance.
+	•	MFA for privileged actions.
+	•	Role-based access with tenant isolation.
+	•	Immutable audit trail.
+	•	Encryption at rest/in transit.
+	•	Retention management + compliance exports.
+
+Phase 2+
+	•	MSP multi-tenant controls.
+	•	AI-based fairness/bias dashboards for compliance.
+	•	Cross-tenant security analytics (MSP-level).
+	•	Extended compliance (HIPAA, FedRAMP).
+
+⸻
+
+✅ Security & Compliance is now Bible-ready:
+	•	Covers auth, encryption, RBAC, tenant isolation, compliance frameworks.
+	•	Logs/audits immutable and tamper-evident.
+	•	Persona-specific controls mapped.
+	•	ISO27001 + SOC2 explicitly integrated.
+	•	Phase scope well defined.
+
+⸻
+
+8. Success Metrics & Business Outcomes
+
+OpsHub adoption is justified not only by operational improvements but also by business value creation.
+Success metrics track outcomes at organization level: adoption, productivity, compliance, and ROI.
+
+These are the numbers executives and CIOs will care about in steering committees and renewal conversations.
+
+⸻
+
+8.1 Success Metric Categories
+
+A. Adoption & Engagement
+	•	Active User Adoption Rate
+	•	% of licensed users actively using OpsHub weekly.
+	•	Target: 80% in 6 months.
+	•	Measured: login activity, SmartQueue usage, approvals processed.
+	•	Module Adoption Rate
+	•	% of personas using all 6 modules at least monthly.
+	•	Example: SME using Knowledge + Approvals + SmartQueue.
+	•	AI Adoption Rate
+	•	% of WorkItems resolved with AI recs.
+	•	Target: 70% acceptance within 6 months.
+
+⸻
+
+B. Productivity & Efficiency
+	•	Context Switching Reduction
+	•	Measured via tool usage telemetry → % drop in switching across ITSM, monitoring, comms tools.
+	•	Target: 50% reduction.
+	•	Mean Time to Resolution (MTTR)
+	•	Improvement over Day 0 baseline.
+	•	Target: 30% improvement in Phase 1.
+	•	Field Engineer Productivity Gain
+	•	Incidents/requests resolved per engineer per shift.
+	•	Target: 40% improvement.
+	•	Approvals Cycle Time
+	•	Average time from request → decision.
+	•	Target: 25% faster vs baseline.
+
+⸻
+
+C. Reliability & Risk
+	•	SLA Breach Reduction
+	•	% drop in SLA violations.
+	•	Target: 20% fewer breaches in Phase 1.
+	•	Rollback % (Automation Risk Indicator)
+	•	% of automation runs requiring rollback.
+	•	Target: <10% sustained.
+	•	Governance Exceptions %
+	•	% of approvals without reasons, SLA breaches without escalation.
+	•	Target: <2% of total governance actions.
+
+⸻
+
+D. Knowledge & Learning
+	•	Knowledge Effectiveness
+	•	% of incidents resolved using KB articles.
+	•	Target: 20% increase in Phase 1.
+	•	Knowledge Review Compliance
+	•	% of KB articles reviewed on time.
+	•	Target: 90%.
+	•	AI Knowledge Draft Adoption
+	•	% of AI-drafted KBs validated/published.
+	•	Target: 70%.
+
+⸻
+
+E. Business & ROI
+	•	Downtime Cost Avoided
+	•	Estimated $ saved by faster MTTR + fewer SLA breaches.
+	•	Formula: downtime cost/hr × hours saved.
+	•	Target: 10–15% of IT ops budget in year 1.
+	•	Automation ROI
+	•	Toil hours saved × cost/hr.
+	•	Target: 2,000+ hours saved in first 6 months for mid-size org.
+	•	Audit Readiness %
+	•	% of compliance artifacts available at audit time.
+	•	Target: 100% for ISO/SOC2.
+
+⸻
+
+8.2 Measurement Framework
+	•	Baseline Capture
+	•	At onboarding → MTTR, SLA compliance, escalation %, downtime cost/hr, tool usage.
+	•	Continuous Tracking
+	•	Metrics updated in real-time (OpsHub telemetry).
+	•	Quarterly Review
+	•	Success metrics reviewed with CIO + ops leadership.
+	•	Success story dashboards exported.
+	•	Immutable Storage
+	•	Baseline + quarterly comparisons logged in audit records.
+
+⸻
+
+8.3 Persona-Specific Value
+	•	Engineer: sees personal “AI helped me” counter, SLA streak.
+	•	Manager: tracks team SLA compliance, approval SLA, backlog reduction.
+	•	SRE: tracks toil hours saved, rollback % trend.
+	•	SME: sees knowledge freshness %, draft adoption.
+	•	Executive: gets downtime cost avoided, adoption %, productivity gain, ROI dashboards.
+
+⸻
+
+8.4 Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	Success metrics tracked for:
+	•	Adoption.
+	•	MTTR.
+	•	SLA compliance.
+	•	Downtime avoided.
+	•	Toil hours saved.
+	•	Executive dashboards show before/after ROI.
+	•	Baseline locked at onboarding.
+
+Phase 2+
+	•	Predictive success metrics (forecast ROI, adoption trendlines).
+	•	Cross-tenant benchmarking for MSPs.
+	•	Industry benchmarking (e.g., compare MTTR vs peers).
+	•	Business outcome attribution to OpsHub (shared with finance).
+
+
+⸻
+
+9. Integration Architecture
+
+Purpose
+
+OpsHub acts as an aggregation and orchestration layer over existing enterprise tools.
+Instead of replacing ITSM, monitoring, or HR systems, OpsHub connects, synchronizes, and augments them with:
+	•	Unified UI (SmartQueue, Pulse, Notifications).
+	•	AI-driven insights (triage, RCA, automation, nudges).
+	•	Bidirectional sync so source systems remain systems of record.
+
+⸻
+
+9.1 Integration Principles
+	1.	Non-Disruptive Overlay
+	•	OpsHub integrates without requiring replacement or migration.
+	•	ServiceNow, Jira, Datadog, etc. remain source of truth.
+	2.	API-First Approach
+	•	All integrations use APIs, webhooks, or message queues.
+	•	No direct DB connections.
+	3.	Configurable Authority
+	•	Per data type, one system is marked “authoritative” (e.g., ITSM for incidents).
+	•	OpsHub writes back only where allowed.
+	4.	Real-Time Where It Matters
+	•	SLA-driven fields (status, assignment, approvals) sync in near real-time (<30s).
+	•	Reference data (users, catalog) syncs hourly/daily.
+	5.	Conflict Transparency
+	•	All conflicts surfaced to user with both versions.
+	•	Arbitration logged with reasoning.
+
+⸻
+
+9.2 Supported Integration Patterns
+	•	REST APIs → standard integration with modern SaaS (ServiceNow, Jira, Datadog).
+	•	Webhooks → push notifications (incident created, alert triggered).
+	•	Message Queues → asynchronous high-volume feeds (Kafka, RabbitMQ).
+	•	File-Based → batch import/export for legacy systems (CSV, flat files).
+
+⸻
+
+9.3 Target System Categories (Phase 1 Scope)
+	•	ITSM Systems
+	•	ServiceNow.
+	•	Jira Service Management.
+	•	Remedy (basic via APIs).
+	•	Monitoring & Observability
+	•	Datadog.
+	•	Splunk.
+	•	New Relic.
+	•	Prometheus.
+	•	Communication Platforms
+	•	Email (SMTP/IMAP for exec approvals + digests).
+	•	In-app chat (native).
+	•	Phase 2: Slack / Microsoft Teams.
+	•	HR & Workforce Systems
+	•	HR system (leave calendars, read-only Phase 1).
+	•	Directory (user sync, roles).
+	•	Custom/Legacy Apps
+	•	File-based batch sync (nightly jobs).
+	•	Custom API connectors.
+
+⸻
+
+9.4 Sync & Conflict Resolution
+
+A. Sync Strategy
+	•	Critical Data → <30s sync (incident status, SLA timers).
+	•	Important Data → <2 min sync (work item details).
+	•	Reference Data → hourly/daily sync (user directory, service catalog).
+
+B. Conflict Resolution
+	•	User Arbitration → user sees “OpsHub vs Source” versions.
+	•	Field-Level Merge → pick field-by-field resolution.
+	•	AI Recommendation → suggested resolution with top 3 reasons.
+	•	Audit Logging → chosen resolution logged immutably.
+
+C. Authority Rules
+	•	ITSM = authoritative for incidents, requests, changes.
+	•	Monitoring = authoritative for logs, metrics, alerts.
+	•	HR = authoritative for shifts, leave, training.
+	•	OpsHub = authoritative for AI scores, SmartQueue ordering, nudges.
+
+⸻
+
+9.5 Service Catalog Integration
+	•	Phase 1 Scope
+	•	OpsHub integrates with existing service catalog (no local copy).
+	•	Real-time lookups only (always fresh).
+	•	Used in SmartQueue and WorkItem Detail.
+	•	Relationship Mapping
+	•	Dependencies shown as graph view.
+	•	Inline relationship panels in WorkItem.
+	•	Impact Analysis
+	•	AI calculates likely business impact if service degraded.
+	•	Correlates downtime to cost ($ avoided metric in Pulse).
+
+⸻
+
+9.6 Data Flows by Module
+	•	Pulse
+	•	Pulls SLA, MTTR, downtime cost from ITSM + monitoring.
+	•	Pushes AI attribution (stored in OpsHub only).
+	•	SmartQueue
+	•	Pulls incidents/requests from ITSM.
+	•	Writes back assignments, approvals, status updates.
+	•	WorkItem Detail
+	•	Pulls logs from monitoring, incidents from ITSM, catalog from HR/service DB.
+	•	Writes back comments, assignments, approvals.
+	•	Schedule
+	•	Pulls shifts from HR system.
+	•	Pulls changes from ITSM.
+	•	Writes back conflicts as notes/comments.
+	•	Intelligence Center
+	•	Pulls execution logs from automations.
+	•	Pulls SLA breaches, AI adoption stats from OpsHub telemetry.
+	•	Writes back nudges → SmartQueue.
+	•	Notifications
+	•	Subscribes to events from all systems.
+	•	Pushes grouped/suppressed feed back to users.
+
+⸻
+
+9.7 Offline & Sync Governance
+	•	Offline Mode
+	•	Local cache for SmartQueue, WorkItem Detail, Pulse, Schedule.
+	•	Offline updates queued → syncs when online.
+	•	Conflict Governance
+	•	If offline updates collide with online changes → user arbitration required.
+	•	Resolution logged with reason.
+
+⸻
+
+Phase 1 vs Phase 2
+
+Phase 1 (MVP)
+	•	ITSM integration (ServiceNow, Jira, Remedy basic).
+	•	Monitoring integration (Datadog, Splunk, New Relic, Prometheus).
+	•	Email integration (exec approvals).
+	•	HR integration (read-only leave/shift).
+	•	File-based legacy import/export.
+	•	Service catalog integration (real-time).
+	•	Conflict resolution framework (user + AI assist).
+
+Phase 2+
+	•	Slack/Teams integration.
+	•	MSP/global tenant sync.
+	•	Predictive sync optimization (AI forecasts data demand).
+	•	Vendor ecosystem connectors (cloud providers, ERP).
+	•	Cross-tenant/global catalog mapping.
+
+⸻
+
+✅ Integration Architecture is now Bible-ready:
+	•	Overlay model clear: OpsHub doesn’t replace, it orchestrates.
+	•	System categories + authority rules defined.
+	•	Sync timelines explicit (<30s, <2m, hourly).
+	•	Conflict resolution workflow governed.
+	•	Phase 1 vs 2 scoped cleanly.
+
+⸻
+
+10. Mobile & Offline Architecture
+
+Purpose
+
+OpsHub is mobile-first: many operational users (field engineers, NOC, on-call staff) must be able to do real work from phones/tablets with unreliable connectivity. The Mobile & Offline Architecture guarantees the same operational capabilities on-device as on desktop for Phase 1 core flows (view, triage, act, create incident from alert, approve low-risk items), while ensuring safe, auditable synchronization when connectivity returns.
+
+⸻
+
+10.1 High-Level Principles
+	1.	PWA as Primary Mobile Delivery
+	•	OpsHub ships as a Progressive Web App (PWA) with installable behavior (home screen icon, splash), full-screen UX, and push notifications.
+	2.	Feature Parity (Behavioral)
+	•	Mobile supports the same functional workflows as desktop for core tasks: SmartQueue (My Work), WorkItem Detail, creating incidents from alerts, approvals (low/medium per governance), running low-risk automations, Notifications, and the ability to access cached Pulse widgets and Knowledge articles.
+	3.	Offline-First, Sync-Safe
+	•	Local-first read/write in offline mode with queued sync on reconnect, conflict detection & arbitration, and prioritized sync for critical items.
+	4.	Security & Device Trust
+	•	Device registration, certificate pinned sessions, MFA for privileged actions, and ability for Tenant Admins to revoke device access.
+	5.	Performance Constraints
+	•	Fast initial load and snappy navigation on mobile networks (Phase 1 targets: initial load ≤3s on 3G simulated; subsequent navigation ≤1s).
+
+⸻
+
+10.2 Supported Mobile Scenarios (Phase 1)
+
+Full support (offline-capable, read/write queued):
+	•	View SmartQueue “My Work” and card actions.
+	•	Open WorkItem Detail (cached snapshot + essential tabs).
+	•	Create Incident from Alert (form pre-fill from cached alert) — writes queued if offline, pushed to ITSM on sync.
+	•	Approve low-risk automations and approve medium-risk (if governance allows offline approvals advisory only — see rules).
+	•	Add status updates, comments, attachments (photo/video), and perform Assign to Me.
+	•	Access Knowledge articles (cached for offline read).
+	•	Receive push notifications (critical only / per user prefs).
+	•	Offline capture of photos, notes, GPS metadata attached to updates.
+
+Read-only or advisory offline:
+	•	Approve medium/high-risk automations (advisory: queued but requires online confirmation for enforcement).
+	•	View full Pulse (cached widgets; live-only forecasts disabled).
+	•	Access System Logs (snapshot only, no streaming).
+
+⸻
+
+10.3 Data Model & Local Storage
+
+Local Storage Layers:
+	1.	Index DB (primary local DB)
+	•	Stores structured WorkItem metadata, queue state, forms in progress, user actions queued. Encrypted at rest.
+	2.	Cache Layer (read-heavy)
+	•	Cached Pulse widget snapshots, Knowledge article content, recent WorkItem details, and AI sidebar summaries.
+	3.	Attachment Storage
+	•	Pending attachments (photos, videos) stored in local encrypted blob storage and linked to queued updates.
+	4.	Action Queue
+	•	Append-only WAL (write-ahead log) of user actions (updates, assignments, approvals, attachments). Each action stored with GUID, timestamp, device id, user id, and dependency pointers.
+
+Data Lifetimes:
+	•	Local cache TTL configurable per tenant; default 7 days for large dataset elements, 30 days for personal items.
+	•	Attachments persisted locally until successful upload and confirmation from ITSM.
+
+Storage Security:
+	•	Encrypt local DB & blobs using tenant-specific keys; keys managed by secure enclave where available (platform keychain/HSM).
+	•	Local data wiped on sign-out, device revoke, or after configured inactivity window.
+
+⸻
+
+10.4 Offline Workflows & Sync Behavior
+
+Principles:
+	•	Authoritative Writes: On sync, authoritative system wins per Data Authority config — OpsHub writes where allowed; otherwise OpsHub requests change via API and reconciles responses.
+	•	Prioritized Sync Queue: On reconnect, items synced in priority order:
+	1.	SLA-critical updates (items near breach)
+	2.	Approvals (if online-confirmed)
+	3.	Incident creations from alerts
+	4.	Status updates and comments
+	5.	Attachments & large payloads
+	•	Transactional Batching: Batch commits to source systems to reduce API pressure; commit records include device id & action GUIDs for traceability.
+
+Conflict Detection:
+	•	Compare field-level versions by vector clocks and timestamps.
+	•	If remote change exists for same field: flag a conflict event in local UI and in server sync response.
+
+Conflict Resolution Flow:
+	1.	Automatic Safe-Merge: If non-overlapping fields → merge automatically.
+	2.	AI-Suggested Merge: If overlapping but rule-based (e.g., timestamps, higher-priority field owners) → AI proposes choice with confidence.
+	3.	User Arbitration: If ambiguity remains, present both versions to user (side-by-side) with:
+	•	Proposed resolution selected,
+	•	Button to keep local, keep remote, or field-level merge.
+	•	Mandatory reason capture if user overrides AI suggestion.
+	4.	Audit Logging: All resolution decisions logged immutably with device id, user id, timestamps, and reasoning.
+
+Offline Approval Rules (Phase 1):
+	•	Low-risk approvals accepted offline are queued and executed on sync; unless governance requires online verification. When governance requires, the offline approval is treated as advisory and visually marked “Pending Online Confirmation.”
+	•	Rejection reasons must be filled in; can be queued offline.
+
+⸻
+
+10.5 Attachments & Media Handling
+	•	Camera Integration: Support in mobile UI for attaching photos/video with metadata (timestamp, device GPS — if user consents).
+	•	Compression & Optimization: Client compresses images for upload; retains original until server confirms receipt.
+	•	Secure Upload: Uploads use pre-signed URLs with limited TTL; multipart uploads for large files.
+	•	Attachment Audit: Each attachment transfer logged; if upload fails after retries, user notified with retry options.
+
+⸻
+
+10.6 Push Notifications & Background Sync
+
+Push Channels (Phase 1):
+	•	Web Push for PWA (critical items and user preferences respected).
+	•	Push message carries minimal payload (title, workitem id, priority) — full payload fetched on open to reduce on-wire data.
+
+Notification Behavior:
+	•	Critical notifications bypass “quiet hours” if user configured emergency override.
+	•	Non-critical grouped notifications are collapsed; users can expand in-app.
+
+Background Sync:
+	•	Periodic background sync attempts (OS-limited).
+	•	When background sync occurs, only lightweight syncs for high-priority items to preserve battery. Full sync performed when app in foreground or user-triggered.
+
+⸻
+
+10.7 Mobile UX & Interaction Patterns (Phase 1)
+
+Design Guidelines (mobile-first UX):
+	•	Minimal information density on first view; progressive disclosure for details.
+	•	Minimum 44px touch targets.
+	•	Swipe gestures for quick actions (assign to me, quick comment).
+	•	Long-press for contextual actions (reassign, escalate).
+	•	Pull-to-refresh for manual sync + visual sync status indicator.
+	•	On offline state, every actionable control shows offline icon and queued state if user acts.
+
+Key Mobile Screens (Phase 1):
+	1.	SmartQueue – My Work (Card View)
+	•	Prioritized cards with SLA countdown, short description, quick actions (Assign, Approve, Run Automation).
+	2.	WorkItem Detail (Mobile)
+	•	Condensed header (ID, status, SLA). Tabs accessible via horizontal swipe (Details, Activity, AI, Attachments).
+	•	AI recommendations shown at top of sidebar area (tappable for full detail).
+	3.	Create Incident (Alert Flow)
+	•	Pre-filled form, minimal mandatory fields, photo attach, submit button (queued if offline).
+	4.	Notifications Inbox
+	•	Grouped view with inline actions.
+	5.	Sync & Conflict Center
+	•	Single-screen dashboard for pending sync actions and conflicts requiring arbitration.
+
+⸻
+
+10.8 Device Management & Security Controls
+
+Device Registration & Trust:
+	•	Device registration during first login with OAuth/SAML handshake.
+	•	Device fingerprint (OS, app version, device id) stored for Tenant Admin visibility.
+	•	MFA required for device registration for privileged users.
+
+Device Revocation & Lost Device:
+	•	Tenant Admin can revoke device access instantly; local data remotely invalidated / encryption keys revoked on next check.
+	•	Mobile app polls for revocation on network; if device revoked, app forces logout and optionally wipes local cache.
+
+Data Leakage Protections:
+	•	Copy/paste restrictions configurable for attachments/fields flagged as sensitive.
+	•	Optional data entry blocks for devices without encryption hardware.
+
+⸻
+
+10.9 Performance Targets & Monitoring (Mobile)
+
+Phase 1 Targets (mobile experience):
+	•	Initial load time ≤3 seconds on 3G simulated (first meaningful paint & interactive).
+	•	List navigation (SmartQueue paging) ≤1 second.
+	•	WorkItem open time ≤1.5 seconds with cached data; if online, fetch latest diff in background.
+	•	Attachment capture & local save <2s.
+
+Monitoring:
+	•	Mobile telemetry includes offline session duration, sync success rate, conflict rate per device, battery impact metrics.
+	•	Intelligence Center surfaces mobile health (e.g., “20% of field sessions experience sync errors”).
+
+⸻
+
+10.10 Edge Cases & Failure Modes
+
+Network Flapping (Intermittent Connectivity):
+	•	Exponential backoff for sync retries.
+	•	User-facing warnings after repeated failures with suggested actions (e.g., “Switch to full Wi-Fi to upload attachments”).
+
+Partial Writes / Partial Success:
+	•	If batch sync partially succeeds, OpsHub marks individual action GUIDs success/failure. Failed actions re-queued with retry counters and admin notification after repeated failures.
+
+Conflicting Schema Changes (ITSM Fields Changed Remote):
+	•	OpsHub detects schema mismatch on sync; blocks write; surfaces admin task to reconcile schema differences; logs event for Tenant Admin.
+
+Storage Constraints on Device:
+	•	If local storage low, app alerts user and purges oldest non-critical caches (respecting user preferences). Attachments not uploaded are prioritized for immediate retry on reconnect.
+
+⸻
+
+10.11 Phase 1 vs Phase 2 (Mobile & Offline)
+
+Phase 1 (MVP)
+	•	Full PWA with installable experience.
+	•	Core functional parity for SmartQueue, WorkItem, Incident creation, Approvals (low-risk), Notifications.
+	•	4-hour offline support guarantee (forced sync after 4h).
+	•	Local encrypted storage, queued action WAL, conflict arbitration flows.
+	•	Device registration, MFA, revocation.
+	•	Push notifications for critical items.
+
+Phase 2+
+	•	Native app wrappers for richer background sync on iOS/Android.
+	•	Enhanced background sync (OS-level) and larger attachment throughput.
+	•	Predictive prefetching of likely-needed content.
+	•	Device posture checks (MDM integration) and conditional access.
+	•	Offline machine learning inference for AI recs on-device (for low-latency triage).
+
+⸻
+
+10.12 Audit & Compliance Hooks (Mobile)
+	•	All mobile-originated actions include device id and offline flag in audit logs.
+	•	Attachments captured offline flagged with metadata (GPS consent, timestamp) for compliance.
+	•	Tenant-level config to disable GPS or attachment capture for privacy-sensitive customers.
+
+⸻
+
+10.13 Developer & QA Readiness (Mobile)
+
+Developer APIs & SDKs:
+	•	Client-side sync SDK (JS) with clear contracts for action queue, conflict resolution, and local storage encryption APIs.
+	•	Telemetry SDK for mobile metrics collection.
+
+QA Focus Areas:
+	•	Offline action queue correctness across webview restarts.
+	•	Conflict scenarios across multiple devices.
+	•	Large-attachment compression & retry behaviors.
+	•	Security tests for device revocation & key rotation.
+
+⸻
+
+10.14 Example Mobile Flow (Bus-Proof Illustration)
+
+Scenario: Field engineer receives push P1 → acts offline → syncs on return.
+	1.	Push arrives: brief card with WorkItem ID.
+	2.	Engineer opens PWA (cached WorkItem).
+	3.	Runs low-risk automation (client queues action in WAL with GUID).
+	4.	Adds status update and takes photo attachment. WAL now has three entries: automation-run, status-update, attachment-upload.
+	5.	Engineer goes into area with no coverage, continues work.
+	6.	After 2 hours, connects to Wi-Fi: client initiates prioritized sync.
+	•	Sends automation-run first (server confirms run executed; automation outcome logged).
+	•	Sends status update next (server accepts and updates ITSM).
+	•	Uploads attachment via pre-signed URL; server attaches it to WorkItem.
+	•	Server returns any remote changes — conflict detected on assignment field.
+	7.	Client presents conflict to engineer with AI suggestion: keep remote assignment (manager reassign) or override local. Engineer accepts remote.
+	8.	All actions and conflict resolution are logged immutably with device id and timestamps.
+
+⸻
+
+Summary — Mobile & Offline Architecture (Bible-Ready)
+	•	PWA-first, installable, with full offline read/write workflows for core features.
+	•	Secure local storage + queued action WAL with prioritized sync.
+	•	Explicit conflict detection & arbitration with AI assistance and audit logging.
+	•	Device trust model with revocation and MFA for privileged actions.
+	•	Performance targets defined; QA and developer SDKs specified.
+	•	Phase 1 covers essential offline capabilities; Phase 2 expands to deeper native-features and on-device AI.
+
+⸻
+
+11. Humanoid Integration
+
+Purpose
+
+OpsHub extends beyond software-only automation to controlled interaction with humanoid robots (field service assistants). This enables physical tasks (reset hardware, swap AV cables, press buttons) under OpsHub governance.
+
+11.1 Principles
+	•	Controlled Environment Only: no open-field autonomy in Phase 1.
+	•	Low-Risk Only: humanoids execute scripts classified as low-risk with rollback (e.g., reboot/reset, physical plug cycle).
+	•	Human Supervision: first execution always requires human sign-off.
+	•	Audit-First: humanoid interactions logged like automations (device id, operator id, rollback state).
+
+11.2 Phase 1 Capabilities
+	•	Triggered by WorkItem: engineer in SmartQueue runs automation → humanoid executes pre-mapped script.
+	•	Feedback Loop: humanoid reports completion status (success/failure).
+	•	Attachment Support: humanoid sends back sensor photos/video to WorkItem Activity Log.
+	•	Governance:
+	•	Requires engineer confirmation before run.
+	•	Rollback steps mandatory if available.
+	•	SLA tracking continues.
+
+11.3 Example Flow (AV Engineer)
+	1.	Alert triggers incident in SmartQueue (panel not responding).
+	2.	Engineer opens WorkItem → AI suggests “reset AV panel” (low risk).
+	3.	Engineer clicks Execute via Humanoid.
+	4.	Humanoid carries out reset, streams back confirmation image.
+	5.	OpsHub logs execution, SLA clock continues.
+
+11.4 Phase 2+ Expansion
+	•	Multi-Humanoid Orchestration (multiple robots per incident).
+	•	Semi-Autonomous Field Ops (routine inspections).
+	•	Predictive Dispatch (AI flags pattern → humanoid pre-assigned task).
+	•	Integration with MSP scenarios (global remote ops).
+
+⸻
+
+12. Roadmap, Phasing & Risks
+
+12.1 Phases
+    Phase 1 (MVP, 16 weeks)
+        •	Full tenant-isolated platform.
+        •	Core 6 modules (Pulse, SmartQueue, WorkItem Detail, Schedule, Intelligence Center, Notifications).
+        •	AI agents (triager, approval advisor, RCA, automation advisor, knowledge curator).
+        •	Low-risk automations (ROI tracked).
+        •	Mobile PWA with offline-first sync.
+        •	ISO27001 + SOC2 readiness.
+        •	Controlled humanoid integration (low-risk only).
+
+    Phase 2 (Core Expansion, 20–24 weeks)
+        •	MSP support (multi-tenant hierarchy).
+        •	Advanced automations (workflow builder).
+        •	Deeper integrations (Slack/Teams, ERP).
+        •	Predictive AI (breach forecasts, resource demand).
+        •	Semi-autonomous humanoid tasks.
+        •	Benchmarking dashboards.
+
+    Phase 3 (Intelligence & Optimization, 24+ weeks)
+        •	Full automation orchestration.
+        •	Predictive ROI dashboards.
+        •	Industry benchmarking vs peers.
+        •	Autonomous humanoid orchestration for routine ops.
+        •	AI fairness dashboards, policy-as-code compliance.
+
+
+12.2 Major risks & mitigations
+	•	AI accuracy below target: human-in-loop, phased model rollout, richer training data.
+	•	Integration complexity: phased connector deliveries, fallback file import.
+	•	Compliance audits: early audit readiness, legal and infosec engagement.
+	•	User Adoption Resistance → gamification, champions program, role-based UX.
+	•	Compliance Risks → immutable audit logs, retention policies, legal sign-off.
+	•	Performance Under Load → auto-scaling + CDN caching.
+⸻
+
+13. Appendices
+
+13.1 Glossary (selected)
+	•	WorkItem: any item tracked (incident/request/change/automation/KB).
+	•	SmartScore: AI prioritization score (0–10).
+	•	Nudge: AI suggestion surfaced for adoption / improvement.
+    •	Pulse: OpsHub’s dashboard of operational health.
+	•	SmartQueue: Unified, AI-prioritized work hub.
+	•	WorkItem: Any operational task (incident, request, change, automation, KB).
+	•	AI Agent: Semi-autonomous decision helper (triager, advisor, curator).
+	•	Rollback %: % of automations that required undo/rollback → quality signal.
+	•	Immutable Audit Log: Write-once ledger of all ops actions.
+
+13.2 Personas (Phase 1)
+	•	Engineer (Field/NOC/App Support) → SmartQueue, offline ops, SLA streaks.
+	•	Manager/Dispatcher → Pulse team view, approval hub, schedule coordination.
+	•	SRE/Automation Engineer → Intelligence Center, automation ROI.
+	•	SME → Knowledge review/retirement, AI draft validation.
+	•	Executive (VP/CIO) → Pulse exec view, Success Metrics dashboards, approvals.
+
+13.3 Example AI explanation
+
+“Restart Service X (92% confidence). Factors: (1) 14 similar incidents resolved within 30 minutes using restart; (2) current SLA breach probability 78% in next 2 hours; (3) affected user count below threshold for escalated approval. Model v1.8 — trained on last 24 months of incidents.”
+
+13.4 Example conflict arbitration log entry
+	•	WorkItem: SNOW-12345
+	•	Field: Assignment
+	•	Local: alice@company.com
+	•	Remote: bob@company.com
+	•	AI suggestion: keep remote (confidence 72%) — reason: manager reassigned during disconnect
+	•	Final decision: kept remote; user override reason: “local team coverage required while bob on leave”
+	•	Audit: user, device id, timestamps, model version
+
+13.5 Baseline example (Day 0)
+	•	Toil hours saved = 0
+	•	MTTR: 8h avg.
+	•	SLA compliance: 72%.
+	•	Escalation rate: 15%.
+	•	AI adoption: 0%.
+	•	Automation ROI: $0.
+	•	Knowledge effectiveness: 40%.    
+
+⸻
+
+Operational & Implementation Notes for the Engineering Team (Bus-Proof specifics)
+	•	Config-driven UI: use JSON schema to drive WorkItem fields rendering and validation based on ITSM schema.
+	•	Audit storage: append-only ledger; batch hash and store cryptographic digest.
+	•	AI decisions: store both human-readable explainability and raw model features; keep model registry with versioning.
+	•	Sync orchestration: implement prioritized queues, per-tenant throttling, and transactional batching with rollback on partial failures.
+	•	Integration connectors: implement adapter pattern for ITSM, Monitoring, HR with uniform event mapping.
+	•	Offline client SDK: provide action queue primitives, conflict merge UI components, local encrypted store abstraction.
+	•	Security: encrypt local store with tenant keys; use secure key retrieval (platform keychain/HSM).
+	•	Testing: define acceptance tests for offline flows, conflict scenarios, automation rollback, and audit log integrity.
+	•	Operational runbook: include emergency disable switches for automations and humanoid actions.
+
+⸻

@@ -1,5 +1,6 @@
 // src/contexts/ComplianceContext.tsx (FRONTEND UI STATE MANAGER)
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { useTenant } from "../providers/TenantProvider";
 import { useSync } from "../providers/SyncProvider";
 import { useConfig } from "../providers/ConfigProvider";
@@ -9,16 +10,6 @@ import { complianceApi } from "../api/complianceApi";
 // 1. UI-Focused Type Definitions
 // ---------------------------------
 
-/**
- * UI async state wrapper for data fetching operations
- */
-export interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
 
 /**
  * UI filter state for client-side display filtering
@@ -150,25 +141,17 @@ const ComplianceContext = createContext<ComplianceContextType | undefined>(undef
 // ---------------------------------
 export const ComplianceProvider = ({ children }: { children: ReactNode }) => {
   const { tenantId } = useTenant();
-  const { enqueueItem, stats } = useSync();
+  const { enqueueItem, stats, isProcessing } = useSync();
   const { config: globalConfig } = useConfig();
 
   // UI State Management
-  const [requirements, setRequirements] = useState<AsyncState<ComplianceRequirement[]>>({
-    data: [],
-    loading: false,
-    error: null,
-    lastFetch: null,
-    stale: true,
-  });
+  const [requirements, setRequirements] = useState<AsyncState<ComplianceRequirement[]>>(
+    AsyncStateHelpers.createEmpty<ComplianceRequirement[]>([])
+  );
 
-  const [selectedRequirement, setSelectedRequirement] = useState<AsyncState<ComplianceRequirement>>({
-    data: null,
-    loading: false,
-    error: null,
-    lastFetch: null,
-    stale: true,
-  });
+  const [selectedRequirement, setSelectedRequirement] = useState<AsyncState<ComplianceRequirement>>(
+    AsyncStateHelpers.createEmpty<ComplianceRequirement>(null)
+  );
 
   const [filters, setFiltersState] = useState<ComplianceUIFilters>({});
   const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
@@ -239,30 +222,18 @@ export const ComplianceProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    updateRequirementsState(prev => ({ ...prev, loading: true, error: null }));
+    updateRequirementsState(prev => AsyncStateHelpers.createLoading(prev.data));
 
     try {
       // Backend API handles all business logic, filtering, sorting, etc.
       const data = await complianceApi.getRequirements(tenantId, options?.filters);
       
-      updateRequirementsState(prev => ({
-        ...prev,
-        data,
-        loading: false,
-        error: null,
-        lastFetch: new Date().toISOString(),
-        stale: false,
-      }));
+      updateRequirementsState(prev => AsyncStateHelpers.createSuccess(data));
       
       setLastSyncAt(new Date().toISOString());
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load compliance requirements';
-      updateRequirementsState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-        stale: true,
-      }));
+      updateRequirementsState(prev => AsyncStateHelpers.createError(prev.data, errorMessage));
     }
   }, [tenantId, requirements.loading, isStale, requirements.data?.length, updateRequirementsState]);
 
@@ -274,27 +245,15 @@ export const ComplianceProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    updateSelectedRequirementState(prev => ({ ...prev, loading: true, error: null }));
+    updateSelectedRequirementState(prev => AsyncStateHelpers.createLoading(prev.data));
 
     try {
       const data = await complianceApi.getRequirement(tenantId, id);
       
-      updateSelectedRequirementState(prev => ({
-        ...prev,
-        data,
-        loading: false,
-        error: null,
-        lastFetch: new Date().toISOString(),
-        stale: false,
-      }));
+      updateSelectedRequirementState(prev => AsyncStateHelpers.createSuccess(data));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : `Failed to load requirement ${id}`;
-      updateSelectedRequirementState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-        stale: true,
-      }));
+      updateSelectedRequirementState(prev => AsyncStateHelpers.createError(prev.data, errorMessage));
     }
   }, [tenantId, selectedRequirement.data?.id, selectedRequirement.stale, updateSelectedRequirementState]);
 
@@ -305,9 +264,9 @@ export const ComplianceProvider = ({ children }: { children: ReactNode }) => {
     const tempRequirement: ComplianceRequirement = {
       id: optimisticId,
       name: data.name || 'New Requirement',
-      type: data.type || config.types[0],
-      status: data.status || config.statuses[0],
-      framework: data.framework || config.frameworks[0],
+      type: data.type || config.types[0] || 'regulatory',
+      status: data.status || config.statuses[0] || 'draft',
+      framework: data.framework || config.frameworks[0] || 'ISO27001',
       complianceLevel: data.complianceLevel || 'non_compliant',
       mandatory: data.mandatory || false,
       healthStatus: 'gray',
@@ -581,10 +540,10 @@ export const ComplianceProvider = ({ children }: { children: ReactNode }) => {
 
   // Auto-refresh when coming back online
   useEffect(() => {
-    if (stats?.isProcessing === false && stats?.pending === 0 && isStale) {
+    if (!stats?.pending && !isProcessing && isStale) {
       refreshCache();
     }
-  }, [stats?.isProcessing, stats?.pending, isStale, refreshCache]);
+  }, [stats?.pending, isProcessing, isStale, refreshCache]);
 
   // Cleanup optimization
   useEffect(() => {

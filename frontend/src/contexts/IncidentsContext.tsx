@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { AsyncState, AsyncStateHelpers } from "../types/asyncState";
 import { 
   getAll,
   getById,
@@ -23,17 +24,6 @@ import { ExternalSystemFields } from "../types/externalSystem";
 // 1. Frontend State Management Types
 // ---------------------------------
 
-/**
- * Generic async state wrapper for UI operations
- * Provides loading, error, and staleness information to consumers
- */
-export interface AsyncState<T> {
-  data: T[];
-  loading: boolean;
-  error: string | null;
-  lastFetch: string | null;
-  stale: boolean;
-}
 
 /**
  * UI-specific filters for client-side responsiveness
@@ -352,13 +342,9 @@ export const IncidentsProvider = ({ children }: { children: ReactNode }) => {
   const { config: globalConfig } = useConfig();
   
   // UI State Management
-  const [incidents, setIncidents] = useState<AsyncState<Incident>>({
-    data: [],
-    loading: false,
-    error: null,
-    lastFetch: null,
-    stale: true,
-  });
+  const [incidents, setIncidents] = useState<AsyncState<Incident[]>>(
+    AsyncStateHelpers.createEmpty<Incident[]>([])
+  );
   
   const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate[]>([]);
   
@@ -419,7 +405,7 @@ export const IncidentsProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     
-    setIncidents(prev => ({ ...prev, loading: true, error: null }));
+    setIncidents(prev => AsyncStateHelpers.createLoading(prev.data));
     
     try {
       // Backend handles sorting, filtering, and business logic
